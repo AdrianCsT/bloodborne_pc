@@ -1,6 +1,7 @@
 #include "runtime.h"
 #include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 typedef int32_t (ABI *Module)(uint16_t);
@@ -26,6 +27,30 @@ int main(int argc,char **argv) {
         assert(load(0xb5)==0 && loaded(0xb5)==0 && (uint32_t)loaded(0xb4)==0x805a1001);
         assert(unload(0xb5)==0 && (uint32_t)loaded(0xb5)==0x805a1001);
         puts("PASS: independent module references"); return 0;
+    }
+    if (argc>1 && !strcmp(argv[1],"--addcont")) {
+        /* BB_ADDCONT labels come back as installed 24-byte entries; the capacity is respected,
+         * unused slots stay untouched and a label over 16 characters is skipped. */
+#ifdef _WIN32
+        _putenv_s("BB_ADDCONT","SPEXPANSIONDLC03,LABEL_LONGER_THAN_16,SECOND");
+#else
+        setenv("BB_ADDCONT","SPEXPANSIONDLC03,LABEL_LONGER_THAN_16,SECOND",1);
+#endif
+        unsigned char initial[32]={0}, boot[40];
+        assert(load(0xb4)==0 && init(initial,boot)==0);
+        struct { uint32_t hits,canary; } h={99,0xabcdef};
+        assert(list(0,NULL,0,&h.hits)==0 && h.hits==2 && h.canary==0xabcdef);
+        unsigned char entries[72]; memset(entries,0xaa,sizeof(entries));
+        uint32_t status;
+        assert(list(0,entries,1,&h.hits)==0 && h.hits==1);
+        assert(!strcmp((const char *)entries,"SPEXPANSIONDLC03") && !entries[17] && !entries[19]);
+        memcpy(&status,entries+20,4); assert(status==4);
+        for (unsigned i=24;i<sizeof(entries);++i) assert(entries[i]==0xaa);
+        assert(list(0,entries,3,&h.hits)==0 && h.hits==2);
+        assert(!strcmp((const char *)entries+24,"SECOND"));
+        memcpy(&status,entries+44,4); assert(status==4);
+        for (unsigned i=48;i<sizeof(entries);++i) assert(entries[i]==0xaa);
+        puts("PASS: add-on licenses from BB_ADDCONT"); return 0;
     }
     assert((uint32_t)loaded(0)==0x805a1000);
     assert((uint32_t)loaded(0xb4)==0x805a1001);

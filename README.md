@@ -367,7 +367,8 @@ pass), `BB_FSR4_PROFILE=1` (GPU time per FSR 4 pass), `BB_UPSCALER=taa|fsr3|fsr4
 with `BB_PRESENT_DUMP_COUNT=N` (dump N consecutive presented frames),
 `BB_FSR411_VARIANT=int8|fp8|fp8emu` (FSR 4.1.1 variant; by default FP8 where the GPU has FP8
 matrices), `BB_READBACKS=0|1|2` (reads of GPU-written memory by the game: 1 by default, 2
-precise and slow, 0 off).
+precise and slow, 0 off), `BB_ADDCONT=SPEXPANSIONDLC03` (add-on licenses reported to the game, comma-separated:
+this one is The Old Hunters, whose areas ship with the v1.09 data; experimental).
 More in [docs/](docs); recent changes: [docs/CHANGES_0.4.md](docs/CHANGES_0.4.md) (in Russian),
 [docs/CHANGES_2026-10-06.md](docs/CHANGES_2026-10-06.md).
 

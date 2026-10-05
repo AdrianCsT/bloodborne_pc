@@ -1,5 +1,7 @@
 /* Offline AppContent provider for the configured base-game profile.
- * No package/DLC mounting, downloads, entitlement or license emulation. */
+ * Add-on licenses come from BB_ADDCONT (entitlement labels, comma-separated, e.g.
+ * SPEXPANSIONDLC03 for The Old Hunters, whose data ships with the game). No package/DLC
+ * mounting, downloads or entitlement checks. */
 #include "runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +13,21 @@
 static unsigned refs, initialized, configured;
 static uint32_t parameters[5];
 static unsigned queries, lists;
+/* OrbisAppContentAddcontInfo: entitlement label (16 characters, NUL, padding) and status. */
+typedef struct { char label[17]; char padding[3]; uint32_t status; } AddcontInfo;
+#define ADDCONT_INSTALLED 4u
+#define ADDCONT_MAX 8
+static char addcont[ADDCONT_MAX][17];
+static unsigned addcont_count;
+static void load_addcont(void) {
+    addcont_count=0;
+    for (const char *p=getenv("BB_ADDCONT"); p && *p && addcont_count<ADDCONT_MAX;) {
+        size_t n=strcspn(p,",");
+        if (n>16) fprintf(stderr,"WARNING: BB_ADDCONT label longer than 16 characters ignored: %.*s\n",(int)n,p);
+        else if (n) { memcpy(addcont[addcont_count],p,n); addcont[addcont_count++][n]=0; }
+        p+=n; if (*p==',') ++p;
+    }
+}
 void runtime_content_configure(const uint32_t values[5]) {
     if (refs || initialized || (values[0]!=1 && values[0]!=3)) {
         fputs("ERROR: invalid or late content profile\n",stderr); exit(1);
@@ -55,7 +72,13 @@ static ABI int32_t content_init(const unsigned char *init,unsigned char *boot) {
     /* Only the reserved-zero init profile is implemented. */
     for (unsigned i=0;i<32;++i) if (init[i]) return PARAMETER;
     memset(boot,0,40); initialized=1;
-    puts("Runtime: AppContent initialized; offline base-game profile, no mounted add-ons");
+    load_addcont();
+    if (!addcont_count) puts("Runtime: AppContent initialized; offline base-game profile, no add-ons");
+    else {
+        printf("Runtime: AppContent initialized; offline base-game profile, add-on licenses:");
+        for (unsigned i=0;i<addcont_count;++i) printf(" %s",addcont[i]);
+        putchar('\n');
+    }
     return 0;
 }
 static void require_initialized(void) {
@@ -73,8 +96,19 @@ static ABI int32_t addon_list(uint32_t service,void *list,uint32_t capacity,uint
     require_initialized();
     if (service) { fputs("STOP: nonzero AppContent service label unsupported\n",stderr); exit(21); }
     if ((!capacity || !list) && !hits) return PARAMETER;
-    /* No add-ons are mounted by this provider. Never touch unused list slots. */
-    if (hits) *hits=0;
+    /* BB_ADDCONT licenses, reported as installed; nothing is mounted. Without a list only the
+     * count is returned. Never touch unused list slots. */
+    uint32_t n=addcont_count;
+    if (capacity && list) {
+        if (n>capacity) n=capacity;
+        for (uint32_t i=0;i<n;++i) {
+            AddcontInfo info; memset(&info,0,sizeof(info));
+            memcpy(info.label,addcont[i],sizeof(info.label)); info.status=ADDCONT_INSTALLED;
+            memcpy((unsigned char *)list+i*sizeof(info),&info,sizeof(info));
+        }
+    }
+    if (hits) *hits=n;
+    if (!lists) printf("Runtime: AppContent add-on list queried; %u reported\n",n);
     ++lists; return 0;
 }
 uintptr_t runtime_content_resolve(const char *name) {
