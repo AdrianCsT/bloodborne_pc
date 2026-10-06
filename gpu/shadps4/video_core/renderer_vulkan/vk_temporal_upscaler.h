@@ -170,7 +170,7 @@ private:
     void RecordTaa(vk::CommandBuffer cmdbuf, vk::ImageView color, vk::ImageView depth);
     /// Sharpness above 1 for FSR 3/4 (their RCAS stops at 1): one more RCAS pass over the target
     /// (output_image, or the 8-bit UI image with ldr) in General layout after the upscaler.
-    void ExtraSharpen(vk::CommandBuffer cmdbuf, vk::Image target, bool ldr, u32 w, u32 h);
+    void ExtraSharpen(vk::Image target, bool ldr, u32 w, u32 h);
 
     const Instance& instance;
     Scheduler& scheduler;
@@ -186,6 +186,8 @@ private:
 
     bool enabled = false;
     bool failed = false;
+    /// An FSR 3 dispatch recorded on a recording thread failed; `failed` at the next frame.
+    std::atomic<bool> dispatch_failed{false};
     u64 trigger_hash = 0x9a9cf8a9;
     VideoCore::ImageId scene_color{};
     bool done_this_frame = false;
