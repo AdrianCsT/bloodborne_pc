@@ -39,6 +39,17 @@ EFFECTS={
     'skip_intro':(None,'Skip Intro'),
     'debug_camera':(None,'Restore Debug Camera'),
     'debug_menu':(None,'Restore Debug Menu (READ NOTES)'),
+    # Cheats and gameplay tweaks (launcher "Cheats" page).
+    'cheat_no_death':(None,'Player No Dead (Read note)'),
+    'cheat_stealth':(None,'Player Stealth (Read note)'),
+    'cheat_silent':(None,'Player Silent (Read note)'),
+    'cheat_rally_no_decay':(None,'No Rally Decay'),
+    'cheat_enemy_control':(None,'Enemy Control'),
+    'tweak_no_rally':(None,'Disable Rally (HP Regain)'),
+    'tweak_camera_distance':(None,'Increased camera distance'),
+    'tweak_no_camera_rotation':(None,'Disable Camera Auto Rotation via Movement'),
+    'tweak_easy_run':(None,'Sensitive Analog Input (easier to run)'),
+    'tweak_ragdoll':(None,'DS1-like physics'),
 }
 # Intel CPUs: the game's tone mapping turns black (DLC areas most; reported as darker than on the
 # PS4): the game code runs natively, and Intel's approximate float instructions differ from the
@@ -63,6 +74,15 @@ def intel_tonemap_fix(env=os.environ, cpuinfo='/proc/cpuinfo'):
 MODEL_LOD={'-2':'Model LOD -2 (Highest)','1':'Model LOD 1 (Lower)','2':'Model LOD 2 (Lowest)'}
 
 
+def game_app_version(game):
+    """APP_VER of the game folder's param.sfo ("01.09"), or None when it cannot be read."""
+    try:
+        from prepare import sfo
+        return sfo((Path(game) / 'sce_sys/param.sfo').read_bytes()).get('APP_VER')
+    except (OSError, ValueError, ImportError):
+        return None
+
+
 def validate_patch_requirements(names, game):
     if 'Restore Debug Camera' in names and 'Enemy Control' in names:
         raise ValueError('Restore Debug Camera conflicts with Enemy Control; enable only one')
@@ -83,6 +103,13 @@ def effect_patches(settings):
         if key not in settings: continue
         name=on if settings[key]=='1' else off
         if name: names.append(name)
+    # Enemy Control and the free camera use the same buttons: the free camera wins.
+    if 'Enemy Control' in names and 'Restore Debug Camera' in names:
+        names.remove('Enemy Control')
+        print('Patches: Enemy Control skipped (it conflicts with the free camera)')
+    # Rally that never decays means nothing without Rally.
+    if 'No Rally Decay' in names and 'Disable Rally (HP Regain)' in names:
+        names.remove('No Rally Decay')
     lod=MODEL_LOD.get(settings.get('model_lod','0'))
     if lod: names.append(lod)
     return names
@@ -286,6 +313,15 @@ def main():
             settings['preset']=os.environ['BB_UPSCALE_PRESET']
         size=render_size(settings)
         if size: print(f'{size[0]}x{size[1]}')
+        return
+    # The patches are byte writes at the addresses of one game version: on another version they
+    # would corrupt code. Such a game runs unpatched (run.sh/run.py then choose 30 FPS).
+    version=game_app_version(a.game_dir)
+    if version and version!=a.app_version and not os.environ.get('BB_FORCE_PATCHES'):
+        blob=struct.pack('<8sQQ',b'BBPATCH2',EBOOT_BASE,0)
+        (a.out/'patches.bin').write_bytes(blob)
+        print(f'Patches: game version {version}, patches are for {a.app_version}: none applied '
+              '(30 FPS, no effect or resolution patches)')
         return
     names=FPS_PRESETS[a.fps]+[n.strip() for n in a.extra.split(';') if n.strip()]
     names+=[n for n in effect_patches(read_settings(a.settings)) if n not in names]

@@ -710,7 +710,9 @@ public:
 
     /// bbport: waits for the GPU to complete the submissions before the current one, which is
     /// not sent: for callers that keep recording into it (the upscaler between CommandBuffer()
-    /// and the end of its pass) and free resources only earlier submissions used.
+    /// and the end of its pass) and free resources only earlier submissions used. Finish() would
+    /// submit the command buffer the caller holds: recording into a submitted buffer crashes
+    /// AMD's driver.
     void WaitSubmittedWork() {
         const u64 tick = CurrentTick();
         if (tick > 1) {

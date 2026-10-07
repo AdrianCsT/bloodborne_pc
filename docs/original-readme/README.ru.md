@@ -4,6 +4,16 @@
 
 [English](README.md) · **Русский**
 
+> ### Версия для Windows
+> В этом форке есть нативная сборка bbport для **Windows 10/11** с лаунчером (`Bloodborne.exe`),
+> где все настройки собраны в одном окне, на 13 языках. Готовый архив лежит в
+> [Releases](https://github.com/Supermedo/bloodborne_pc/releases): распакуйте, запустите
+> `Bloodborne.exe` и укажите папку с игрой. Сборка и отличия от Linux:
+> [packaging/windows/README.md](packaging/windows/README.md).
+>
+> Порт для Linux и почти вся работа над ним — [deadinside28](https://github.com/deadinside28/bloodborne_pc);
+> порт для Windows — [Supermedo](https://github.com/Supermedo).
+
 bbport — это аналог Wine + DXVK, только для одной игры: *Bloodborne* для PlayStation 4
 (CUSA03173, версия игры 1.09) на ПК с Linux x86-64. Оригинальный исполняемый файл игры
 запускается прямо на ПК:

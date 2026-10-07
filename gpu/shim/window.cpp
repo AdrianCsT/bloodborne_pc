@@ -31,6 +31,12 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
 
     const char* driver = SDL_GetCurrentVideoDriver();
     const SDL_PropertiesID wp = SDL_GetWindowProperties(window);
+#ifdef _WIN32
+    if (driver && !std::strcmp(driver, "windows")) {
+        window_info.type = WindowSystemType::Windows;
+        window_info.render_surface = SDL_GetPointerProperty(wp, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+    } else
+#endif
     if (driver && !std::strcmp(driver, "x11")) {
         window_info.type = WindowSystemType::X11;
         window_info.display_connection = SDL_GetPointerProperty(wp, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
@@ -105,6 +111,17 @@ bool WindowSDL::PollEvents() {
                 text_active = false;
                 SDL_StopTextInput(window);
             }
+            UpdateTextTitle();
+            continue;
+        }
+        // The controller finishes the text dialog too: Cross (A) accepts, Circle (B) cancels.
+        if (text_active && event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
+            (event.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ||
+             event.gbutton.button == SDL_GAMEPAD_BUTTON_EAST)) {
+            std::scoped_lock lock{text_mutex};
+            text_state = event.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ? 1 : 2;
+            text_active = false;
+            SDL_StopTextInput(window);
             UpdateTextTitle();
             continue;
         }

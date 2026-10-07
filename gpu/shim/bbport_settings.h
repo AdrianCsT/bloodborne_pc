@@ -10,7 +10,7 @@
 namespace BbSettings {
 
 enum Upscaler : int { UpscalerOff = 0, UpscalerFsr3 = 1, UpscalerFsr4 = 2, UpscalerFsr411 = 3,
-                      UpscalerTaa = 4, UpscalerCount };
+                      UpscalerTaa = 4, UpscalerDlss = 5, UpscalerCount };
 /// FSR 4 v07 or FSR 4.1.1: the same inputs, settings and placement in the frame.
 inline bool IsFsr4(int upscaler) {
     return upscaler == UpscalerFsr4 || upscaler == UpscalerFsr411;
@@ -38,6 +38,16 @@ inline constexpr Effect Effects[] = {
     {"skip_intro", "Skip startup intros", "Пропуск заставок при запуске", false},
     {"debug_camera", "Free camera (Cross + L3)", "Свободная камера (Cross + L3)", false},
     {"debug_menu", "Debug menu (requires font files)", "Debug menu (нужны файлы шрифтов)", false},
+    {"cheat_no_death", "Cheat: never die (not below 1 HP)", "Чит: бессмертие (не ниже 1 HP)", false},
+    {"cheat_stealth", "Cheat: enemies do not see you", "Чит: враги не замечают", false},
+    {"cheat_silent", "Cheat: enemies do not hear you", "Чит: враги не слышат", false},
+    {"cheat_rally_no_decay", "Cheat: Rally never fades", "Чит: Rally не угасает", false},
+    {"cheat_enemy_control", "Cheat: control an enemy (R3 / L3)", "Чит: управление врагом (R3 / L3)", false},
+    {"tweak_no_rally", "No Rally (no HP given back)", "Без Rally (возврата HP)", false},
+    {"tweak_camera_distance", "Camera further away", "Камера дальше", false},
+    {"tweak_no_camera_rotation", "No camera auto-rotation", "Без автоповорота камеры", false},
+    {"tweak_easy_run", "Run with less stick tilt", "Бег с меньшим наклоном стика", false},
+    {"tweak_ragdoll", "Dark Souls-style ragdoll physics", "Физика тел как в Dark Souls", false},
 };
 inline constexpr int EffectCount = int(sizeof(Effects) / sizeof(Effects[0]));
 /// Live output resolutions: the upscaler's output and the UI host targets.
@@ -76,6 +86,9 @@ struct Values {
     /// Why FSR 4 cannot run (assets, device features), or null. Set by the renderer.
     std::atomic<const char*> fsr4_problem{nullptr};
     std::atomic<bool> fsr4_supported{false}, fsr411_supported{false};
+    /// DLSS (bbport_dlss.dll, NVIDIA RTX) is ready, or why not (null before the device exists).
+    std::atomic<bool> dlss_supported{false};
+    std::atomic<const char*> dlss_problem{nullptr};
 
     /// Startup settings for the explicit BB_RENDER_RES compatibility patch only.
     int startup_preset = NativeAA;
@@ -95,6 +108,8 @@ const char* MenuText(const char* english, const char* russian);
 void Load();
 /// Checks the loaded choice before the first frame; unsupported FSR 4 uses FSR 3.1.
 void ConfigureUpscalerSupport(bool fsr4, bool fsr411);
+/// After device creation: DLSS availability; a DLSS setting falls back to FSR 3.1 without it.
+void ConfigureDlssSupport(bool available, const char* problem);
 /// Startup-patched scene dimensions cannot change until run.sh prepares a new image.
 bool FixedRenderSession();
 int RenderPreset();

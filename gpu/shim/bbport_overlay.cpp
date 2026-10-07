@@ -18,6 +18,16 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 
 // DejaVu Sans (Cyrillic), embedded (third_party/fonts, Bitstream Vera license).
+#ifdef _WIN32
+asm(".section .rdata,\"dr\"\n"
+    ".balign 16\n"
+    ".global bb_font_ttf\n"
+    "bb_font_ttf:\n"
+    ".incbin \"" BB_FONT_PATH "\"\n"
+    ".global bb_font_ttf_end\n"
+    "bb_font_ttf_end:\n"
+    ".text\n");
+#else
 asm(".section .rodata\n"
     ".balign 16\n"
     ".hidden bb_font_ttf\n"
@@ -28,6 +38,7 @@ asm(".section .rodata\n"
     ".global bb_font_ttf_end\n"
     "bb_font_ttf_end:\n"
     ".previous\n");
+#endif
 extern "C" const unsigned char bb_font_ttf[];
 extern "C" const unsigned char bb_font_ttf_end[];
 
@@ -204,13 +215,15 @@ void Menu() {
     ImGui::SeparatorText(BbSettings::MenuText("Temporal upscaler", "Временной апскейлер"));
     const char* upscalers[] = {
         BbSettings::MenuText("Off", "Выкл"), "FSR 3.1", "FSR 4 (INT8)", "FSR 4.1.1 (INT8)",
-        BbSettings::MenuText("TAA (native anti-aliasing)", "TAA (нативное сглаживание)")};
-    static const char* later[] = {"DLSS", "XeSS"};
+        BbSettings::MenuText("TAA (native anti-aliasing)", "TAA (нативное сглаживание)"),
+        "DLSS (NVIDIA RTX)"};
+    static const char* later[] = {"XeSS"};
     int upscaler = s.upscaler;
     if (ImGui::BeginCombo(BbSettings::MenuText("Upscaler", "Апскейлер"), upscalers[upscaler])) {
         for (int i = 0; i < BbSettings::UpscalerCount; ++i) {
             const bool supported = i == BbSettings::UpscalerFsr4     ? s.fsr4_supported.load()
                                    : i == BbSettings::UpscalerFsr411 ? s.fsr411_supported.load()
+                                   : i == BbSettings::UpscalerDlss   ? s.dlss_supported.load()
                                                                      : true;
             ImGui::BeginDisabled(!supported);
             if (ImGui::Selectable(upscalers[i], i == upscaler)) {
@@ -231,6 +244,9 @@ void Menu() {
             ImGui::TextDisabled("%s", BbSettings::MenuText("— in development", "— в работе"));
         }
         ImGui::EndCombo();
+    }
+    if (const char* problem = s.dlss_problem.load(); problem && upscaler == BbSettings::UpscalerDlss) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "DLSS: %s", problem);
     }
     if (const char* problem = s.fsr4_problem.load()) {
         ImGui::PushTextWrapPos();
@@ -552,6 +568,7 @@ void FpsCounter() {
                 : s.upscaler == BbSettings::UpscalerFsr4   ? "FSR 4"
                 : s.upscaler == BbSettings::UpscalerFsr411 ? "FSR 4.1.1"
                 : s.upscaler == BbSettings::UpscalerTaa    ? "TAA"
+                : s.upscaler == BbSettings::UpscalerDlss   ? "DLSS"
                                                            : "");
     ImGui::End();
 }
@@ -577,6 +594,7 @@ void TextPrompt() {
     ImGui::Text("%s_", text.c_str());
     ImGui::Separator();
     ImGui::TextUnformatted("Keyboard: type, Backspace = delete, Enter = OK, Esc = cancel");
+    ImGui::TextUnformatted("Controller: Cross (A) = OK, Circle (B) = cancel");
     ImGui::End();
 }
 

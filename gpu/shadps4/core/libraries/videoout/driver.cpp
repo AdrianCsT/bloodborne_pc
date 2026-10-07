@@ -7,10 +7,12 @@
 #include <chrono>
 #include <cstdio>
 #include <time.h>
+#ifndef _WIN32
 #include <sys/resource.h>
-#include <cstring>
 #include <dirent.h>
 #include <unistd.h>
+#endif
+#include <cstring>
 #include "common/assert.h"
 #include "bbport_toggles.h"
 #include "bbport_heap_sites.h"
@@ -301,6 +303,10 @@ int VideoOutDriver::ChangeBufferAttribute(VideoOutPort* port, s32 attributeIndex
 
 /// bbport: memory per statistics window: the kernel's count for the game (VRAM and GTT of its
 /// DRM clients, RSS) and the parts we know of. GTT holds the game's direct memory (fixed).
+#ifdef _WIN32
+// The kernel's per-process memory counters (/proc, DRM fdinfo) are a Linux interface.
+static void PrintMemory() {}
+#else
 static void PrintMemory() {
     u64 vram_kib = 0, gtt_kib = 0;
     std::vector<u64> clients;
@@ -366,6 +372,7 @@ static void PrintMemory() {
                 (unsigned long long)BbStats::gc_freed_images.exchange(0),
                 (unsigned long long)BbStats::gc_kept_images.exchange(0));
 }
+#endif
 
 void VideoOutDriver::Flip(const Request& req) {
     // Update HDR status before presenting, then present the frame (bbport: on the swap thread).
@@ -411,9 +418,11 @@ void VideoOutDriver::Flip(const Request& req) {
         last_twf = twf;
         const u64 copy_ns = BbStats::t_copy.load(), copy_bytes = BbStats::copy_bytes.load();
         u64 proc_flt = 0;
+#ifndef _WIN32
         if (rusage usage{}; getrusage(RUSAGE_SELF, &usage) == 0) {
             proc_flt = usage.ru_minflt;
         }
+#endif
         const u64 t_now[6] = {BbStats::t_resident.load(), BbStats::t_protect.load(),
                               BbStats::t_image_create.load(), BbStats::t_refresh.load(),
                               BbStats::t_staging.load(), BbStats::t_host_wait.load()};

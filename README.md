@@ -1,9 +1,20 @@
 THIS PROJECT IS NOT RELATED TO SHADPS4. ALL QUESTIONS RELATED TO THIS PROJECT SHOULD BE SENT TO THE DISCORD SERVER https://discord.gg/KYZRKk9CB, NOT TO THE SHADPS4 SERVER.
 
 
-# bbport — a native Linux port of Bloodborne
+# bbport — a native Linux and windows port of Bloodborne
 
-**English** · [Русский](README.ru.md)
+**English** · [Русский](docs/original-readme/README.ru.md)
+
+> ### Windows version
+> This fork adds a native **Windows 10/11** build of bbport with a launcher (`Bloodborne.exe`)
+> that holds every setting in one window, in 13 languages. Download the ready-to-play zip from
+> [Releases](https://github.com/Supermedo/bloodborne_pc/releases), unpack it, start
+> `Bloodborne.exe` and pick your game folder. Building it yourself and what changed for Windows:
+> [packaging/windows/README.md](packaging/windows/README.md).
+>
+> The Linux port and almost all of the work behind it are by
+> [deadinside28](https://github.com/deadinside28/bloodborne_pc); the Windows port is by
+> [Supermedo](https://github.com/Supermedo).
 
 bbport is the counterpart of Wine + DXVK for a single game: *Bloodborne* for PlayStation 4
 (CUSA03173, game version 1.09) on an x86-64 Linux PC. The game's original executable runs
@@ -28,6 +39,54 @@ reading of resource descriptors (textures, buffers) from the CPU to the GPU (see
 and several areas of Yharnam were played with it) with sound, gamepad and saving.
 A full play-through has not been verified, and only one machine (Linux, AMD Radeon RX 7800 XT,
 Mesa/RADV) has been tested thoroughly.
+
+## Windows version
+
+**Bloodborne running natively on Windows 10 and 11, by [Supermedo](https://github.com/Supermedo) Mohammed Albarghouthi.**
+Unpack the zip, start `Bloodborne.exe`, pick your game folder and press **PLAY**.
+
+**[Download the latest version](https://github.com/Supermedo/bloodborne_pc/releases/latest)** · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
+
+> The game needs your own decrypted dump of Bloodborne (CUSA03173). Version 1.09 is needed for
+> the community patches (60/90/unlocked FPS, resolution, effects); other versions run at 30 FPS.
+
+- **Launcher with every setting in one window**, in 13 languages: English, Arabic, Russian,
+  Spanish, Portuguese, French, German, Italian, Polish, Turkish, Chinese, Japanese, Korean.
+- **Updates from the launcher:** when a new version is out it tells you, and **Update**
+  installs it. Your saves, settings and mods are kept.
+- **NVIDIA DLSS** on GeForce RTX cards (RTX 20 series and newer), **AMD FSR 3.1 and FSR 4**
+  upscaling, plus native-resolution TAA.
+- **Unlocked frame rate** with a frame cap (up to 120 by default), or 30/60/90 FPS.
+- **Output resolutions** from 720p to 4K, presets from Native AA to Ultra Performance.
+- **Cheats page** (never die, stealth, silent footsteps, Rally that never fades, enemy control)
+  and gameplay tweaks (camera distance, no camera auto-rotation, easier running, ragdoll physics).
+- **Game effects** on and off, **mods and third-party patches** loaded without changing your
+  game files, and **`Play Bloodborne.exe`**, which starts the game straight away with your saved
+  settings (good for a desktop shortcut or Steam).
+- **Controller and keyboard**, an in-game settings menu (Insert or L3+R3), name entry on
+  screen, a desktop shortcut, and a button to clear the shader cache.
+
+Requirements: Windows 10 (1903 or later) or Windows 11, 64-bit; a graphics card with Vulkan 1.3
+and a current driver; about 6 GB of free memory (RAM + page file), 10 GB for 1440p or 4K output;
+for DLSS an NVIDIA GeForce RTX 20 series or newer. Nothing else to install: everything the game
+needs is in the zip.
+
+How to play: start `Bloodborne.exe`, choose your game folder (the one with `eboot.bin`) on
+**Game & effects**, press **PLAY**. In the game, **Insert** (or **L3+R3** on a controller) opens
+the settings menu. Keyboard: WASD move, arrows camera, Space Cross, Left Shift Circle, E Square,
+Q Triangle, 1/3 L1/R1, R/F L2/R2, Z/C L3/R3, I/K/J/L d-pad, Enter Options, Tab touchpad.
+
+Known issues on Windows: the character preview on the character creation screen stays empty (the
+character is created correctly); some AMD graphics cards still crash when the game world loads;
+above about 120 FPS the game's movement slows down (a limit of the game itself), so keep the frame
+cap at 120 or lower. For problems, ask on the Discord server or open an
+[issue](https://github.com/Supermedo/bloodborne_pc/issues) and attach `user\last_run.log` from the
+game folder, with your graphics card and what happened. If the game shows only a black screen, try
+**Advanced → Clear shader cache** first.
+
+Building from source: [packaging/windows/README.md](packaging/windows/README.md) (MSYS2 CLANG64,
+`bash build.sh`, then `bash packaging/windows/package.sh`; DLSS is built separately with
+`packaging/windows/build_dlss.sh`).
 
 ## Highlights
 
@@ -146,6 +205,14 @@ or the launcher (pick the game folder, settings, *Start*):
 ```bash
 bash launcher/bb-launcher.sh         # launcher/install-desktop.sh adds it to the app menu
 ```
+
+**Windows** (10 1903+ / 11, 64-bit): build in an MSYS2 CLANG64 shell with the same
+`bash build.sh`, run with `python run.py` or the Tkinter launcher
+(`launcher/bbport_launcher_win.py`), and `bash packaging/windows/package.sh` makes a
+self-contained folder with `Bloodborne.exe` (players need no Python). Details and the
+differences from Linux (TLS, guest memory, exceptions):
+[packaging/windows/README.md](packaging/windows/README.md). Tested on an NVIDIA RTX 5080
+(FSR 3.1 and FSR 4, game versions 1.00 and 1.09).
 
 By default the game folder is expected next to the repository (`../CUSA03173`). Saves and the
 shader cache go to `user/` (the launcher lets you choose another folder); settings to
@@ -311,7 +378,7 @@ More in [docs/](docs); recent changes: [docs/CHANGES_0.4.md](docs/CHANGES_0.4.md
 | `src/` | Loader (`probe.c`) and the HLE runtime |
 | `scripts/` | Offline preparation of the game image, module linking, patch compiler |
 | `gpu/` | Renderer library: vendored shadPS4 video core with this port's changes (`gpu/VENDOR.txt`), shims, ImGui menu, FSR 4.1.1 runtime (`gpu/shadps4/video_core/renderer_vulkan/fsr411`) |
-| `launcher/`, `packaging/` | GTK4 launcher; Nix package and AppImage |
+| `launcher/`, `packaging/` | GTK4 launcher; Nix package and AppImage; Windows launcher (`bbport_launcher_win.py`, translations in `bbport_lang.py`) and package (`packaging/windows/`) |
 | `patches/` | Community patches for Bloodborne |
 | `tools/` | Developer tools: scripted runs, A/B toggles, FSR benchmark helpers, FSR 4 shader rewrites, `fsr4cap` (FSR 4.1.1 recording/extraction) |
 | `tests/` | Loader, runtime, patch and renderer tests |
@@ -352,3 +419,22 @@ FSR 4 v07 provider), AMD FidelityFX SDK (MIT), [LibAtrac9](https://github.com/Th
 FSR 4.1.1 assets). Game patches by Kyo, Lance McDonald, auser1337, illusion, emoose and other
 community members (`patches/Bloodborne.xml`). AMD's FSR 4 DLLs and model data are not
 distributed here.
+
+The Windows build also uses:
+[magic_enum](https://github.com/Neargye/magic_enum) (MIT), [miniz](https://github.com/richgel999/miniz) (MIT),
+[xbyak](https://github.com/herumi/xbyak) (BSD-3-Clause), [SDL3](https://github.com/libsdl-org/SDL) (zlib),
+[FFmpeg](https://ffmpeg.org), [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) (MIT),
+[glslang](https://github.com/KhronosGroup/glslang), [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools),
+[fmt](https://github.com/fmtlib/fmt), [Boost](https://www.boost.org), [robin-map](https://github.com/Tessil/robin-map),
+[xxHash](https://github.com/Cyan4973/xxHash), [Zydis](https://github.com/zyantific/zydis), all built with
+[MSYS2](https://www.msys2.org) CLANG64 ([LLVM/Clang](https://llvm.org), libc++, mingw-w64 winpthreads).
+The launcher is frozen with [PyInstaller](https://pyinstaller.org) and the icon is drawn with
+[Pillow](https://python-pillow.org). FSR 4 assets for the in-launcher download come from
+[FireBurn/Q2RTX](https://github.com/FireBurn/Q2RTX). The Windows guest memory layout follows the
+placeholder approach of shadPS4's Windows memory manager. DLSS runs through
+`bbport_dlss.dll` (`gpu/dlss_bridge`, MIT), adapted from the DLSS bridge of
+[IFreemz/shadPS4-Bloodborne-DLSS-FSR](https://github.com/IFreemz/shadPS4-Bloodborne-DLSS-FSR) and
+built against the [NVIDIA DLSS SDK](https://github.com/NVIDIA/DLSS); NVIDIA's `nvngx_dlss.dll` is
+redistributed under its license (`licenses/NVIDIA-DLSS-LICENSE.txt` in the package). NVIDIA, GeForce
+RTX and DLSS are trademarks of NVIDIA Corporation. The port itself contains no NVIDIA code. The Bloodborne-style icon is original
+artwork, not taken from the game.

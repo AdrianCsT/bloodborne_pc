@@ -20,7 +20,9 @@
 #include <dlfcn.h>
 #include <string>
 #include <fmt/format.h>
+#ifndef _WIN32
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 #include "core/signals.h"
 #include "video_core/page_manager.h"
@@ -101,6 +103,13 @@ struct ImageFaultSite {
 std::array<ImageFaultSite, 256> image_fault_sites;
 
 void NoteFaultSite(void* context, VAddr address) {
+#ifdef _WIN32
+    // The context is an EXCEPTION_POINTERS here, not a ucontext: no site statistics.
+    (void)context;
+    (void)address;
+    current_fault_rip = 0;
+    return;
+#else
     const auto* g = static_cast<const ucontext_t*>(context)->uc_mcontext.gregs;
     current_fault_rip = 0;
     const u64 rip = u64(g[REG_RIP]);
@@ -145,6 +154,7 @@ void NoteFaultSite(void* context, VAddr address) {
         }
     }
     fault_sites_dropped.fetch_add(1, std::memory_order_relaxed);
+#endif
 }
 } // namespace
 
@@ -295,8 +305,7 @@ struct PageManager::Impl {
         if (Common::IsWriteError(context)) {
             BbStats::Timer timer{BbStats::t_write_faults};
             const bool handled = rasterizer->OnWriteFault(
-                addr, is_gpu_thread,
-                u64(static_cast<const ucontext_t*>(context)->uc_mcontext.gregs[REG_RIP]));
+                addr, is_gpu_thread, u64(reinterpret_cast<uintptr_t>(Common::GetRip(context))));
             current_fault_rip = 0;
             return handled;
         } else {

@@ -8,9 +8,11 @@
 #include <unordered_map>
 #include <cstring>
 #include <string>
+#ifndef _WIN32
 #include <dlfcn.h>
-#include <execinfo.h>
 #include <unistd.h>
+#endif
+#include <execinfo.h> // Windows: gpu/shim/win_posix (no stack walk)
 #include <functional>
 
 #include "bbport_copy.h"
@@ -282,8 +284,12 @@ void Scheduler::TraceDirectRecording(void* caller) {
     }
     std::ranges::sort(top, std::greater{});
     for (size_t i = 0; i < std::min<size_t>(top.size(), 8); ++i) {
+#ifdef _WIN32
+        struct { const char* dli_fname; void* dli_fbase; } info{nullptr, nullptr};
+#else
         Dl_info info{};
         dladdr(top[i].second, &info);
+#endif
         std::printf("Recorder sync caller: %llu x %s+0x%lx\n",
                     static_cast<unsigned long long>(top[i].first),
                     info.dli_fname ? info.dli_fname : "?",
