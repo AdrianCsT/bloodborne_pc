@@ -67,8 +67,8 @@ void ReportProducer(const char* what, u32 other, const char* other_where, const 
 }
 } // namespace
 
-Scheduler::ProducerScope::ProducerScope(Scheduler& scheduler_, const char* where) noexcept
-    : scheduler{scheduler_}, previous_where{producer_scope_where} {
+void Scheduler::ProducerScope::Enter(const char* where) noexcept {
+    previous_where = producer_scope_where;
     static thread_local const u32 tid = u32(gettid());
     producer_scope_where = where;
     u32 expected = 0;
@@ -84,7 +84,7 @@ Scheduler::ProducerScope::ProducerScope(Scheduler& scheduler_, const char* where
     }
 }
 
-Scheduler::ProducerScope::~ProducerScope() noexcept {
+void Scheduler::ProducerScope::Leave() noexcept {
     producer_scope_where = previous_where;
     if (outer) {
         scheduler.producer_tid.store(0, std::memory_order_release);
@@ -304,7 +304,8 @@ std::unique_ptr<RecordChunk> Scheduler::AcquireChunk() {
 }
 
 void Scheduler::SignalAfterHostCopies(std::function<void()> signal) {
-    if (!IsRecordingDeferred()) {
+    // A direct segment queues it too: signals queued before it must not be overtaken.
+    if (!IsRecordingDeferred() && !direct_segment) {
         WaitHostCopies();
         signal();
         return;
@@ -335,7 +336,74 @@ void Scheduler::WaitDeferredSignals() {
     }
 }
 
+namespace {
+constexpr u32 HostCopyGranuleShift = 16;
+constexpr u64 HostCopyMaxGranules = 64; // larger notes and checks are treated as everywhere
+u32 HostCopySlotOf(u64 granule, u32 slots) {
+    return u32((granule * 0x9e3779b97f4a7c15ull) >> 40) % slots;
+}
+} // namespace
+
+void Scheduler::NoteHostCopySource(u64 address, u64 size) {
+    if (size == 0) {
+        return;
+    }
+    const u64 first = address >> HostCopyGranuleShift;
+    const u64 last = (address + size - 1) >> HostCopyGranuleShift;
+    std::scoped_lock lk{host_copy_sources_mutex};
+    const u64 seq = ++host_copy_source_seq;
+    if (last - first >= HostCopyMaxGranules) {
+        host_copy_big_seq = seq;
+        return;
+    }
+    for (u64 g = first; g <= last; ++g) {
+        auto& slot = host_copy_slots[HostCopySlotOf(g, HostCopySlots)];
+        if (slot.seq > host_copy_sources_done && slot.granule != g) {
+            slot.granule = HostCopyWildcard; // two pending granules share it
+        } else if (slot.granule != HostCopyWildcard || slot.seq <= host_copy_sources_done) {
+            slot.granule = g;
+        }
+        slot.seq = seq;
+    }
+}
+
+void Scheduler::WaitHostCopiesFor(u64 address, u64 size) {
+    {
+        std::scoped_lock lk{host_copy_sources_mutex};
+        bool overlap = host_copy_big_seq > host_copy_sources_done;
+        const u64 first = address >> HostCopyGranuleShift;
+        const u64 last = (address + std::max<u64>(size, 1) - 1) >> HostCopyGranuleShift;
+        if (last - first >= HostCopyMaxGranules) {
+            overlap = true;
+        }
+        for (u64 g = first; !overlap && g <= last; ++g) {
+            const auto& slot = host_copy_slots[HostCopySlotOf(g, HostCopySlots)];
+            overlap = slot.seq > host_copy_sources_done &&
+                      (slot.granule == g || slot.granule == HostCopyWildcard);
+        }
+        if (!overlap) {
+            BbStats::host_copy_waits_skipped.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+    }
+    WaitHostCopies();
+}
+
 void Scheduler::WaitHostCopies() {
+    u64 sources_seen;
+    {
+        std::scoped_lock lk{host_copy_sources_mutex};
+        sources_seen = host_copy_source_seq;
+    }
+    // Copies noted after this point may still run when the waits below return.
+    struct Forget {
+        Scheduler& s;
+        u64 seen;
+        ~Forget() {
+            std::scoped_lock lk{s.host_copy_sources_mutex};
+            s.host_copy_sources_done = std::max(s.host_copy_sources_done, seen);
+        }
+    } forget{*this, sources_seen};
     if (host_copies_done.load(std::memory_order_acquire) < host_copies_issued) {
         BbStats::WaitTimer timer{BbStats::host_copies_wait_ns};
         BbStats::host_copy_waits.fetch_add(1, std::memory_order_relaxed);
@@ -354,6 +422,9 @@ void Scheduler::KickRecording(bool force) {
         return;
     }
     // Callers kick where nobody holds the raw command buffer: deferral resumes.
+    if (direct_segment) {
+        LeaveDirectSegment();
+    }
     direct_mode = false;
     if (!force) {
         MaybeSplit();
@@ -515,6 +586,41 @@ void Scheduler::SyncRecording() {
 }
 
 void Scheduler::EnterDirectMode() {
+    // bbport: with submissions going out from the recording threads, the commands recorded
+    // here get a segment of their own, from this thread's pool, after the segments handed over:
+    // the recording threads go on with those instead of this thread waiting for them (~90 us,
+    // the upscaler's passes every frame). BB_DIRECT_SEGMENT=0: the wait.
+    static const bool own_segment = [] {
+        const char* env = std::getenv("BB_DIRECT_SEGMENT");
+        return !(env && env[0] == '0');
+    }();
+    if (own_segment && async_submit && current_segment + 2 < MaxSegments &&
+        !BbToggle::Disabled(BbToggle::ThreadedRecording)) {
+        if (is_rendering) {
+            Record([](vk::CommandBuffer cmdbuf) { cmdbuf.endRendering(); });
+            is_rendering = false;
+            resume_rendering = true;
+        }
+        // A segment nothing was handed to yet is not begun: it becomes the direct one.
+        const bool untouched =
+            batch->handed[current_segment] == 0 && full_chunks.empty() && record_chunk->Empty();
+        if (!untouched) {
+            // Its recording thread ends the segment's command buffer (the pool is that thread's).
+            Record([](vk::CommandBuffer cmdbuf) { Check(cmdbuf.end()); });
+            HandOver();
+            ++current_segment;
+        }
+        if (!direct_pool) {
+            direct_pool = std::make_unique<CommandPool>(instance, &work_semaphore);
+        }
+        current_cmdbuf = BeginCommandBuffer(*direct_pool);
+        batch->segments[current_segment] = current_cmdbuf;
+        segment_bytes = 0;
+        direct_mode = true;
+        direct_segment = true;
+        dynamic_state.Invalidate();
+        return;
+    }
     SyncRecording();
     direct_mode = true;
     // The recording threads are idle: this thread may use the segment's command pool.
@@ -523,6 +629,23 @@ void Scheduler::EnterDirectMode() {
         cmdbuf = BeginCommandBuffer(*workers[current_segment % workers.size()]->pool);
     }
     current_cmdbuf = cmdbuf;
+}
+
+void Scheduler::LeaveDirectSegment() {
+    if (is_rendering) {
+        current_cmdbuf.endRendering();
+        is_rendering = false;
+        resume_rendering = true;
+    }
+    Check(current_cmdbuf.end());
+    current_cmdbuf = vk::CommandBuffer{};
+    direct_mode = false;
+    direct_segment = false;
+    ++current_segment;
+    batch->segments[current_segment] = vk::CommandBuffer{};
+    segment_bytes = 0;
+    active_worker.store(current_segment % workers.size(), std::memory_order_relaxed);
+    dynamic_state.Invalidate();
 }
 
 void Scheduler::RecorderThread(std::stop_token stoken, u32 index) {
@@ -803,6 +926,8 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
         Breadcrumbs::ReportDeviceLost("submit");
     }
     ASSERT_MSG(submit_result != vk::Result::eErrorDeviceLost, "Device lost during submit");
+    submitted_tick.store(signal_value, std::memory_order_release);
+    submitted_tick.notify_all();
 
     // bbport: no semaphore query here (an ioctl per submission, ~3% of the recording thread):
     // PopPendingOperations asks when an operation waits, the GPU signal thread on every fence.
@@ -823,14 +948,21 @@ void Scheduler::SubmitAsync(SubmitInfo& info) {
     }
     resume_rendering = false;
     // Every segment's command buffer is ended by its recording thread (the pool is its own);
-    // MaybeSplit ended the earlier ones.
-    Record([](vk::CommandBuffer cmdbuf) { Check(cmdbuf.end()); });
+    // MaybeSplit ended the earlier ones. A direct segment is this thread's.
+    if (direct_segment) {
+        Check(current_cmdbuf.end());
+        current_cmdbuf = vk::CommandBuffer{};
+        direct_mode = false;
+        direct_segment = false;
+    } else {
+        Record([](vk::CommandBuffer cmdbuf) { Check(cmdbuf.end()); });
+    }
     // Guest memory copies into staging this submission reads: on the copy threads by then.
     BbCopy::FlushBatch();
     info.AddSignal(work_semaphore.Handle(), signal_value);
     // Goes out once the commands handed over before it are recorded (an ordered task: in order
     // with the other submissions and after the copies and signals queued before it).
-    RecordOrdered([this, submitted = batch, info = std::move(info)]() mutable {
+    RecordOrdered([this, submitted = batch, info = std::move(info), signal_value]() mutable {
         BbCopy::WaitAsync();
         std::array<vk::CommandBuffer, MaxSegments> cmdbufs;
         u32 num_cmdbufs = 0;
@@ -874,6 +1006,8 @@ void Scheduler::SubmitAsync(SubmitInfo& info) {
             }
             ASSERT_MSG(result != vk::Result::eErrorDeviceLost, "Device lost during submit");
         }
+        submitted_tick.store(signal_value, std::memory_order_release);
+        submitted_tick.notify_all();
         std::scoped_lock lk{recorder_mutex};
         free_batches.push_back(submitted);
     });

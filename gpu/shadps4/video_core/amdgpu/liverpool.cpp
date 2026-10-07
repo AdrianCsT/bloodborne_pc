@@ -10,6 +10,7 @@
 #include <array>
 #include <time.h>
 #include "bbport_threads.h"
+#include "bbport_ce_stats.h"
 #include "bbport_timeline.h"
 #include "bbport_copy.h"
 #include "bbport_toggles.h"
@@ -477,8 +478,12 @@ void RunDmaData(Vulkan::Rasterizer& rasterizer, const u8* data) {
     // GPU has not modified the range. Like WriteData, it must not overtake the copies and the
     // fences deferred to the recording thread: the guest, seeing it, frees objects whose labels
     // an earlier fence still writes (a corrupted guest heap free list, guest offset 0x263b8e7).
-    if (dma_data->dst_sel == DmaDataDst::Memory || dma_data->dst_sel == DmaDataDst::MemoryUsingL2) {
-        rasterizer.WaitHostCopies();
+    // With the new memory model, recorded as a GPU fill or copy (memory used in place, or
+    // written by the GPU) it lands after the submission goes out, which is after those copies
+    // and signals: no wait (~16 us each, ~900 a second of 4-byte counter copies).
+    if ((dma_data->dst_sel == DmaDataDst::Memory || dma_data->dst_sel == DmaDataDst::MemoryUsingL2) &&
+        rasterizer.DmaMayWriteOnCpu(dma_data->DstAddress<VAddr>(), dma_data->NumBytes())) {
+        rasterizer.WaitHostCopiesFor(dma_data->DstAddress<VAddr>(), dma_data->NumBytes());
         rasterizer.WaitDeferredSignals();
     }
     if (dma_data->src_sel == DmaDataSrc::Data && dma_data->dst_sel == DmaDataDst::Gds) {
@@ -520,9 +525,20 @@ void SignalFlip(Vulkan::Rasterizer& rasterizer, const u8*) {
 void RunWriteData(Vulkan::Rasterizer& rasterizer, const u8* data) {
     const auto* header = reinterpret_cast<const PM4Header*>(data);
     const auto* write_data = reinterpret_cast<const PM4CmdWriteData*>(data);
-    // Copies deferred to the recording thread, and fences deferred to it (RecorderFences),
-    // precede writes the guest sees.
-    rasterizer.WaitHostCopies();
+    // bbport BB_GUEST_IN_PLACE: the GPU writes it in stream order, as the command processor
+    // does. A CPU store here lands before the GPU has run the work recorded before it, which may
+    // still read the old value (the game orders such writes after its own fences and
+    // WAIT_REG_MEMs, which this thread takes as met in stream order).
+    if (rasterizer.WriteDataOnGpu(write_data->Address<VAddr>(), write_data->data,
+                                  (header->type3.count.Value() - 2) * sizeof(u32))) {
+        return;
+    }
+    // Copies deferred to the recording thread that read this range precede the write (the
+    // command processor's writes do not wait for earlier draws: the game cannot take one for
+    // a sign that the GPU is past them); fences deferred to it (RecorderFences) precede writes
+    // the guest sees.
+    rasterizer.WaitHostCopiesFor(write_data->Address<VAddr>(),
+                                 (header->type3.count.Value() - 2) * sizeof(u32));
     rasterizer.WaitDeferredSignals();
     BbFreeCheck::Check(write_data->Address<u64>(), (header->type3.count.Value() - 2) * sizeof(u32),
                        write_data->data, BbFreeCheck::WriteData);
@@ -663,6 +679,9 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
         }
         case PM4ItOpcode::DumpConstRam: {
             const auto* dump_const = reinterpret_cast<const PM4DumpConstRam*>(header);
+            if (BbCeStats::Enabled()) {
+                BbCeStats::NoteDump(dump_const->Address<VAddr>(), dump_const->Size());
+            }
             // bbport: earlier draws on the recording thread may still read constants here: only
             // those that read these bytes are waited for, not all of them.
             if (rasterizer) {
@@ -1446,8 +1465,22 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 if (dma_data->dst_addr_lo == 0x3022C || !rasterizer) {
                     break;
                 }
+                // bbport: what the copy reads on the recording thread is known here: a later
+                // DumpConstRam waits only if it overlaps it (unlisted, every dump waited for the
+                // copy; ~150 of those waits a second).
+                const bool reads_memory = dma_data->src_sel == DmaDataSrc::Memory ||
+                                          dma_data->src_sel == DmaDataSrc::MemoryUsingL2;
+                if (BbCeStats::Enabled() && (dma_data->dst_sel == DmaDataDst::Memory ||
+                                             dma_data->dst_sel == DmaDataDst::MemoryUsingL2)) {
+                    BbCeStats::NoteWrite(BbCeStats::Dma, dma_data->DstAddress<VAddr>(),
+                                         dma_data->NumBytes());
+                }
+                if (reads_memory) {
+                    rasterizer->NotePendingRead(dma_data->SrcAddress<VAddr>(),
+                                                dma_data->NumBytes());
+                }
                 if (rasterizer->RunInOrder(&RunDmaData, dma_data, sizeof(PM4DmaData),
-                                           BbToggle::PipelinedMemoryWrites) &&
+                                           BbToggle::PipelinedMemoryWrites, false) &&
                     (dma_data->dst_sel == DmaDataDst::Memory ||
                      dma_data->dst_sel == DmaDataDst::MemoryUsingL2)) {
                     rasterizer->NotePendingGpuWrite(dma_data->DstAddress<VAddr>(),
@@ -1461,6 +1494,10 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 ASSERT(!write_data->wr_one_addr.Value());
                 if (rasterizer) {
                     // In order with the draws (on the draw recording thread when in use).
+                    if (BbCeStats::Enabled()) {
+                        BbCeStats::NoteWrite(BbCeStats::WriteData, write_data->Address<VAddr>(),
+                                             (count - 2) * sizeof(u32));
+                    }
                     BbWriteLog::NoteIntent(write_data->Address<u64>(), write_data->data,
                                            (count - 2) * sizeof(u32),
                                            BbWriteLog::WriteDataIntent);

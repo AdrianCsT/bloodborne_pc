@@ -308,6 +308,19 @@ public:
         return IsFsr4Int8Supported() && mixed_float_dot_product;
     }
 
+    /// bbport: FSR 4.1.1's FP8 matrix variant (RDNA4): FP8 cooperative matrices, the Vulkan
+    /// memory model, wave32 in full subgroups.
+    bool IsFsr411Fp8Supported() const {
+        return IsFsr411MatrixSupported() && shader_float8;
+    }
+
+    /// bbport: the same passes with FP16 matrices (the FP8 variant emulated, for testing).
+    bool IsFsr411MatrixSupported() const {
+        return IsFsr411Supported() && cooperative_matrix && vk12_features.vulkanMemoryModel &&
+               vk13_features.subgroupSizeControl && vk13_features.computeFullSubgroups &&
+               vk12_features.storageBuffer8BitAccess;
+    }
+
     /// VK_KHR_shader_clock is supported.
     bool IsShaderSubgroupClockSupported() const {
         return shader_clock && shader_clock_features.shaderSubgroupClock;
@@ -587,6 +600,8 @@ private:
     bool shader_clock{};
     bool compute_shader_derivatives{};
     bool mixed_float_dot_product{}; // bbport: VK_VALVE_shader_mixed_float_dot_product (FSR 4.1.1)
+    bool cooperative_matrix{};      // bbport: VK_KHR_cooperative_matrix (FSR 4.1.1 FP8 variant)
+    bool shader_float8{};           // bbport: VK_EXT_shader_float8 with FP8 matrices (RDNA4)
     bool supports_memory_budget{};
     bool supports_block_texel_view{};
     u64 total_memory_budget{};
