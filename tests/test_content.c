@@ -19,6 +19,12 @@ int main(int argc,char **argv) {
     assert(load && loaded && unload && init && param && list);
     assert(!runtime_content_resolve("g8cM39EUZ6o#I#J"));
     if (argc>1 && !strcmp(argv[1],"--missing")) { load(0xb4); return 99; }
+    /* The other modes expect no add-ons unless they set BB_ADDCONT themselves. */
+#ifdef _WIN32
+    _putenv_s("BB_ADDCONT","");
+#else
+    unsetenv("BB_ADDCONT");
+#endif
     const uint32_t profile[]={1,13,0x80000000,0,7};
     runtime_content_configure(profile);
     if (argc>1 && !strcmp(argv[1],"--unknown")) {
