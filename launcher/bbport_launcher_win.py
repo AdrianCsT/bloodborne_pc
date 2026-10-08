@@ -254,6 +254,18 @@ def display_refresh():
     return _refresh_hz
 
 
+def work_area(screen=(1280, 720)):
+    """(left, top, right, bottom) of the primary monitor's work area: the screen without the taskbar."""
+    try:
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
+            return rect.left, rect.top, rect.right, rect.bottom
+    except (AttributeError, OSError, ImportError):
+        pass
+    return 0, 0, screen[0], screen[1]
+
+
 def auto_cap(refresh):
     """The Auto frame cap while frame generation is on: half the refresh rate, 30 to 120 (60 when the
     rate is unknown). At or below half the refresh the game keeps generation on all the time."""
@@ -1692,13 +1704,18 @@ class Launcher:
                 root.attributes('-alpha', 0.0)  # faded in once the first frame is drawn
             except tk.TclError:
                 pass
-        width, height = root.winfo_screenwidth(), root.winfo_screenheight()
-        size = (min(self.px(1120), width - self.px(40)), min(self.px(780), height - self.px(90)))
-        root.geometry(f'{size[0]}x{size[1]}+{(width - size[0]) // 2}+{max(0, (height - size[1]) // 3)}')
+        # The width is fixed here; the height starts at 780 and fit_window grows it to whatever the page
+        # being shown needs, within the work area of the screen (the screen minus the taskbar).
+        left, top, right, bottom = work_area((root.winfo_screenwidth(), root.winfo_screenheight()))
+        size = (min(self.px(1120), right - left - self.px(40)), min(self.px(780), bottom - top - self.frame_extra()))
+        origin = (left + (right - left - size[0]) // 2, top + max(0, (bottom - top - size[1] - self.frame_extra()) // 3))
+        root.geometry(f'{size[0]}x{size[1]}+{origin[0]}+{origin[1]}')
+        self.planned = (*size, *origin)  # what was asked of the window manager, until the window is on screen
         root.minsize(min(self.px(980), size[0]), min(self.px(660), size[1]))
-        # The Play page needs about 550 px under the hero (the frame generation row and its frame cap line
-        # included), 70 more for the ReShade look row.
-        self.hero_tall = max(self.px(140), min(self.px(232), size[1] - self.px(88) - self.px(620 if reshade_ready() else 550)))
+        # The banner: tall in the Simple view, short in the Advanced one; fit_window lowers them (never
+        # under hero_min) when the work area is too short for the page.
+        self.hero_tall, self.hero_short, self.hero_min = self.px(142), self.px(140), self.px(120)
+        self.fit_pending = False
         self.set_icon()
         self.pick_fonts()
         self.style()
@@ -2009,13 +2026,15 @@ class Launcher:
         return self.row(parent, title, holder, hint, fill=True)
 
     def scrolled_page(self, name, title, subtitle):
-        """A settings page: a heading, then cards in a vertically scrolling area."""
+        """A page: a heading (none for the Play page), then cards in a vertically scrolling area; the
+        scrollbar shows only when the cards are taller than the window. outer.inner holds the cards."""
         tk, ttk, px = self.tk, self.ttk, self.px
         outer = tk.Frame(self.content, bg=PANEL)
-        head = tk.Frame(outer, bg=PANEL)
-        head.pack(fill='x', padx=px(32), pady=(px(18), px(10)))
-        self.label(head, title, 'h1', bg=PANEL).pack(anchor='w')
-        self.label(head, subtitle, 'small', MUTED, PANEL, justify='left', wraplength=px(860)).pack(anchor='w', pady=(px(2), 0))
+        if title:
+            head = tk.Frame(outer, bg=PANEL)
+            head.pack(fill='x', padx=px(32), pady=(px(18), px(10)))
+            self.label(head, title, 'h1', bg=PANEL).pack(anchor='w')
+            self.label(head, subtitle, 'small', MUTED, PANEL, justify='left', wraplength=px(860)).pack(anchor='w', pady=(px(2), 0))
         body = tk.Frame(outer, bg=PANEL)
         body.pack(fill='both', expand=True)
         canvas = tk.Canvas(body, bg=PANEL, highlightthickness=0, bd=0)
@@ -2040,7 +2059,7 @@ class Launcher:
                 return
             target = max(0.0, min(1.0 - (bottom - top), top + units * px(64) / max(1, inner.winfo_height())))
             self.motion.tween(('scroll', name), 140, top, target, canvas.yview_moveto)
-        outer.scroll = scroll
+        outer.scroll, outer.inner = scroll, inner
         self.pages[name] = outer
         return inner
 
@@ -2061,7 +2080,8 @@ class Launcher:
         self.busy = Spinner(self, bar, 18, BG)
         self.status = tk.Label(bar, text='', bg=BG, fg=MUTED, font=self.fonts['body'], anchor='w', justify='left')
         self.status.pack(side='left', padx=(px(36), 0))
-        self.hero = Hero(self, root, self.hero_tall, px(140))
+        self.footer = footer
+        self.hero = Hero(self, root, self.hero_tall, self.hero_short)
         self.hero.canvas.pack(side='top', fill='x')
         self.tab_names = (('play', _('Play', 'Играть')), ('graphics', _('Graphics', 'Графика')),
                           ('display', _('Display & FPS', 'Экран и FPS')), ('game', _('Game & effects', 'Игра и эффекты')),
@@ -2129,6 +2149,7 @@ class Launcher:
         if animate and advanced == self.var('ui_advanced', 'app').get():
             return
         self.var('ui_advanced', 'app').set(advanced)
+        self.fit_window(set_hero=False)  # the banner eases to its new height below
         self.toggle.select(advanced, animate)
         ms = 320 if animate else 0
         if advanced:
@@ -2162,6 +2183,59 @@ class Launcher:
         elif name == 'play':
             self.refresh_status()
             self.refresh_reshade()
+            self.fit_window()
+
+    def frame_extra(self):
+        """Height of the title bar and the borders around the window's client area."""
+        user32 = ctypes.windll.user32
+        try:
+            if self.root.winfo_ismapped():
+                from ctypes import wintypes
+                rect = wintypes.RECT()
+                user32.GetWindowRect(int(self.root.wm_frame(), 16), ctypes.byref(rect))
+                return max(0, rect.bottom - rect.top - self.root.winfo_height())
+            return user32.GetSystemMetrics(4) + 2 * (user32.GetSystemMetrics(33) + user32.GetSystemMetrics(92))
+        except (AttributeError, OSError, ValueError, self.tk.TclError):
+            return self.px(40)
+
+    def schedule_fit(self):
+        """Content of the Play page changed (a hint wrapped, the check card filled): fit once, when idle."""
+        if not self.fit_pending:
+            self.fit_pending = True
+            self.root.after_idle(self.fit_window)
+
+    def fit_window(self, set_hero=True):
+        """Sizes the window to the Play page, measured: the page's requested height plus the banner, the tab
+        bar and the footer. It only grows (a taller window set by hand stays), up to the work area of the
+        screen. When even that is too short the banner shrinks first, down to hero_min; what still does not
+        fit scrolls (the Play page is a scrolling area)."""
+        self.fit_pending = False
+        if self.current_page != 'play':
+            return
+        root, px = self.root, self.px
+        root.update_idletasks()
+        advanced = bool(self.var('ui_advanced', 'app').get())
+        left, top, right, bottom = work_area((root.winfo_screenwidth(), root.winfo_screenheight()))
+        extra = self.frame_extra()
+        room = bottom - top - extra
+        page = self.pages['play'].inner.winfo_reqheight() + px(8)
+        fixed = self.footer.winfo_reqheight() + (self.tabbar.h if advanced else 0)
+        want = self.hero_short if advanced else self.hero_tall
+        hero = max(self.hero_min, min(want, room - fixed - page))
+        if advanced:
+            self.hero.short = hero
+        elif hero != self.hero.tall:
+            self.hero.tall = hero
+            self.hero.rebuild()
+        if set_hero and abs(self.hero.h - hero) > 1 and 'hero' not in self.motion.tweens:
+            self.hero.set_height(hero)
+        width, height, x, y = ((root.winfo_width(), root.winfo_height(), root.winfo_x(), root.winfo_y())
+                               if root.winfo_ismapped() else self.planned)
+        height = min(max(height, hero + fixed + page), room)
+        y = max(top, min(y, bottom - height - extra))
+        root.minsize(min(px(980), width), min(px(660), height))
+        root.geometry(f'{width}x{height}+{x}+{y}')
+        self.planned = (width, height, x, y)
 
     def cell(self, parent, row, column, title, span=1):
         """A settings field of the Play page: a small caption above, the control returned in a frame."""
@@ -2175,8 +2249,8 @@ class Launcher:
 
     def build_play(self):
         tk, px = self.tk, self.px
-        page = tk.Frame(self.content, bg=PANEL)
-        self.pages['play'] = page
+        page = self.scrolled_page('play', None, None)
+        page.bind('<Configure>', lambda _e: self.schedule_fit(), add='+')
         page.columnconfigure(0, weight=2, uniform='play', minsize=px(300))
         page.columnconfigure(1, weight=3, uniform='play')
         info = self.card(page, _('Ready check', 'Проверка'), grid={'row': 0, 'column': 0, 'padx': (px(32), px(8)),
