@@ -15,9 +15,9 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 8u; // bbport: guarded motion stores (was 7: interpolated integer fix, Pascal)
+static constexpr u32 ShaderBinaryVersion = 9u; // bbport: motion varyings at 26/27 (was 8: guarded motion stores)
 static constexpr u32 ShaderMetaVersion = 7u; // bbport: ImageResource::needs_native
-static constexpr u32 PipelineKeyVersion = 5u; // bbport: Info layout (ImageResource::needs_native)
+static constexpr u32 PipelineKeyVersion = 6u; // bbport: motion keys clear unused color slots (was 5: Info layout)
 } // namespace Serialization
 
 namespace Vulkan {

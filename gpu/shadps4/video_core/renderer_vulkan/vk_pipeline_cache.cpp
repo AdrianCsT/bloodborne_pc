@@ -938,6 +938,18 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         if (all_motion) {
             sel.motion = true;
         }
+        // The motion varyings take two fixed locations (MotionVectors::CurrentLocation). A
+        // vertex shader exporting a parameter there or later keeps no motion vectors. Clip
+        // distance emulation (NVIDIA) moves every parameter one location up.
+        if (sel.motion && vs) {
+            for (u32 param = Shader::MotionVectors::CurrentLocation - 1;
+                 param < Shader::IR::NumParams; ++param) {
+                if (vs->stores.GetAny(Shader::IR::Attribute::Param0 + param)) {
+                    sel.motion = false;
+                    break;
+                }
+            }
+        }
         if (sel.motion && !RefreshGraphicsStages(sel)) {
             return false;
         }
@@ -976,6 +988,17 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
     if (sel.motion) {
         constexpr u32 mv = Shader::MotionVectors::Output;
         key.motion_vectors = 1;
+        // The slots between the shader's last target and the motion attachment have no image in
+        // the render pass. The first pass above filled them from every bound color buffer, also
+        // ones this shader never writes; left in, the pipeline declares a format there (e.g.
+        // R16G16B16A16 at 6) where the rendering has none (VUID-vkCmdDrawIndexed-
+        // dynamicRenderingUnusedAttachments-08912). AMD then writes that target without an image
+        // and loses the device on the first motion draw; NVIDIA ignores it.
+        for (u32 cb = key.num_color_attachments; cb < mv; ++cb) {
+            std::memset(&key.color_buffers[cb], 0, sizeof(Shader::PsColorBuffer));
+            key.write_masks[cb] = {};
+            key.color_samples[cb] = 0;
+        }
         key.mrt_mask |= 1u << mv;
         key.num_color_attachments = mv + 1;
         auto& color_buffer = key.color_buffers[mv];
