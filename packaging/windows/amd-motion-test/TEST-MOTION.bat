@@ -38,43 +38,26 @@ rem No saved shader cache: the part a run leaves out is not in the cache key, so
 rem one run must not be preloaded by the next. The first minute stutters more; that is expected.
 set BB_PIPELINE_CACHE=0
 
-echo ===== RUN C of 3 =====
-echo The game starts now. Press Continue and play until the game crashes, or for 2 minutes, then close the game.
-echo It may crash right after the save loads. That is expected and is a useful result.
+echo ===== RUN F of 2 =====
+echo The game starts now with object motion fully on. Press Continue and play for 3 minutes, then close the game.
+echo If it crashes instead, that is also a useful result.
 echo If the launcher window opens instead of the game, press PLAY in it, then close the launcher after the game.
 echo If the game closes by itself with an error, that is fine: just wait for this window.
 echo.
 pause
-set BB_OM_PART=nobda
+set BB_OM_PART=
 if exist "%LOGDIR%\last_run.log" del "%LOGDIR%\last_run.log"
 start /wait "" "%GAME%\Bloodborne.exe"
 if exist "%LOGDIR%\last_run.log" (
-    copy /y "%LOGDIR%\last_run.log" "%OUT%\C.log" > nul
-    echo Run C log saved.
-    findstr /c:"Object motion: on" "%OUT%\C.log" > nul || echo WARNING: object motion did not switch on in run C. Tell the person who sent you this test.
+    copy /y "%LOGDIR%\last_run.log" "%OUT%\F.log" > nul
+    echo Run F log saved.
+    findstr /c:"Object motion: on" "%OUT%\F.log" > nul || echo WARNING: object motion did not switch on in run F. Tell the person who sent you this test.
 ) else (
-    echo No log found for run C. Tell the person who sent you this test.
+    echo No log found for run F. Tell the person who sent you this test.
 )
 
 echo.
-echo ===== RUN D of 3 =====
-echo Same again: press Continue and play until the game crashes, or for 2 minutes, then close the game.
-echo If the launcher window opens instead of the game, press PLAY in it, then close the launcher after the game.
-echo.
-pause
-set BB_OM_PART=nofs
-if exist "%LOGDIR%\last_run.log" del "%LOGDIR%\last_run.log"
-start /wait "" "%GAME%\Bloodborne.exe"
-if exist "%LOGDIR%\last_run.log" (
-    copy /y "%LOGDIR%\last_run.log" "%OUT%\D.log" > nul
-    echo Run D log saved.
-    findstr /c:"Object motion: on" "%OUT%\D.log" > nul || echo WARNING: object motion did not switch on in run D. Tell the person who sent you this test.
-) else (
-    echo No log found for run D. Tell the person who sent you this test.
-)
-
-echo.
-echo ===== RUN E of 3 =====
+echo ===== RUN G of 2 =====
 echo Last one: press Continue and play until the game crashes, or for 2 minutes, then close the game.
 echo If the launcher window opens instead of the game, press PLAY in it, then close the launcher after the game.
 echo.
@@ -83,11 +66,11 @@ set BB_OM_PART=novary
 if exist "%LOGDIR%\last_run.log" del "%LOGDIR%\last_run.log"
 start /wait "" "%GAME%\Bloodborne.exe"
 if exist "%LOGDIR%\last_run.log" (
-    copy /y "%LOGDIR%\last_run.log" "%OUT%\E.log" > nul
-    echo Run E log saved.
-    findstr /c:"Object motion: on" "%OUT%\E.log" > nul || echo WARNING: object motion did not switch on in run E. Tell the person who sent you this test.
+    copy /y "%LOGDIR%\last_run.log" "%OUT%\G.log" > nul
+    echo Run G log saved.
+    findstr /c:"Object motion: on" "%OUT%\G.log" > nul || echo WARNING: object motion did not switch on in run G. Tell the person who sent you this test.
 ) else (
-    echo No log found for run E. Tell the person who sent you this test.
+    echo No log found for run G. Tell the person who sent you this test.
 )
 
 if exist "%ZIP%" del "%ZIP%"
