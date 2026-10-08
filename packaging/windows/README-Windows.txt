@@ -97,18 +97,21 @@ Frame generation (optional)
 - With vertical sync (present mode Fifo, which AMD GPUs use on Windows; BB_PRESENT_MODE) the
   display paces the two images. With Mailbox or Immediate the port shows the interpolated frame
   and then the game frame half a frame interval later.
-- The frame cap (Display & FPS) limits the game frames: a cap of 60 shows 120 images a second.
-  "Auto" means no cap: the game runs as fast as it can, and generation pauses whenever that is
-  more than half of the display's refresh rate.
-- A cap at or below half of the refresh rate keeps generation on all the time: the cap leaves a
-  refresh slot for every interpolated image ("Frame generation: frame cap N FPS fits half the
-  refresh rate (R Hz): always on" in the log). "Half the refresh rate (for frame generation)"
-  picks that cap for your display (at least 30): 72 FPS shown as 144 on a 144 Hz display, 90 as
-  180 on 180 Hz, 120 as 240 on 240 Hz. Above 120 FPS the game's movement timing breaks, so on a
-  display faster than 240 Hz pick 120 yourself.
-- Caps of 60 and 90 work the same way on a display of at least 120 Hz and 180 Hz: 60 FPS shown
-  as 120, 90 as 180. With generation on, the cap list spells out what reaches the screen
-  ("90 -> 180 on screen") and flags the caps that are too high ("144 (frame generation pauses)").
+- You do not need to pick a frame cap. With frame generation on, the launcher caps the game at
+  half of your display's refresh rate (at most 120 FPS, at least 30; 60 when the refresh rate
+  cannot be read): 72 FPS shown as 144 on a 144 Hz display, 90 as 180 on 180 Hz, 120 as 240 on
+  240 Hz or faster. A cap at or below half of the refresh rate keeps generation on all the time:
+  it leaves a refresh slot for every interpolated image ("Frame generation: frame cap N FPS
+  fits half the refresh rate (R Hz): always on" in the log). The Simple page shows the result
+  under the switch, for example "Up to 72 game FPS, 144 on your 144 Hz screen." On a display
+  under 100 Hz it says generation helps little and is better left off.
+- With frame generation off, "Auto" sets no cap: the game runs as fast as it can.
+- The Advanced view (Display & FPS) lets you pick a cap yourself: 60, 90 or 120 FPS, 144, 165 or
+  240 FPS (marked with a warning: above 120 FPS the game's movement timing breaks), or No limit.
+  A cap of 60 shows 120 images a second. The line under the list says what the choice gives with
+  your switch; a cap whose double does not fit the display ("Too high to double on your 144 Hz
+  screen") makes generation pause while the game runs above half of the refresh rate, and
+  "Auto" fixes it. A frame cap saved by v1.6.13 as "Half the refresh rate" now reads Auto.
 - The FPS counter reads "60 -> 120 FPS FG" while it works. With BB_FRAME_STATS=1 the log gets
   "Frame generation: N generated/s, M presented/s, base B FPS, X skipped" every 5 seconds.
 - ReShade and other overlays see every shown image, so twice as many presents as game frames.
