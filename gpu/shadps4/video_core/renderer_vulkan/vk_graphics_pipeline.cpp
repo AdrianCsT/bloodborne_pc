@@ -12,6 +12,7 @@
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_graphics_pipeline.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
+#include "video_core/renderer_vulkan/vk_object_motion.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 
@@ -48,10 +49,12 @@ GraphicsPipeline::GraphicsPipeline(
         .size = sizeof(Shader::PushData),
     };
 
-    const vk::DescriptorSetLayout set_layout = *desc_layout;
+    // bbport: set 1 of a motion vertex shader holds the motion storage buffers (ObjectMotion).
+    std::array<vk::DescriptorSetLayout, 2> set_layouts = {*desc_layout, ObjectMotion::Layout()};
+    const bool motion_buffers = key.motion_vectors && set_layouts[1];
     const vk::PipelineLayoutCreateInfo layout_info = {
-        .setLayoutCount = 1U,
-        .pSetLayouts = &set_layout,
+        .setLayoutCount = motion_buffers ? 2U : 1U,
+        .pSetLayouts = set_layouts.data(),
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_constants,
     };

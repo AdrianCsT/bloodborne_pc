@@ -89,10 +89,13 @@ struct MotionVectors {
     static constexpr u32 CurrentLocation = 26;  ///< varying: current clip position
     static constexpr u32 PreviousLocation = 27; ///< varying: previous clip position, z = valid
     static constexpr u32 Output = 7;            ///< color attachment index
-    /// Per-draw parameters (u32x4: store base, load base, vertices per instance, flags) and
-    /// the position array (vec4 per vertex; element 0 is scratch), fixed for the session.
-    static inline u64 params_address = 0;
-    static inline u64 positions_address = 0;
+    /// The motion buffers are descriptor-bound storage buffers (set 1: 0 params, 1 positions,
+    /// 2 diagnostics), fixed for the session. Per-draw parameters: u32x4 store base, load base,
+    /// vertices per instance, flags; positions: vec4 per vertex, element 0 is scratch.
+    static constexpr u32 DescriptorSet = 1;
+    static constexpr u32 ParamsBinding = 0, PositionsBinding = 1, DiagBinding = 2;
+    /// ObjectMotion created the buffers; shaders may use them.
+    static inline bool buffers_ready = false;
     static constexpr u32 FlagStore = 1;
     static constexpr u32 FlagLoad = 2;
 
@@ -101,10 +104,9 @@ struct MotionVectors {
     /// included) and `position_elements` vec4 (element 0 is reserved). A params entry whose
     /// word 7 differs from Tag() of the other seven words and the draw's frame16 is torn or
     /// stale (overwritten while the GPU still reads it) and is skipped. Violations are counted
-    /// in the u32 array at `diag_address` (0: not counted; device local, read back by the CPU).
+    /// in the u32 array of the diagnostics binding (device local, read back by the CPU).
     static inline u32 param_entries = 0;
     static inline u32 position_elements = 0;
-    static inline u64 diag_address = 0;
     /// BB_OM_STORE=plain: one 16-byte store of the position instead of four atomic exchanges.
     static inline bool plain_store = false;
     /// BB_OM_GUARD=0 (A/B tests only): no tag or element bounds checks in the shader.
@@ -113,13 +115,13 @@ struct MotionVectors {
     /// ObjectMotion is built, before any shader is compiled, so one process only ever holds
     /// one variant (the motion vertex shaders are never persisted either).
     ///   NoBda:  the vertex shader writes both varyings (previous = current, z = 0 invalid)
-    ///           without any buffer device address access; no PhysicalStorageBuffer.
+    ///           without any access to the motion buffers.
     ///   NoFs:   vertex shader unchanged; no fragment output, no attachment 7.
     ///   NoVary: vertex shader accesses the buffers but writes no varyings; no fragment output,
     ///           no attachment 7.
     enum class Part : u32 { Full, NoBda, NoFs, NoVary };
     static inline Part part = Part::Full;
-    [[nodiscard]] static bool UsesBda() {
+    [[nodiscard]] static bool UsesBuffers() {
         return part != Part::NoBda;
     }
     [[nodiscard]] static bool WritesVaryings() {

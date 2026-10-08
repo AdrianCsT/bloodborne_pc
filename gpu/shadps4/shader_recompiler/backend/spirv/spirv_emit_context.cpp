@@ -72,7 +72,7 @@ EmitContext::EmitContext(const Profile& profile_, const RuntimeInfo& runtime_inf
                          Bindings& binding_)
     : Sirit::Module(profile_.supported_spirv), info{info_}, runtime_info{runtime_info_},
       profile{profile_}, hw_stage{info.hw_stage}, sw_stage{info.sw_stage}, binding{binding_} {
-    if (info.uses_dma || VertexMotionBda()) {
+    if (info.uses_dma) {
         SetMemoryModel(spv::AddressingModel::PhysicalStorageBuffer64, spv::MemoryModel::GLSL450);
     } else {
         SetMemoryModel(spv::AddressingModel::Logical, spv::MemoryModel::GLSL450);
@@ -84,6 +84,7 @@ EmitContext::EmitContext(const Profile& profile_, const RuntimeInfo& runtime_inf
     DefineInterfaces();
     DefineSharedMemory();
     DefineBuffers();
+    DefineMotionBuffers();
     DefineImagesAndSamplers();
     DefineFunctions();
 }
@@ -905,6 +906,40 @@ void EmitContext::DefineBuffers() {
         }
         ++binding.unified;
     }
+}
+
+// bbport: the motion vertex shader's buffers, bound by ObjectMotion in descriptor set 1 (the
+// guest resources keep set 0). Runtime arrays of uvec4 (params, positions) and uint (diag).
+void EmitContext::DefineMotionBuffers() {
+    if (!VertexMotionBuffers()) {
+        return;
+    }
+    const auto define = [&](Id data_type, u32 stride, bool writable, u32 motion_binding,
+                            const char* name) {
+        const Id array_type{TypeRuntimeArray(data_type)};
+        const Id struct_type{TypeStruct(array_type)};
+        // Don't perform decorations twice on the same Id.
+        if (std::ranges::find(buf_type_ids, array_type.value, &Id::value) == buf_type_ids.end()) {
+            Decorate(array_type, spv::Decoration::ArrayStride, stride);
+            Decorate(struct_type, spv::Decoration::Block);
+            MemberName(struct_type, 0, "data");
+            MemberDecorate(struct_type, 0, spv::Decoration::Offset, 0U);
+            buf_type_ids.push_back(array_type);
+        }
+        constexpr auto storage_class = spv::StorageClass::StorageBuffer;
+        const Id id{AddGlobalVariable(TypePointer(storage_class, struct_type), storage_class)};
+        Decorate(id, spv::Decoration::DescriptorSet, MotionVectors::DescriptorSet);
+        Decorate(id, spv::Decoration::Binding, motion_binding);
+        if (!writable) {
+            Decorate(id, spv::Decoration::NonWritable);
+        }
+        Name(id, name);
+        interfaces.push_back(id);
+        return id;
+    };
+    motion_params = define(U32[4], 16, false, MotionVectors::ParamsBinding, "motion_params");
+    motion_positions = define(U32[4], 16, true, MotionVectors::PositionsBinding, "motion_positions");
+    motion_diag = define(U32[1], 4, true, MotionVectors::DiagBinding, "motion_diag");
 }
 
 spv::ImageFormat GetFormat(const AmdGpu::Image& image) {

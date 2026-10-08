@@ -61,7 +61,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     // Before the rasterizer is bound: Liverpool enqueues buffers only once it sees it.
     draw_prep = std::make_unique<DrawPreparation>(pipeline_cache);
     scene_targets = std::make_unique<SceneTargets>(instance, scheduler, runtime, texture_cache);
-    // Object motion first: it fixes the buffer addresses the motion shader variants embed.
+    // Object motion first: it fixes the buffers and the descriptor set layout the motion pipelines use.
     object_motion = std::make_unique<ObjectMotion>(instance, scheduler);
     camera_motion = std::make_unique<CameraMotion>(instance, scheduler, texture_cache, runtime);
     camera_motion->SetObjectMotion(object_motion.get());
@@ -1586,6 +1586,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         BB_SECTION(PipelineBind);
         pipeline->BindResources(set_writes, push_data, {image_infos.data(), image_infos.size()},
                                 {buffer_infos.data(), buffer_infos.size()});
+        if (pipeline->GetGraphicsKey().motion_vectors && object_motion->Enabled()) {
+            object_motion->BindBuffers(pipeline->GetLayout());
+        }
     }
     // bbport: jitter geometry drawn with the scene depth, not full-screen passes (a shifted
     // full-screen quad leaves an edge column unwritten).
@@ -1727,6 +1730,9 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     push_data.yoffset *= target_scale[1];
     pipeline->BindResources(set_writes, push_data, {image_infos.data(), image_infos.size()},
                             {buffer_infos.data(), buffer_infos.size()});
+    if (pipeline->GetGraphicsKey().motion_vectors && object_motion->Enabled()) {
+        object_motion->BindBuffers(pipeline->GetLayout());
+    }
     draw_jitter = {};
     if (upscaler->Enabled() && db_desc.first && db_desc.first == camera_motion->Depth()) {
         draw_jitter = upscaler->Jitter();

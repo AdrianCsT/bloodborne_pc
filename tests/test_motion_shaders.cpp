@@ -13,9 +13,7 @@ int main(int argc, char** argv) {
     using namespace Shader;
     const std::filesystem::path dir = argc > 1 ? argv[1] : ".";
     std::filesystem::create_directories(dir);
-    MotionVectors::params_address = 0x10000;
-    MotionVectors::positions_address = 0x20000;
-    MotionVectors::diag_address = 0x30000;
+    MotionVectors::buffers_ready = true;
     MotionVectors::param_entries = 1 + 4 * 8192;
     MotionVectors::position_elements = 1 + 2 * (4u << 20);
     // Every BB_OM_PART variant, and both ways of storing the position (BB_OM_STORE=plain),

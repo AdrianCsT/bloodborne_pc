@@ -18,13 +18,11 @@ namespace Vulkan {
 namespace {
 
 bool CreateBuffer(const Instance& instance, vk::DeviceSize size, bool host, vk::Buffer& buffer,
-                  VmaAllocation& allocation, void** mapped, u64& address,
-                  VkBufferUsageFlags extra_usage = 0) {
+                  VmaAllocation& allocation, void** mapped, VkBufferUsageFlags extra_usage = 0) {
     const VkBufferCreateInfo buffer_ci{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
-        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-                 extra_usage,
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | extra_usage,
     };
     VmaAllocationCreateInfo alloc_ci{
         .usage = VMA_MEMORY_USAGE_AUTO,
@@ -46,8 +44,7 @@ bool CreateBuffer(const Instance& instance, vk::DeviceSize size, bool host, vk::
     if (mapped) {
         *mapped = info.pMappedData;
     }
-    address = instance.GetDevice().getBufferAddress({.buffer = buffer});
-    return address != 0;
+    return true;
 }
 
 } // namespace
@@ -111,17 +108,14 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
     }
     void* mapped = nullptr;
     void* read_mapped = nullptr;
-    u64 params_address = 0, positions_address = 0, diag_address = 0, read_address = 0;
     if (!CreateBuffer(instance, vk::DeviceSize(1 + MaxFrameSlots * ParamsPerFrame) * 32, true,
-                      params_buffer, params_allocation, &mapped, params_address) ||
+                      params_buffer, params_allocation, &mapped) ||
         !CreateBuffer(instance, vk::DeviceSize(1 + 2 * PositionsPerFrame) * 16, false,
-                      positions_buffer, positions_allocation, nullptr, positions_address) ||
+                      positions_buffer, positions_allocation, nullptr) ||
         !CreateBuffer(instance, DiagWords * sizeof(u32), false, diag_buffer, diag_allocation,
-                      nullptr, diag_address,
-                      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT) ||
+                      nullptr, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT) ||
         !CreateBuffer(instance, MaxFrameSlots * DiagWords * sizeof(u32), true, diag_read_buffer,
-                      diag_read_allocation, &read_mapped, read_address,
-                      VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
+                      diag_read_allocation, &read_mapped, VK_BUFFER_USAGE_TRANSFER_DST_BIT)) {
         std::printf("Object motion: buffer creation failed, off\n");
         return;
     }
@@ -130,11 +124,10 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
     std::memset(params_mapped, 0, 32);
     diag_read_mapped = static_cast<const u32*>(read_mapped);
     std::memset(read_mapped, 0, MaxFrameSlots * DiagWords * sizeof(u32));
-    Shader::MotionVectors::params_address = params_address;
-    Shader::MotionVectors::positions_address = positions_address;
+    CreateDescriptorSet();
     Shader::MotionVectors::param_entries = 1 + frame_slots * ParamsPerFrame;
     Shader::MotionVectors::position_elements = 1 + 2 * PositionsPerFrame;
-    Shader::MotionVectors::diag_address = diag_address;
+    Shader::MotionVectors::buffers_ready = true;
     enabled = true;
     std::printf("Object motion: on (%u vertices per frame, %u parameter slots%s, %s stores%s, "
                 "part=%s)\n",
@@ -143,8 +136,64 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
                 Shader::MotionVectors::guards ? "" : ", GUARDS OFF", part_name);
 }
 
+// The three buffers never change: one descriptor set, written once, bound by every motion draw.
+void ObjectMotion::CreateDescriptorSet() {
+    using MV = Shader::MotionVectors;
+    const vk::Device device = instance.GetDevice();
+    const std::array<vk::Buffer, 3> buffers = {params_buffer, positions_buffer, diag_buffer};
+    const std::array<u32, 3> bindings = {MV::ParamsBinding, MV::PositionsBinding, MV::DiagBinding};
+    std::array<vk::DescriptorSetLayoutBinding, 3> layout_bindings;
+    std::array<vk::DescriptorBufferInfo, 3> infos;
+    std::array<vk::WriteDescriptorSet, 3> writes;
+    for (u32 i = 0; i < 3; ++i) {
+        layout_bindings[i] = {
+            .binding = bindings[i],
+            .descriptorType = vk::DescriptorType::eStorageBuffer,
+            .descriptorCount = 1,
+            .stageFlags = vk::ShaderStageFlagBits::eVertex,
+        };
+    }
+    set_layout = Check(device.createDescriptorSetLayoutUnique({
+        .bindingCount = u32(layout_bindings.size()),
+        .pBindings = layout_bindings.data(),
+    }));
+    const vk::DescriptorPoolSize pool_size{vk::DescriptorType::eStorageBuffer, 3};
+    pool = Check(device.createDescriptorPoolUnique({
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+    }));
+    const vk::DescriptorSetLayout layout = *set_layout;
+    set = Check(device.allocateDescriptorSets({
+        .descriptorPool = *pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &layout,
+    }))[0];
+    for (u32 i = 0; i < 3; ++i) {
+        infos[i] = {buffers[i], 0, VK_WHOLE_SIZE};
+        writes[i] = {
+            .dstSet = set,
+            .dstBinding = bindings[i],
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eStorageBuffer,
+            .pBufferInfo = &infos[i],
+        };
+    }
+    device.updateDescriptorSets(writes, {});
+    layout_handle = layout;
+}
+
+void ObjectMotion::BindBuffers(vk::PipelineLayout pipeline_layout) {
+    // Per draw: every pipeline has its own set 0 layout, which makes set 1 unbound again.
+    scheduler.Record([pipeline_layout, set = set](vk::CommandBuffer cmdbuf) {
+        cmdbuf.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout,
+                                  Shader::MotionVectors::DescriptorSet, set, {});
+    });
+}
+
 ObjectMotion::~ObjectMotion() {
     scheduler.Finish();
+    layout_handle = vk::DescriptorSetLayout{};
     const auto allocator = instance.GetAllocator();
     if (params_buffer) {
         vmaDestroyBuffer(allocator, params_buffer, params_allocation);

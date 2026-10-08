@@ -29,6 +29,15 @@ public:
         return enabled;
     }
 
+    /// Descriptor set 1 of the pipelines with motion vertex shaders (params, positions,
+    /// diagnostics). Static: the pipeline cache builds the pipeline layouts, and there is one
+    /// ObjectMotion. Null until the buffers exist.
+    [[nodiscard]] static vk::DescriptorSetLayout Layout() noexcept {
+        return layout_handle;
+    }
+    /// Binds that set for the next draws of the graphics pipeline layout `pipeline_layout`.
+    void BindBuffers(vk::PipelineLayout pipeline_layout);
+
     using DrawInfo = Motion::Draw;
     u32 PrepareDraw(const DrawInfo& draw);
     /// Small skeletons: whether the bone palette changed (Motion::History::Moving).
@@ -111,6 +120,11 @@ private:
     u32* params_mapped{};
     vk::Buffer positions_buffer{};
     VmaAllocation positions_allocation{};
+    vk::UniqueDescriptorSetLayout set_layout;
+    vk::UniqueDescriptorPool pool;
+    vk::DescriptorSet set{};
+    static inline vk::DescriptorSetLayout layout_handle{};
+    void CreateDescriptorSet();
 
     // Guard counters of the vertex shaders (Shader::MotionVectors::Diag*): device local, copied
     // at the start of every frame into a ring of host readbacks that are read once the GPU is

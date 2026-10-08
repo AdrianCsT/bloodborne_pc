@@ -15,7 +15,7 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 9u; // bbport: motion varyings at 26/27 (was 8: guarded motion stores)
+static constexpr u32 ShaderBinaryVersion = 10u; // bbport: motion buffers are descriptor-bound, not by address (was 9: varyings at 26/27)
 static constexpr u32 ShaderMetaVersion = 7u; // bbport: ImageResource::needs_native
 static constexpr u32 PipelineKeyVersion = 6u; // bbport: motion keys clear unused color slots (was 5: Info layout)
 } // namespace Serialization
@@ -118,8 +118,8 @@ bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info,
     spec.Deserialize(ar);
     info.Deserialize(ar);
 
-    // Motion vertex shaders embed session-local buffer device addresses. They must be
-    // recompiled for the current allocation, never loaded from a previous process.
+    // Motion vertex shaders embed the session-local motion settings (variant, guards, buffer
+    // sizes). They must be recompiled, never loaded from a previous process.
     if (info.hw_stage == Shader::HwStage::Vertex && spec.runtime_info.hw.vs.motion_vectors) {
         return false;
     }

@@ -68,8 +68,9 @@ void ConvertPositionToClipSpace(EmitContext& ctx) {
 
 // bbport: object motion vectors (runtime_info.h, MotionVectors). The vertex shader stores its
 // clip position for this frame and loads the one of the previous frame (same draw, same
-// vertex), both by buffer device address. Disabled accesses are branched around: a shared
-// scratch element would race between all the inactive vertex invocations.
+// vertex), both through descriptor-bound storage buffers (set 1). Disabled accesses are
+// branched around: a shared scratch element would race between all the inactive vertex
+// invocations.
 //
 // Every access is guarded: the params index must be inside the ring and the entry must carry
 // the tag of its words and draw (else it was overwritten under the GPU), and the positions
@@ -79,7 +80,7 @@ static void EmitVertexMotion(EmitContext& ctx) {
     const Id u32_type = ctx.U32[1];
     const Id bool_type = ctx.U1[1];
     const Id position = ctx.OpLoad(ctx.F32[4], ctx.output_position);
-    if (!MotionVectors::UsesBda()) {
+    if (!MotionVectors::UsesBuffers()) {
         // BB_OM_PART=nobda: the varyings alone. No params load, no positions access, no
         // diagnostics: previous = current with z = 0 (invalid), so the output stays zero.
         const Id previous = ctx.OpCompositeInsert(ctx.F32[4], ctx.Constant(ctx.F32[1], 0.0f),
@@ -100,27 +101,22 @@ static void EmitVertexMotion(EmitContext& ctx) {
         ctx.OpULessThan(bool_type, param_index, ctx.ConstU32(MotionVectors::param_entries)));
     // An index outside the ring reads element 0 (always zero) instead.
     const Id safe_index = ctx.OpSelect(u32_type, index_ok, param_index, ctx.u32_zero_value);
-    const auto address = [&](u64 base, Id index, u32 stride) {
-        return ctx.OpIAdd(ctx.U64, ctx.Constant(ctx.U64, base),
-                          ctx.OpIMul(ctx.U64, ctx.OpUConvert(ctx.U64, index),
-                                     ctx.Constant(ctx.U64, u64(stride))));
-    };
-    const Id u32x4_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, ctx.U32[4]);
-    const Id f32x4_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, ctx.F32[4]);
-    const Id scalar_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, u32_type);
+    const Id u32x4_ptr = ctx.TypePointer(spv::StorageClass::StorageBuffer, ctx.U32[4]);
+    const Id scalar_ptr = ctx.TypePointer(spv::StorageClass::StorageBuffer, u32_type);
     const Id scope = ctx.ConstU32(static_cast<u32>(spv::Scope::Device));
+    // A params entry is two uvec4: [2 * index] and [2 * index + 1].
+    const Id param_word = ctx.OpShiftLeftLogical(u32_type, safe_index, ctx.ConstU32(1u));
     const Id params = ctx.OpLoad(
         ctx.U32[4],
-        ctx.OpConvertUToPtr(u32x4_ptr, address(MotionVectors::params_address, safe_index, 32)),
-        spv::MemoryAccessMask::Aligned, 16u);
+        ctx.OpAccessChain(u32x4_ptr, ctx.motion_params, ctx.u32_zero_value, param_word));
     const Id store_base = ctx.OpCompositeExtract(u32_type, params, 0u);
     const Id load_base = ctx.OpCompositeExtract(u32_type, params, 1u);
     const Id vertices = ctx.OpCompositeExtract(u32_type, params, 2u);
     const Id flags = ctx.OpCompositeExtract(u32_type, params, 3u);
     const Id offsets = ctx.OpLoad(
-        ctx.U32[4], ctx.OpConvertUToPtr(u32x4_ptr,
-            address(MotionVectors::params_address + 16, safe_index, 32)),
-        spv::MemoryAccessMask::Aligned, 16u);
+        ctx.U32[4],
+        ctx.OpAccessChain(u32x4_ptr, ctx.motion_params, ctx.u32_zero_value,
+                          ctx.OpIAdd(u32_type, param_word, ctx.ConstU32(1u))));
     const Id first_vertex = ctx.OpCompositeExtract(u32_type, offsets, 0u);
     const Id first_instance = ctx.OpCompositeExtract(u32_type, offsets, 1u);
     const Id instances = ctx.OpCompositeExtract(u32_type, offsets, 2u);
@@ -139,14 +135,11 @@ static void EmitVertexMotion(EmitContext& ctx) {
     const Id entry_valid = ctx.OpLogicalAnd(bool_type, index_ok, tag_ok);
 
     const auto diag_ptr = [&](u32 word) {
-        return ctx.OpConvertUToPtr(scalar_ptr, ctx.Constant(ctx.U64, MotionVectors::diag_address +
-                                                                         u64(word) * 4));
+        return ctx.OpAccessChain(scalar_ptr, ctx.motion_diag, ctx.u32_zero_value,
+                                 ctx.ConstU32(word));
     };
     // Counts a violation (and notes the push constant of the last one) when `condition` holds.
     const auto count = [&](Id condition, u32 counter, u32 note_word) {
-        if (!MotionVectors::diag_address) {
-            return;
-        }
         const Id label = ctx.OpLabel();
         const Id merge = ctx.OpLabel();
         ctx.OpSelectionMerge(merge, spv::SelectionControlMask::MaskNone);
@@ -154,7 +147,7 @@ static void EmitVertexMotion(EmitContext& ctx) {
         ctx.AddLabel(label);
         ctx.OpAtomicIAdd(u32_type, diag_ptr(counter), scope, ctx.u32_zero_value, ctx.ConstU32(1u));
         if (note_word) {
-            ctx.OpStore(diag_ptr(note_word), motion_param, spv::MemoryAccessMask::Aligned, 4u);
+            ctx.OpStore(diag_ptr(note_word), motion_param);
         }
         ctx.OpBranch(merge);
         ctx.AddLabel(merge);
@@ -188,9 +181,10 @@ static void EmitVertexMotion(EmitContext& ctx) {
             ctx.OpULessThan(bool_type, element,
                             ctx.Constant(ctx.U64, u64(MotionVectors::position_elements))));
     };
-    const auto element_address = [&](Id element) {
-        return ctx.OpIAdd(ctx.U64, ctx.Constant(ctx.U64, MotionVectors::positions_address),
-                          ctx.OpIMul(ctx.U64, element, ctx.Constant(ctx.U64, u64(16))));
+    // Only reached once element_ok held, so the element fits 32 bits.
+    const auto element_ptr = [&](Id element) {
+        return ctx.OpAccessChain(u32x4_ptr, ctx.motion_positions, ctx.u32_zero_value,
+                                 ctx.OpUConvert(u32_type, element));
     };
     const Id want_store = wanted(MotionVectors::FlagStore);
     const Id want_load = wanted(MotionVectors::FlagLoad);
@@ -209,17 +203,16 @@ static void EmitVertexMotion(EmitContext& ctx) {
     ctx.OpSelectionMerge(store_merge, spv::SelectionControlMask::MaskNone);
     ctx.OpBranchConditional(do_store, store_label, store_merge);
     ctx.AddLabel(store_label);
-    const Id store_address = element_address(store_element);
     if (MotionVectors::plain_store) {
         // Indexed draws may invoke the same vertex more than once, all with the same value.
-        ctx.OpStore(ctx.OpConvertUToPtr(f32x4_ptr, store_address), position,
-                    spv::MemoryAccessMask::Aligned, 16u);
+        ctx.OpStore(element_ptr(store_element), ctx.OpBitcast(ctx.U32[4], position));
     } else {
         // Atomic component stores avoid write/write races; all these invocations produce the
         // same clip position.
+        const Id store_index = ctx.OpUConvert(u32_type, store_element);
         for (u32 i = 0; i < 4; ++i) {
-            const Id ptr = ctx.OpConvertUToPtr(scalar_ptr,
-                ctx.OpIAdd(ctx.U64, store_address, ctx.Constant(ctx.U64, u64(i * 4))));
+            const Id ptr = ctx.OpAccessChain(scalar_ptr, ctx.motion_positions, ctx.u32_zero_value,
+                                             store_index, ctx.ConstU32(i));
             const Id bits = ctx.OpBitcast(u32_type, ctx.OpCompositeExtract(ctx.F32[1], position, i));
             ctx.OpAtomicExchange(u32_type, ptr, scope, ctx.u32_zero_value, bits);
         }
@@ -232,9 +225,8 @@ static void EmitVertexMotion(EmitContext& ctx) {
     ctx.OpSelectionMerge(load_merge, spv::SelectionControlMask::MaskNone);
     ctx.OpBranchConditional(do_load, load_label, load_merge);
     ctx.AddLabel(load_label);
-    const Id loaded = ctx.OpLoad(
-        ctx.F32[4], ctx.OpConvertUToPtr(f32x4_ptr, element_address(load_element)),
-        spv::MemoryAccessMask::Aligned, 16u);
+    const Id loaded =
+        ctx.OpBitcast(ctx.F32[4], ctx.OpLoad(ctx.U32[4], element_ptr(load_element)));
     ctx.OpBranch(load_merge);
     ctx.AddLabel(load_merge);
     Id previous = ctx.OpPhi(ctx.F32[4], position, store_merge, loaded, load_label);
@@ -247,9 +239,9 @@ static void EmitVertexMotion(EmitContext& ctx) {
     } else {
         // BB_OM_PART=novary: no varyings. The loaded history goes to the scratch element 0
         // (never a real vertex), or the driver would drop the dead load.
-        ctx.OpStore(ctx.OpConvertUToPtr(f32x4_ptr,
-                                        ctx.Constant(ctx.U64, MotionVectors::positions_address)),
-                    previous, spv::MemoryAccessMask::Aligned, 16u);
+        ctx.OpStore(ctx.OpAccessChain(u32x4_ptr, ctx.motion_positions, ctx.u32_zero_value,
+                                      ctx.u32_zero_value),
+                    ctx.OpBitcast(ctx.U32[4], previous));
     }
 }
 
