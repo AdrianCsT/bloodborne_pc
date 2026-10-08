@@ -1100,7 +1100,16 @@ void TextureCache::GarbageCollectImages() {
             const char* env = std::getenv("BB_GC_BUDGET_MB");
             return env ? std::strtoull(env, nullptr, 10) << 20 : 0;
         }();
-        if (instance.IsIntegrated() || forced_budget) {
+        // bbport: on Windows the desktop and other programs hold 1.3-1.7 GB of a discrete card
+        // before the game starts (deadinside28/bloodborne_pc#39): limits from the startup heap
+        // size let a 6 GB card run out of memory with nothing evicted. WDDM's live budget
+        // already leaves out what others hold, so it is used on every Windows GPU.
+#ifdef _WIN32
+        constexpr bool live_budget = true;
+#else
+        constexpr bool live_budget = false;
+#endif
+        if (live_budget || instance.IsIntegrated() || forced_budget) {
             const u64 budget = forced_budget ? forced_budget : instance.GetDeviceMemoryBudgetNow();
             if (budget != 0) {
                 trigger_gc_memory = budget / 10 * 7;
