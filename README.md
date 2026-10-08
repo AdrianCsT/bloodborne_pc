@@ -54,7 +54,7 @@ This fork brings together the work of several people and adds a few things of it
 | This fork | Support for *The Old Hunters* DLC license (experimental) |
 | This fork | A redesigned launcher with Simple and Advanced modes and animations |
 | This fork | Install from PKG: the launcher installs the game from your PS4 `.pkg` files (base game, update and DLC). This is being added now. |
-| This fork | A stability default on AMD GPUs on Windows: object motion is off (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)) |
+| This fork | Object motion vectors on AMD GPUs under Windows: their driver lost the device on the raw-pointer stores, so the motion buffers are now storage-buffer bindings (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)) |
 | This fork | A fix for the crash when you are attacked on Intel 12th gen and newer CPUs (red-zone protection, from Supermedo [PR #2](https://github.com/Supermedo/bloodborne_pc/pull/2)) |
 | This fork | A live VRAM budget on Windows |
 
@@ -173,7 +173,7 @@ This is a known issue. The character is created correctly.
 <details>
 <summary><b>The game crashes when the world loads on an AMD card.</b></summary>
 
-Some AMD graphics cards still crash at this point. This fork turns object motion off on AMD GPUs on Windows by default to keep things stable (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)). If it still crashes, report it with your `user\last_run.log`.
+Before 1.6.10 the object motion feature made AMD cards on Windows lose the device right after a save loaded (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)). This fork fixed it; an RX 6700 XT and an RX 6600 confirmed it. Update from the launcher. If it still crashes, switch off **Object motion vectors** in the launcher's Graphics tab and report it with your `last_run.log` from the saves folder.
 
 </details>
 
