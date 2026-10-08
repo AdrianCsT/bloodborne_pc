@@ -5,16 +5,27 @@ THIS PROJECT IS NOT RELATED TO SHADPS4. ALL QUESTIONS RELATED TO THIS PROJECT SH
 
 **English** · [Русский](docs/original-readme/README.ru.md)
 
-> ### Windows version
-> This fork adds a native **Windows 10/11** build of bbport with a launcher (`Bloodborne.exe`)
-> that holds every setting in one window, in 13 languages. Download the ready-to-play zip from
-> [Releases](https://github.com/Supermedo/bloodborne_pc/releases), unpack it, start
-> `Bloodborne.exe` and pick your game folder. Building it yourself and what changed for Windows:
-> [packaging/windows/README.md](packaging/windows/README.md).
->
-> The Linux port and almost all of the work behind it are by
-> [deadinside28](https://github.com/deadinside28/bloodborne_pc); the Windows port is by
-> [Supermedo](https://github.com/Supermedo).
+## Play on Windows in 3 steps
+
+![The launcher](docs/screenshots/launcher-simple.png)
+
+1. Download `bbport-windows.zip` from the [latest release](https://github.com/AdrianCsT/bloodborne_pc/releases/latest) and unzip it anywhere.
+2. Open `Bloodborne.exe` and choose the folder of your own Bloodborne dump (CUSA03173, game version 1.09).
+3. Press **PLAY**.
+
+You need nothing else: no compiler, no Python, no emulator. Windows 10 or 11 and a Vulkan graphics card are enough.
+The launcher tells you when a new version is out and installs it for you. Your saves and settings stay.
+
+This build combines:
+
+- deadinside28's Linux port, release 0.4 (the original project);
+- Supermedo's Windows port, v1.5, with NVIDIA DLSS on RTX cards and AMD FSR 3.1 / FSR 4;
+- support for *The Old Hunters* DLC license (`BB_ADDCONT`, experimental);
+- a redesigned launcher with a Simple mode for players and an Advanced mode with every setting.
+
+The Linux port and almost all of the work behind it are by
+[deadinside28](https://github.com/deadinside28/bloodborne_pc); the Windows port is by
+[Supermedo](https://github.com/Supermedo).
 
 bbport is the counterpart of Wine + DXVK for a single game: *Bloodborne* for PlayStation 4
 (CUSA03173, game version 1.09) on an x86-64 Linux PC. The game's original executable runs
@@ -45,7 +56,7 @@ Mesa/RADV) has been tested thoroughly.
 **Bloodborne running natively on Windows 10 and 11, by [Supermedo](https://github.com/Supermedo) Mohammed Albarghouthi.**
 Unpack the zip, start `Bloodborne.exe`, pick your game folder and press **PLAY**.
 
-**[Download the latest version](https://github.com/Supermedo/bloodborne_pc/releases/latest)** · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
+**[Download the latest version](https://github.com/AdrianCsT/bloodborne_pc/releases/latest)** · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
 
 > The game needs your own decrypted dump of Bloodborne (CUSA03173). Version 1.09 is needed for
 > the community patches (60/90/unlocked FPS, resolution, effects); other versions run at 30 FPS.
