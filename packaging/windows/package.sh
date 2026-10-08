@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds dist/bbport-windows/ (and dist/bbport-windows.zip): BLauncher.exe (the launcher, frozen
 # with PyInstaller so players need no Python), bb-probe.exe with the MSYS2 CLANG64 DLLs it needs,
-# the preparation scripts and run.py. Run from an MSYS2 CLANG64 shell after `bash build.sh`.
+# PkgTool (extracts the game from .pkg files), the preparation scripts and run.py. Run from an MSYS2 CLANG64 shell after `bash build.sh`.
 # Freezing uses a Windows Python 3.10+ (python.org; WINPYTHON overrides) and a private venv in
 # out/pyenv with PyInstaller. FSR 4 assets in fsr4_shaders/ are included when present.
 set -euo pipefail
@@ -34,6 +34,27 @@ out/pyenv/Scripts/python.exe -m PyInstaller --noconfirm --clean --log-level WARN
     --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" "${hidden[@]}" \
     "$(cygpath -w "$PWD/launcher/bbport_launcher_win.py")"
 
+# PkgTool (maxton/LibOrbisPkg v0.2, LGPL-3.0, shipped unmodified) extracts the game from the .pkg files the
+# launcher's "Install from PKG" takes. The zip is cached in out/pkgtool-cache, so rebuilds work offline.
+pkgtool_zip=PkgTool-0.2.231.zip
+pkgtool_url=https://github.com/maxton/LibOrbisPkg/releases/download/v0.2/$pkgtool_zip
+pkgtool_sha256=c639e591e35c2431f68410d1771541d95f7308863638f9e3a6eedf1818530097
+mkdir -p out/pkgtool-cache
+if [[ ! -f out/pkgtool-cache/$pkgtool_zip ]]; then
+    curl -fsSL --retry 3 -o "out/pkgtool-cache/$pkgtool_zip.part" "$pkgtool_url"
+    mv -f "out/pkgtool-cache/$pkgtool_zip.part" "out/pkgtool-cache/$pkgtool_zip"
+fi
+if ! echo "$pkgtool_sha256 *out/pkgtool-cache/$pkgtool_zip" | sha256sum -c --status -; then
+    rm -f "out/pkgtool-cache/$pkgtool_zip"
+    echo "$pkgtool_zip does not match its SHA-256 (deleted); run again" >&2
+    exit 1
+fi
+rm -rf out/pkgtool
+mkdir -p out/pkgtool
+unzip -oq "out/pkgtool-cache/$pkgtool_zip" -d out/pkgtool
+[[ -f out/pkgtool/PkgTool.exe && -f out/pkgtool/LibOrbisPkg.dll && -f out/pkgtool/LICENSE.txt ]] ||
+    { echo "$pkgtool_zip is missing PkgTool.exe, LibOrbisPkg.dll or LICENSE.txt" >&2; exit 1; }
+
 # The package is assembled in a fresh staging folder and zipped from there; dist/bbport-windows
 # (a playable copy that may hold saves and settings) is only refreshed afterwards.
 dest=out/stage/bbport-windows
@@ -63,6 +84,9 @@ if [[ -f out/bbport_dlss.dll && -f out/nvngx_dlss.dll ]]; then
 else
     echo "DLSS bridge not built (packaging/windows/build_dlss.sh): no DLSS in this package" >&2
 fi
+mkdir -p "$dest/bin/pkgtool" "$dest/licenses"
+cp out/pkgtool/PkgTool.exe out/pkgtool/LibOrbisPkg.dll "$dest/bin/pkgtool/"
+cp out/pkgtool/LICENSE.txt "$dest/licenses/PkgTool-LICENSE.txt"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 mkdir -p dist
 rm -f dist/bbport-windows.zip

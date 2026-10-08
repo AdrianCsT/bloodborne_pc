@@ -2,8 +2,9 @@ Bloodborne (bbport) for Windows
 ===============================
 
 No game files are included. You need your own decrypted dump of Bloodborne CUSA03173
-(the folder with eboot.bin, sce_module, sce_sys, dvdroot_ps4). Game version 1.09 is needed for
-the community patches (60/90/unlocked FPS, resolution, effects); other versions run at 30 FPS.
+(the folder with eboot.bin, sce_module, sce_sys, dvdroot_ps4), or the PlayStation 4 .pkg files
+of the game (see "Installing from .pkg files"). Game version 1.09 is needed for the community
+patches (60/90/unlocked FPS, resolution, effects); other versions run at 30 FPS.
 
 Requirements
 - Windows 10 (1903 or later) or Windows 11, 64-bit.
@@ -20,6 +21,22 @@ Starting
   shortcut to it, or add it to Steam with "Add a Non-Steam Game"). If no game folder is chosen
   yet it opens the launcher. BLauncher.exe --play does the same. The log goes to
   user\last_run.log.
+- Installing from .pkg files: "Install from PKG..." (on the Play page, and on "Game & effects")
+  opens one window. "Choose PKG files..." takes the game .pkg (about 31 GB), the v1.09 update
+  .pkg and the DLC .pkg of Bloodborne; "Scan a folder..." looks for .pkg files in a folder and
+  its subfolders (3 levels deep). Each file is listed with what it is (game, update version,
+  DLC), and the best game, the highest update and the DLC are ticked for you; files that are
+  not Bloodborne are listed with the reason and cannot be ticked. Both dialogs open in the
+  folder you used last (else Downloads). "Install into" defaults to a "game" folder next to
+  BLauncher.exe; about 1.1 times the size of the files must be free, and Install stays off
+  until the space is there. The launcher extracts the game, applies the update over it, sets
+  the game folder and runs the ready check. The game takes 15 to 30 minutes; the launcher
+  stays usable and "Stop" cancels. A package PkgTool cannot read (encrypted, unsupported) is
+  reported with PkgTool's own message. The DLC .pkg holds only the license:
+  its label (SPEXPANSIONDLC03, The Old Hunters) is saved and reported to the game as BB_ADDCONT
+  (Game & effects -> "DLC", with a Clear button). Only Bloodborne packages are accepted
+  (CUSA03173, CUSA00900, CUSA00207, CUSA01363, CUSA03023); an update other than 01.09 is
+  accepted with a warning. PkgTool needs the .NET Framework 4, which Windows 10 and 11 include.
 - Advanced -> "Desktop shortcut" puts Bloodborne on the desktop.
 - Updates: when a new version is out, the launcher shows it at the bottom left; "Update"
   downloads and installs it and opens the launcher again (saves, settings and mods are kept).
@@ -63,4 +80,6 @@ Mods and patches
 Credits
 - bbport (the Linux port this is built on): https://github.com/deadinside28/bloodborne_pc
 - Windows port: https://github.com/Supermedo/bloodborne_pc
+- PkgTool, which extracts the .pkg files: maxton/LibOrbisPkg v0.2, LGPL-3.0, unmodified, in
+  bin\pkgtool\ (license: licenses\PkgTool-LICENSE.txt, source: https://github.com/maxton/LibOrbisPkg).
 - The full list of projects and patch authors is in README.md (Credits and licenses).

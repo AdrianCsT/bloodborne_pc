@@ -13,6 +13,7 @@ Frozen with PyInstaller (packaging/windows/package.sh) the same BLauncher.exe al
 game without the window (`--play`), run.py (`--run`) and the preparation scripts (`--script`),
 so a packaged port needs no Python installation.
 """
+import collections
 import ctypes
 import json
 import math
@@ -23,6 +24,7 @@ import random
 import re
 import runpy
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -42,7 +44,7 @@ PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.6.1'
+VERSION = '1.6.2'
 RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases/latest'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
@@ -171,7 +173,8 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'fps_mode': 'uncap', 'frame_cap': '', 'draw_pipe': '', 'readbacks': '',
                 'frames_ahead': '', 'frame_stats': False, 'gpu_profile': False,
                 'vk_validation': False, 'extra_env': '', 'close_on_play': False,
-                'check_updates': True, 'ui_advanced': False, 'animations': True}
+                'check_updates': True, 'ui_advanced': False, 'animations': True,
+                'addcont': '', 'pkg_dir': '', 'pkg_src': ''}
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('fsr4', ('FSR 4 (best quality)', 'FSR 4 (лучшее качество)')),
@@ -295,6 +298,8 @@ def game_environment(s):
     env['BB_LANGUAGE'] = s['language']
     if str(s['player_name']).strip():
         env['BB_USER_NAME'] = str(s['player_name']).strip()
+    if str(s.get('addcont', '')).strip():
+        env['BB_ADDCONT'] = str(s['addcont']).strip()
     env['BB_FULLSCREEN'] = '1' if s['fullscreen'] else '0'
     env['BB_PRESENT_MODE'] = s['present_mode']
     if s['hdr']:
@@ -316,6 +321,228 @@ def game_environment(s):
     env['PYTHONUNBUFFERED'] = '1'
     env['PYTHONIOENCODING'] = 'utf-8'
     return env
+
+
+# ---------------------------------------------------------------------------------------------
+# PlayStation 4 .pkg files. A package is classified from its header and its param.sfo (the way
+# the bloodborne-kit's prepare.ps1 does) and extracted with PkgTool (maxton/LibOrbisPkg, LGPL-3.0).
+
+BB_TITLE_IDS = ('CUSA03173', 'CUSA00900', 'CUSA00207', 'CUSA01363', 'CUSA03023')  # every Bloodborne release
+PKG_MAGIC = b'\x7fCNT'
+PKG_ENTRY_PARAM_SFO = 0x1000  # a plain entry of the package, outside the extracted files
+PKG_SPACE_FACTOR = 1.1
+
+
+class PkgError(Exception):
+    """A problem with the chosen packages or with PkgTool; the message is meant for the player."""
+
+
+def kind_name(category):
+    return {'gd': _('Game package', 'Пакет игры'), 'gp': _('Update package', 'Пакет обновления'),
+            'ac': _('DLC package', 'Пакет DLC')}[category]
+
+
+def size_text(size):
+    return f'{size / 2 ** 30:.1f} GB' if size >= 2 ** 30 else f'{size / 2 ** 20:.0f} MB'
+
+
+def pkg_param_sfo(stream, head):
+    """The bytes of the package's param.sfo, or None."""
+    count, table = struct.unpack('>I', head[0x10:0x14])[0], struct.unpack('>I', head[0x18:0x1c])[0]
+    for index in range(min(count, 1024)):
+        stream.seek(table + 32 * index)
+        entry_id, _name, _flags1, _flags2, offset, size = struct.unpack('>6I', stream.read(24))
+        if entry_id == PKG_ENTRY_PARAM_SFO and 0 < size <= 1 << 20:
+            stream.seek(offset)
+            return stream.read(size)
+    return None
+
+
+def read_pkg(path):
+    """Header and param.sfo of one .pkg as a dict: category 'gd' (game), 'gp' (update) or 'ac' (add-on),
+    title_id, app_ver, content_id, label (the add-on's entitlement label), has_data (a file system
+    image to extract). Raises PkgError."""
+    path = Path(path)
+    try:
+        with open(path, 'rb') as stream:
+            head = stream.read(0x420)
+            if len(head) < 0x420 or head[:4] != PKG_MAGIC:
+                raise PkgError(_('{} is not a PlayStation 4 .pkg file.', '{} не является .pkg файлом PlayStation 4.')
+                               .format(path.name))
+            raw = pkg_param_sfo(stream, head)
+        size = path.stat().st_size
+    except (OSError, struct.error) as failure:
+        raise PkgError(_('Could not read {}: {}', 'Не удалось прочитать {}: {}').format(path.name, failure))
+    content_id = head[0x40:0x64].split(b'\0')[0].decode('ascii', 'replace')
+    drm, content_type, flags = struct.unpack('>3I', head[0x70:0x7c])
+    try:
+        from prepare import sfo
+        values = sfo(raw) if raw else {}
+    except (ValueError, IndexError, struct.error, ImportError):
+        values = {}
+    category = values.get('CATEGORY')
+    if category not in ('gd', 'gp', 'ac') and content_type in (0x1b, 0x1c):  # add-on types
+        category = 'ac'
+    if category not in ('gd', 'gp', 'ac'):
+        raise PkgError(_('{} is not a game, update or DLC package.', '{} не является пакетом игры, обновления или DLC.')
+                       .format(path.name))
+    return {'path': path, 'size': size, 'content_id': content_id, 'category': category,
+            'title_id': values.get('TITLE_ID') or content_id[7:16], 'title': values.get('TITLE', '').replace('™', '').strip(),
+            'app_ver': values.get('APP_VER') or values.get('VERSION', ''), 'sfo': raw, 'drm': drm,
+            'content_type': content_type, 'flags': flags, 'label': content_id.split('-')[-1],
+            'has_data': struct.unpack('>I', head[0x404:0x408])[0] > 0 and struct.unpack('>Q', head[0x418:0x420])[0] > 0}
+
+
+def check_bloodborne(info):
+    if info['title_id'] not in BB_TITLE_IDS:
+        raise PkgError(_('{} is not Bloodborne (it is {}). Only Bloodborne packages can be installed.',
+                         '{} — не Bloodborne (это {}). Можно установить только пакеты Bloodborne.').format(
+            info['path'].name, f"{info['title']} ({info['title_id']})" if info['title'] else info['title_id']))
+
+
+def classify_pkgs(paths):
+    """check_pkgs of the Bloodborne packages in these files; raises PkgError for any file that is not one."""
+    infos = [read_pkg(path) for path in paths]
+    for info in infos:
+        check_bloodborne(info)
+    return check_pkgs(infos)
+
+
+def pkg_description(info):
+    return {'gd': _('Game v{}', 'Игра v{}'), 'gp': _('Update v{}', 'Обновление v{}'),
+            'ac': _('DLC {}', 'DLC {}')}[info['category']].format(info['label'] if info['category'] == 'ac' else info['app_ver'])
+
+
+def scan_pkg_files(folder, depth=3, limit=200):
+    """The .pkg files in a folder and its subfolders down to this depth."""
+    folder, found = Path(folder), []
+    for here, dirs, files in os.walk(folder):
+        dirs.sort()
+        found += [Path(here) / name for name in sorted(files) if name.lower().endswith('.pkg')]
+        if len(Path(here).relative_to(folder).parts) >= depth or len(found) >= limit:
+            dirs.clear()
+    return found[:limit]
+
+
+def read_candidates(paths):
+    """One row per file for the install window: {'path', 'info' (a package dict) or None, 'error'}, usable
+    Bloodborne packages first (game, update, DLC)."""
+    rows = []
+    for path in paths:
+        try:
+            info = read_pkg(path)
+            check_bloodborne(info)
+            rows.append({'path': Path(path), 'info': info, 'error': None})
+        except PkgError as problem:
+            rows.append({'path': Path(path), 'info': None, 'error': str(problem)})
+    order = {'gd': 0, 'gp': 1, 'ac': 2}
+    return sorted(rows, key=lambda row: order[row['info']['category']] if row['info'] else 3)
+
+
+def preselect(rows):
+    """The paths ticked at first: the biggest game package, the highest update of its region, each DLC once."""
+    infos = [row['info'] for row in rows if row['info']]
+    base = max((i for i in infos if i['category'] == 'gd'), key=lambda i: i['size'], default=None)
+    update = max((i for i in infos if i['category'] == 'gp' and (not base or i['title_id'] == base['title_id'])),
+                 key=lambda i: version_tuple(i['app_ver']), default=None)
+    chosen, labels = [info for info in (base, update) if info], set()
+    for info in infos:
+        if info['category'] == 'ac' and info['label'] not in labels:
+            labels.add(info['label'])
+            chosen.append(info)
+    return {info['path'] for info in chosen}
+
+
+def free_space(path):
+    """Free bytes on the drive of a folder that may not exist yet, or None."""
+    path = Path(path)
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    try:
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
+
+
+def check_pkgs(infos):
+    """([package dicts: game, update, DLCs], [warnings]). Raises PkgError for a set that does not belong
+    together (two games, two updates, different regions)."""
+    chosen = {}
+    for info in infos:
+        if info['category'] == 'ac':
+            continue
+        if info['category'] in chosen:
+            raise PkgError(_('Choose only one {}: {} and {} are the same kind.', 'Выберите только один пакет ({}): {} и {} '
+                             'одного вида.').format(kind_name(info['category']), chosen[info['category']]['path'].name,
+                                                   info['path'].name))
+        chosen[info['category']] = info
+    base, update = chosen.get('gd'), chosen.get('gp')
+    if base and update and base['title_id'] != update['title_id']:
+        raise PkgError(_('The game and the update are from different regions ({} and {}).',
+                         'Игра и обновление из разных регионов ({} и {}).').format(base['title_id'], update['title_id']))
+    warnings = []
+    if update and update['app_ver'] != PATCH_VERSION:
+        warnings.append(_('Update version {}: the community patches (60+ FPS, effects) need 01.09, so the game would '
+                          'run at 30 FPS.', 'Версия обновления {}: патчам сообщества (60+ FPS, эффекты) нужна 01.09, '
+                          'поэтому игра будет работать в 30 FPS.').format(update['app_ver'] or '?'))
+    if update and not base:
+        warnings.append(_('Without the game package, the update alone is not playable.',
+                          'Без пакета игры одно обновление играть не позволяет.'))
+    order = {'gd': 0, 'gp': 1, 'ac': 2}
+    return sorted(infos, key=lambda info: order[info['category']]), warnings
+
+
+def pkgtool_path():
+    """PkgTool.exe: BB_PKGTOOL, the package's bin/pkgtool, or out/pkgtool of a source tree."""
+    candidates = [PORT_DIR / 'bin' / 'pkgtool' / 'PkgTool.exe', PORT_DIR / 'out' / 'pkgtool' / 'PkgTool.exe']
+    if os.environ.get('BB_PKGTOOL'):
+        candidates.insert(0, Path(os.environ['BB_PKGTOOL']))
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def find_game_folder(dest):
+    """The folder with eboot.bin inside an extraction target (uroot for the game, Image0 for some dumps)."""
+    dest = Path(dest)
+    for guess in (dest / 'uroot', dest / 'Image0', dest):
+        if (guess / 'eboot.bin').is_file():
+            return guess
+    for folder, dirs, files in os.walk(dest):
+        if 'eboot.bin' in files:
+            return Path(folder)
+        if len(Path(folder).relative_to(dest).parts) >= 3:
+            dirs.clear()
+        dirs.sort()
+    return None
+
+
+def write_param_sfo(game, info):
+    """The package's param.sfo into <game>/sce_sys when that file is missing or older (PkgTool does not extract
+    it); returns True when written."""
+    target = Path(game) / 'sce_sys' / 'param.sfo'
+    try:
+        from prepare import sfo
+        current = sfo(target.read_bytes()).get('APP_VER')
+    except (OSError, ValueError, IndexError, struct.error, ImportError):
+        current = None
+    if not info['sfo'] or (current and version_tuple(current) >= version_tuple(info['app_ver'])):
+        return False
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(info['sfo'])
+    return True
+
+
+def error_lines(lines):
+    """The line that names the exception or error and the last lines PkgTool printed, each cut at 160 characters."""
+    lead = next((line for line in lines if re.search(r'exce|error', line, re.I)), None)
+    keep = lines[-3:]
+    return '\n'.join(line.strip()[:160] for line in ([lead] if lead and lead not in keep else []) + keep)
+
+
+def console_encoding():
+    try:
+        return f'cp{ctypes.windll.kernel32.GetOEMCP()}'
+    except (AttributeError, OSError):
+        return 'utf-8'
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1215,6 +1442,8 @@ class Launcher:
         self.vars = {}
         self.process = self.job = None
         self.downloading = False
+        self.installing, self.install_proc, self.install_cancel = False, None, threading.Event()
+        self.install_card = self.install_hide = self.pkg_dialog = None
         self.output = queue.Queue()
         self.gpu_text = _('• Checking the graphics card…', '• Проверка видеокарты…')
         self.gpu_checking = True
@@ -1640,6 +1869,7 @@ class Launcher:
         holder.pack(fill='x')
         self.ttk.Entry(holder, textvariable=var, width=30).pack(side='left', fill='x', expand=True)
         self.button(holder, _('Browse…', 'Обзор…'), lambda: self.browse_game(var)).pack(side='left', padx=(px(8), 0))
+        self.pkg_button(cell).pack(anchor='w', pady=(px(8), 0))
         for r, pairs in enumerate((((_('Output', 'Разрешение'), 'output_res', 'ini', OUTPUTS),
                                     (_('Frame rate', 'Частота кадров'), 'fps_mode', 'app', FPS_MODES)),
                                    ((_('Upscaler', 'Апскейлер'), 'upscaler', 'ini', UPSCALERS),
@@ -1757,6 +1987,14 @@ class Launcher:
                     _('Your own dump of CUSA03173 (eboot.bin, sce_module, sce_sys, dvdroot_ps4); version 1.09 '
                       'for the community patches.', 'Ваш дамп CUSA03173 (eboot.bin, sce_module, sce_sys, '
                       'dvdroot_ps4); версия 1.09 для патчей сообщества.'), on_change=self.game_changed)
+        self.row(f, _('PlayStation 4 packages', 'Пакеты PlayStation 4'), self.pkg_button(f),
+                 _('Pick the game .pkg, the v1.09 update and the DLC. They are extracted for you and the game folder '
+                   'is filled in.', 'Выберите .pkg игры, обновление 1.09 и DLC. Они распакуются сами, а папка игры '
+                   'заполнится.'))
+        self.row(f, _('DLC (The Old Hunters)', 'DLC (The Old Hunters)'), self.dlc_field(f),
+                 _('Reported to the game as an installed add-on. The Old Hunters areas ship with the v1.09 data; '
+                   'install the DLC .pkg to switch it on.', 'Передаётся игре как установленное дополнение. Области '
+                   'The Old Hunters входят в данные 1.09; установите .pkg с DLC, чтобы включить.'))
         self.folder(f, 'user_dir', _('Saves folder', 'Папка сохранений'),
                     _('Choose the saves folder', 'Выберите папку сохранений'),
                     _('Empty: {} (shader caches are kept there too).',
@@ -1929,7 +2167,7 @@ class Launcher:
                 label.grid()
             else:
                 label.grid_remove()
-        if not self.process:
+        if not self.process and not self.installing:
             self.play_button.configure(state='normal' if info else 'disabled')
             self.status.configure(text=self.summary() if info else _('Choose the game folder first.',
                                                                      'Сначала выберите папку игры.'), fg=MUTED)
@@ -2085,7 +2323,7 @@ class Launcher:
 
     # ---- game process ------------------------------------------------------------------------
     def play(self):
-        if self.process:
+        if self.process or self.installing:
             return
         self.collect()
         if not game_info(self.app['game_dir']):
@@ -2142,7 +2380,11 @@ class Launcher:
         self.root.after(100, self.drain_output)
 
     def stop(self):
-        if self.job:
+        if self.installing:  # Stop also ends a package installation
+            self.install_cancel.set()
+            if self.install_proc and self.install_proc.poll() is None:
+                self.install_proc.kill()
+        elif self.job:
             self.job.terminate()
 
     def append(self, text):
@@ -2177,6 +2419,385 @@ class Launcher:
         elif not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         os.startfile(str(path))
+
+    # ---- install from PKG ------------------------------------------------------------------------
+    def pkg_button(self, parent):
+        return self.button(parent, _('Install from PKG…', 'Установить из PKG…'), self.install_from_pkg)
+
+    def dlc_field(self, parent):
+        """The DLC entitlement label that goes to the game as BB_ADDCONT, and a button to forget it."""
+        holder = self.tk.Frame(parent, bg=CARD)
+        var = self.var('addcont', 'app')
+        text = self.label(holder, '')
+        text.pack(side='left')
+        clear = self.button(holder, _('Clear', 'Сбросить'), lambda: var.set(''))
+        clear.pack(side='left', padx=(self.px(14), 0))
+
+        def show(*_args):
+            label = var.get().strip()
+            text.configure(text=label or _('Not installed', 'Не установлено'), fg=GOLD if label else DIM)
+            clear.configure(state='normal' if label else 'disabled')
+        var.trace_add('write', show)
+        show()
+        return holder
+
+    def add_addcont(self, label):
+        var = self.var('addcont', 'app')
+        labels = [item for item in var.get().replace(' ', '').split(',') if item]
+        if label not in labels:
+            var.set(','.join([*labels, label][:8]))  # the game reads at most 8 labels
+
+    def install_from_pkg(self):
+        """The button: opens the install window (choose files or scan a folder, pick the destination, Install)."""
+        if self.installing:
+            self.messagebox.showinfo('Bloodborne', _('An installation is already running.',
+                                                     'Установка уже выполняется.'))
+            return
+        if self.process:
+            self.messagebox.showinfo('Bloodborne', _('Close the game before installing.', 'Закройте игру перед установкой.'))
+            return
+        if self.pkg_dialog and self.pkg_dialog.winfo_exists():
+            self.pkg_dialog.lift()
+            return
+        self.build_pkg_dialog()
+
+    def pkg_start_dir(self):
+        """Where the file and folder dialogs open: the last folder used, else Downloads, else the home folder."""
+        for folder in (self.app.get('pkg_src'), Path.home() / 'Downloads', Path.home()):
+            if folder and Path(folder).is_dir():
+                return str(folder)
+
+    def build_pkg_dialog(self):
+        """One window for the whole flow: choose files or scan a folder, see what each file is (ticked: the
+        best game, the highest update, every DLC), pick the destination, Install."""
+        tk, px = self.tk, self.px
+        win = self.pkg_dialog = tk.Toplevel(self.root)
+        win.title(_('Install from PKG', 'Установка из PKG'))
+        win.configure(bg=PANEL)
+        win.transient(self.root)
+        body = tk.Frame(win, bg=PANEL)
+        body.pack(fill='both', expand=True, padx=px(26), pady=px(22))
+        self.label(body, _('Install from PKG', 'Установка из PKG'), 'h2', bg=PANEL).pack(anchor='w')
+        self.label(body, _('Choose the game .pkg, the update and the DLC, or scan a folder. The best files are ticked '
+                           'for you.', 'Выберите .pkg игры, обновление и DLC или просканируйте папку. Лучшие файлы '
+                           'отмечаются сами.'), 'small', MUTED, PANEL, wraplength=px(620), justify='left').pack(
+            anchor='w', pady=(px(4), px(14)))
+        buttons = tk.Frame(body, bg=PANEL)
+        buttons.pack(anchor='w')
+        listing = tk.Frame(body, bg=CARD, highlightthickness=1, highlightbackground=LINE)
+        listing.pack(fill='x', pady=(px(14), 0))
+        note = self.label(body, '', 'small', MUTED, PANEL, wraplength=px(620), justify='left')
+        note.pack(anchor='w', pady=(px(10), 0))
+        where = tk.Frame(body, bg=PANEL)
+        where.pack(fill='x', pady=(px(14), 0))
+        self.label(where, _('Install into', 'Установить в'), 'body', MUTED, PANEL).pack(side='left', padx=(0, px(12)))
+        dest = tk.StringVar(value=str(Path(self.app.get('pkg_dir') or PORT_DIR / 'game')))
+        self.ttk.Entry(where, textvariable=dest, width=48).pack(side='left', fill='x', expand=True)
+        rows, ticks = [], {}
+
+        def selected():
+            return [row['info'] for row in rows if row['info'] and ticks[row['path']].get()]
+
+        def refresh(*_args):
+            chosen, text, colour, ready = selected(), '', MUTED, False
+            if rows and not any(row['info'] for row in rows):
+                text, colour = _('Tick the packages to install.', 'Отметьте пакеты для установки.'), BAD
+            elif rows and not chosen:
+                text = _('Tick the packages to install.', 'Отметьте пакеты для установки.')
+            elif chosen:
+                try:
+                    _sorted, warnings = check_pkgs(chosen)
+                    lines = []
+                    if any(info['category'] != 'ac' for info in chosen):
+                        need = int(sum(info['size'] for info in chosen) * PKG_SPACE_FACTOR)
+                        if not dest.get().strip():
+                            raise PkgError(_('Choose where to install the game', 'Выберите, куда установить игру'))
+                        free = free_space(dest.get())
+                        if free is not None and free < need:
+                            raise PkgError(_('Not enough free space on {}: about {} needed, {} free.',
+                                             'Недостаточно места на {}: нужно около {}, свободно {}.').format(
+                                Path(dest.get()).anchor or dest.get(), size_text(need), size_text(free)))
+                        lines.append(_('Needs about {} free; {} is free. The game takes 15 to 30 minutes to extract and '
+                                       'the launcher stays usable.', 'Нужно около {} свободного места, свободно {}. '
+                                       'Распаковка игры занимает 15–30 минут, лаунчер остаётся доступным.').format(
+                            size_text(need), size_text(free or 0)))
+                    text, ready = '\n'.join(lines + [f'⚠ {warning}' for warning in warnings]), True
+                    colour = CAUTION if warnings else MUTED
+                except PkgError as problem:
+                    text, colour = f'✗ {problem}', BAD
+            note.configure(text=text, fg=colour)
+            install.configure(state='normal' if ready else 'disabled')
+
+        def fill(found, where_from=None):
+            rows[:] = read_candidates(found)
+            for widget in listing.winfo_children():
+                widget.destroy()
+            ticks.clear()
+            first = preselect(rows)
+            for row in rows:
+                ticks[row['path']] = var = tk.BooleanVar(value=row['path'] in first)
+                var.trace_add('write', refresh)
+            for row in rows[:10]:
+                line = tk.Frame(listing, bg=CARD)
+                line.pack(fill='x', padx=px(14), pady=px(6))
+                if row['info']:
+                    Switch(self, line, ticks[row['path']]).pack(side='left')
+                else:
+                    self.label(line, '✗', 'body_bold', BAD).pack(side='left', padx=(px(6), px(8)))
+                text = tk.Frame(line, bg=CARD)
+                text.pack(side='left', padx=(px(12), 0), fill='x', expand=True)
+                self.label(text, row['path'].name, 'body').pack(anchor='w')
+                detail = (f"{pkg_description(row['info'])}  ·  {size_text(row['info']['size'])}" if row['info']
+                          else row['error'])
+                if where_from and row['path'].parent != where_from:
+                    detail += f"  ·  {short_path(row['path'].parent, 60)}"
+                self.label(text, detail, 'small', MUTED if row['info'] else BAD, wraplength=px(520), justify='left').pack(
+                    anchor='w')
+            if len(rows) > 10:
+                self.label(listing, _('{} more files are not shown.', 'Ещё файлов не показано: {}.').format(len(rows) - 10),
+                           'small', MUTED).pack(anchor='w', padx=px(14), pady=(0, px(8)))
+            refresh()
+
+        def choose():
+            picked = self.filedialog.askopenfilenames(
+                parent=win, title=_('Choose the Bloodborne .pkg files', 'Выберите .pkg файлы Bloodborne'),
+                initialdir=self.pkg_start_dir(),
+                filetypes=[(_('PlayStation 4 packages', 'Пакеты PlayStation 4'), '*.pkg'), (_('All files', 'Все файлы'), '*.*')])
+            if picked:
+                self.app['pkg_src'] = str(Path(picked[0]).parent)
+                fill([Path(path) for path in picked])
+
+        def scan():
+            folder = self.filedialog.askdirectory(parent=win, initialdir=self.pkg_start_dir(), title=_(
+                'Choose the folder to scan for .pkg files', 'Выберите папку для поиска .pkg файлов'))
+            if not folder:
+                return
+            self.app['pkg_src'] = str(Path(folder))
+            found = scan_pkg_files(folder)
+            fill(found, Path(folder))
+            if not found:
+                note.configure(text=_('No .pkg files found in {}.', 'В {} нет .pkg файлов.').format(Path(folder)), fg=BAD)
+
+        def browse():
+            start = Path(dest.get() or PORT_DIR)
+            while not start.is_dir() and start != start.parent:
+                start = start.parent
+            chosen = self.filedialog.askdirectory(parent=win, initialdir=str(start), title=_(
+                'Choose where to install the game', 'Выберите, куда установить игру'))
+            if chosen:
+                dest.set(str(Path(chosen)))
+
+        def go():
+            infos, _warnings = check_pkgs(selected())
+            folder = Path(dest.get().strip()) if any(info['category'] != 'ac' for info in infos) else None
+            win.destroy()
+            self.start_install(infos, folder)
+
+        self.button(where, _('Browse…', 'Обзор…'), browse, bg=PANEL).pack(side='left', padx=(px(8), 0))
+        dest.trace_add('write', refresh)
+        choose_button = self.button(buttons, _('Choose PKG files…', 'Выбрать файлы PKG…'), choose, 'primary', bg=PANEL)
+        choose_button.pack(side='left')
+        scan_button = self.button(buttons, _('Scan a folder…', 'Найти в папке…'), scan, bg=PANEL)
+        scan_button.pack(side='left', padx=(px(8), 0))
+        foot = tk.Frame(body, bg=PANEL)
+        foot.pack(fill='x', pady=(px(18), 0))
+        install = self.button(foot, _('Install', 'Установить'), go, 'primary', bg=PANEL)
+        install.pack(side='right')
+        install.configure(state='disabled')
+        self.button(foot, _('Cancel', 'Отмена'), win.destroy, bg=PANEL).pack(side='right', padx=(0, px(8)))
+        win.bind('<Escape>', lambda _e: win.destroy())
+        win.parts = {'choose': choose_button, 'scan': scan_button, 'install': install, 'rows': rows, 'ticks': ticks, 'dest': dest}
+        win.update_idletasks()
+        x = self.root.winfo_rootx() + max(0, (self.root.winfo_width() - win.winfo_reqwidth()) // 2)
+        y = self.root.winfo_rooty() + max(0, (self.root.winfo_height() - win.winfo_reqheight()) // 3)
+        win.geometry(f'+{x}+{y}')
+        try:
+            win.grab_set()
+        except tk.TclError:
+            pass
+
+    def start_install(self, infos, dest):
+        """Checks PkgTool and the free space, then extracts on a helper thread."""
+        steps = [info for info in infos if info['category'] != 'ac']
+        tool = None
+        if steps:
+            tool = pkgtool_path()
+            if not tool:
+                self.messagebox.showerror('Bloodborne', _('PkgTool.exe was not found. Unpack the whole package again.',
+                                                          'PkgTool.exe не найден. Распакуйте архив целиком заново.'))
+                return
+            need = int(sum(info['size'] for info in infos) * PKG_SPACE_FACTOR)
+            try:
+                dest = Path(dest)
+                dest.mkdir(parents=True, exist_ok=True)
+                free = shutil.disk_usage(dest).free
+            except OSError as failure:
+                self.messagebox.showerror('Bloodborne', str(failure))
+                return
+            if free < need:
+                self.messagebox.showerror('Bloodborne', _('Not enough free space on {}: about {} needed, {} free.',
+                                                          'Недостаточно места на {}: нужно около {}, свободно {}.').format(
+                    dest.anchor or dest, size_text(need), size_text(free)))
+                return
+        self.installing = True
+        self.install_cancel.clear()
+        if steps:
+            self.app['pkg_dir'] = str(dest)
+        self.set_running(True, preparing=True)
+        self.status.configure(text=_('Installing from PKG… {}%', 'Установка из PKG… {}%').format(0), fg=GOLD)
+        self.show_install_card(_('Installing from PKG', 'Установка из PKG'))
+        threading.Thread(target=self.install_work, args=(infos, dest, tool), daemon=True).start()
+
+    def install_work(self, infos, dest, tool):
+        """Helper thread: PkgTool for the game and then the update (into the same folder, the update over the
+        game), the package's param.sfo, and the DLC labels. Everything the window shows goes through ui_calls."""
+        ui = self.ui_calls.put
+        steps = [info for info in infos if info['category'] != 'ac']
+        game, error, number = None, None, 0
+        try:
+            if steps:
+                total, free_at_start = max(1, sum(info['size'] for info in steps)), shutil.disk_usage(dest).free
+
+                def progress(name):
+                    done = max(0.0, min(0.99, (free_at_start - shutil.disk_usage(dest).free) / total))
+                    ui(lambda: self.install_progress(done, name))
+            for info in infos:
+                name = info['path'].name
+                if info['category'] == 'ac':
+                    ui(lambda label=info['label']: (self.add_addcont(label), self.append(
+                        _('DLC license {} saved.', 'Лицензия DLC {} сохранена.').format(label) + '\n')))
+                    continue
+                number += 1
+                ui(lambda n=name, i=number: self.install_step(
+                    _('Extracting {} ({} of {})…', 'Распаковка {} ({} из {})…').format(n, i, len(steps)),
+                    _('Extracting {} to {}', 'Распаковка {} в {}').format(n, dest)))
+                code, tail = self.run_pkgtool(tool, info['path'], dest, progress)
+                if self.install_cancel.is_set():
+                    raise PkgError(_('Installation stopped.', 'Установка остановлена.'))
+                if code != 0:
+                    text = error_lines(tail)
+                    lines = [_('PkgTool stopped (code {}).', 'PkgTool остановился (код {}).').format(code)]
+                    if re.search(r'passcode|\bkeys?\b|superblock|magic|crypt|signature', '\n'.join(tail), re.I):
+                        lines.append(_('This package looks encrypted or is not supported by PkgTool, so it cannot be '
+                                       'installed here. Try another copy of the game or an already extracted game folder.',
+                                       'Пакет похож на зашифрованный или не поддерживается PkgTool, поэтому установить '
+                                       'его здесь нельзя. Попробуйте другую копию игры или уже распакованную папку игры.'))
+                    raise PkgError('\n'.join(lines + [text]))
+                game = find_game_folder(dest)
+                if not game:
+                    raise PkgError(_('Extraction finished, but there is no eboot.bin in {}.',
+                                     'Распаковка завершена, но в {} нет eboot.bin.').format(dest))
+                if write_param_sfo(game, info):
+                    ui(lambda v=info['app_ver'], g=game: self.append(
+                        _('param.sfo (version {}) written to {}', 'param.sfo (версия {}) записан в {}').format(v, g) + '\n'))
+        except (PkgError, OSError) as failure:
+            error = str(failure)
+        ui(lambda: self.install_done(game, error))
+
+    def run_pkgtool(self, tool, pkg, dest, progress):
+        """PkgTool pkg_extract; returns (exit code, its last lines that are not file names). Calls
+        progress(current file) twice a second while it runs; kills it when the installation is cancelled."""
+        process = subprocess.Popen([str(tool), 'pkg_extract', '--verbose', str(pkg), str(dest)], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+        self.install_proc = process
+        tail, current, encoding = collections.deque(maxlen=40), [''], console_encoding()
+
+        def pump():
+            for raw in iter(process.stdout.readline, b''):
+                line = raw.decode(encoding, errors='replace').rstrip()
+                if ' -> ' in line:  # --verbose prints "<path in the package> -> <extracted file>"
+                    current[0] = line.split(' -> ')[0]
+                elif line:
+                    tail.append(line)
+                    self.ui_calls.put(lambda text=line: self.append(f'  {text}\n'))
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        while process.poll() is None:
+            if self.install_cancel.is_set():
+                process.kill()
+                break
+            progress(current[0])
+            time.sleep(0.5)
+        code = process.wait()
+        reader.join(5)
+        return code, list(tail)
+
+    def show_install_card(self, title, detail=''):
+        """The card above the footer that follows the installation (it also shows how it ended)."""
+        tk, px = self.tk, self.px
+        if self.install_hide:
+            self.root.after_cancel(self.install_hide)
+            self.install_hide = None
+        if not self.install_card:
+            self.install_card = tk.Frame(self.root, bg=CARD, highlightthickness=1, highlightbackground=BLOOD)
+            body = tk.Frame(self.install_card, bg=CARD)
+            body.pack(padx=px(20), pady=px(14))
+            head = tk.Frame(body, bg=CARD)
+            head.pack(fill='x')
+            self.install_title = self.label(head, '', 'body_bold')
+            self.install_title.pack(side='left')
+            self.install_spin = Spinner(self, head, 16, CARD)
+            self.install_detail = self.label(body, '', 'small', MUTED, wraplength=px(520), justify='left', anchor='w')
+            self.install_detail.pack(fill='x', pady=(px(6), px(10)))
+            self.install_bar = Bar(self, body, 520)
+            self.install_close = self.button(body, _('Close', 'Закрыть'), self.hide_install_card)
+        self.install_close.pack_forget()
+        self.install_card.configure(highlightbackground=BLOOD)
+        self.install_title.configure(text=title, fg=TEXT)
+        self.install_detail.configure(text=detail)
+        self.install_spin.pack(side='right', padx=(px(16), 0))
+        self.install_spin.start()
+        self.install_bar.frac = self.install_bar.shown = 0.0
+        self.install_bar.draw(0.0)
+        self.install_bar.pack(anchor='w')
+        self.install_card.place(relx=0.5, rely=1.0, y=-px(104), anchor='s')
+        self.install_card.lift()
+
+    def hide_install_card(self):
+        if self.install_card:
+            self.install_card.place_forget()
+
+    def install_step(self, text, log):
+        self.install_step_text = text
+        self.install_detail.configure(text=text)
+        self.append(log + '\n')
+
+    def install_progress(self, fraction, name):
+        if not self.installing:
+            return
+        self.install_bar.set(fraction)
+        self.install_detail.configure(text=f'{self.install_step_text}\n{name[-70:]}' if name else self.install_step_text)
+        self.status.configure(text=_('Installing from PKG… {}%', 'Установка из PKG… {}%').format(int(fraction * 100)), fg=GOLD)
+
+    def install_done(self, game, error):
+        """On the Tk thread when the helper thread ends: the game folder is set (and the ready check
+        refreshed) after a success; a failure keeps PkgTool's last lines in the card and the log."""
+        self.installing, self.install_proc = False, None
+        self.set_running(False)
+        if error:
+            title, detail, ok = _('Installation failed', 'Установка не удалась'), error, False
+            self.append(f'{title}: {error}\n')
+        else:
+            if game:
+                self.var('game_dir', 'app').set(str(game))
+                title, detail = _('Game ready', 'Игра готова'), _('{} is now the game folder.', '{} теперь папка игры.').format(game)
+            else:
+                title = _('Installation finished', 'Установка завершена')
+                detail = _('DLC license {} saved.', 'Лицензия DLC {} сохранена.').format(self.var('addcont', 'app').get())
+            ok = True
+            self.append(f'{title}: {detail}\n')
+            self.collect()
+        self.install_bar.set(1.0 if ok else self.install_bar.frac)
+        self.install_spin.stop()
+        self.install_spin.pack_forget()
+        self.install_bar.pack_forget()
+        self.install_title.configure(text=('✓ ' if ok else '✗ ') + title, fg=OK if ok else BAD)
+        self.install_detail.configure(text=detail)
+        self.install_card.configure(highlightbackground=OK if ok else BAD)
+        self.install_close.pack(anchor='e', pady=(self.px(10), 0))
+        if ok:
+            self.install_hide = self.root.after(15000, self.hide_install_card)
+        self.refresh_status()
 
     # ---- updates -------------------------------------------------------------------------------
     def check_update(self, manual=False):
@@ -2309,6 +2930,8 @@ class Launcher:
             self.collect()
         except Exception:  # never keep the window open over a settings problem
             pass
+        if self.installing:
+            self.stop()
         self.motion.close()
         self.root.destroy()
 
