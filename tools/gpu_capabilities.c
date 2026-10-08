@@ -1,7 +1,9 @@
 /* Check whether native-size depth/stencil images can be blitted to reduced
  * renderer targets. The renderer needs both directions for live presets.
  * --gamepads: the connected gamepads, "GUID<tab>name" per line (the launcher's controller list,
- * BB_GAMEPAD). --read-input: one key or button for the launcher's controls (below). */
+ * BB_GAMEPAD). --read-input: one key or button for the launcher's controls (below).
+ * --upscalers: one "UPSCALER <name> supported|unsupported: <reason>" line per upscaler (below). */
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -165,7 +167,293 @@ static int read_input(const char *kind) {
     return 0;
 }
 
+/* The renderer's default ranking, or BB_GPU_ID (an index into the device list). NULL with a message
+ * in *error when there is no usable device; the list is freed here. */
+static VkPhysicalDevice select_device(VkInstance instance, const char **error) {
+    uint32_t count = 0;
+    if (vkEnumeratePhysicalDevices(instance, &count, NULL) != VK_SUCCESS || !count) {
+        *error = "no Vulkan device";
+        return VK_NULL_HANDLE;
+    }
+    VkPhysicalDevice *devices = calloc(count, sizeof(*devices));
+    if (!devices || vkEnumeratePhysicalDevices(instance, &count, devices) != VK_SUCCESS) {
+        free(devices);
+        *error = "cannot enumerate Vulkan devices";
+        return VK_NULL_HANDLE;
+    }
+    VkPhysicalDevice selected = devices[0];
+    const char *gpu_id = getenv("BB_GPU_ID");
+    if (gpu_id && atoi(gpu_id) >= 0) {
+        const unsigned long index = strtoul(gpu_id, NULL, 10);
+        if (index >= count) {
+            free(devices);
+            *error = "BB_GPU_ID is outside the device list";
+            return VK_NULL_HANDLE;
+        }
+        selected = devices[index];
+    } else {
+        for (uint32_t i = 1; i < count; ++i)
+            if (better_device(devices[i], selected)) selected = devices[i];
+    }
+    free(devices);
+    return selected;
+}
+
+/* --upscalers: whether each upscaler can run on the selected GPU, with the checks the renderer
+ * makes (vk_instance.h IsFsr4Int8Supported / IsFsr411Supported, Dlss::Problem, Xess::Problem),
+ * one line each on stdout:
+ *   UPSCALER <name> supported[: <note>]       the note is a warning (FSR 4 on RDNA2 or older)
+ *   UPSCALER <name> unsupported: <reason>
+ * FSR 4's downloadable assets are not checked here (the launcher knows where they are). DLSS and
+ * XeSS load their DLLs from the folder of this executable, as the renderer does from bb-probe.exe's. */
+#define MAX_INSTANCE_EXTENSIONS 16
+
+typedef struct {
+    int ok;
+    char reason[200];
+} UpscalerVerdict;
+
+/* Marks an upscaler unsupported, with the reason shown to the player. */
+static void fail(UpscalerVerdict *v, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void fail(UpscalerVerdict *v, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(v->reason, sizeof v->reason, fmt, args);
+    va_end(args);
+    v->ok = 0;
+}
+
+static void pass(UpscalerVerdict *v) {
+    v->ok = 1;
+    v->reason[0] = 0;
+}
+
+#ifdef _WIN32
+#include <windows.h>
+#include "../gpu/dlss_bridge/bbport_dlss_bridge.h"
+
+static void add_instance_extension(const char **list, uint32_t *count, const char *name) {
+    for (uint32_t i = 0; i < *count; ++i)
+        if (!strcmp(list[i], name)) return;
+    if (*count < MAX_INSTANCE_EXTENSIONS) list[(*count)++] = name;
+}
+
+/* The ABI of libxess.dll's Vulkan entry points (inc/xess/xess_vk.h, MIT); xess_result_t is an int. */
+typedef int (*XessInstanceExtensionsFn)(uint32_t *count, const char *const **names, uint32_t *min_api);
+typedef int (*XessDeviceExtensionsFn)(VkInstance, VkPhysicalDevice, uint32_t *count,
+                                      const char *const **names);
+
+static HMODULE load_beside_exe(const wchar_t *name) {
+    wchar_t path[MAX_PATH + 32];
+    DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (!length || length >= MAX_PATH) return NULL;
+    while (length && path[length - 1] != L'\\') --length;
+    path[length] = 0;
+    wcscat(path, name);
+    if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) return NULL;
+    return LoadLibraryW(path);
+}
+
+static void bridge_log(int warning, const char *message) {
+    (void)warning;
+    (void)message;
+}
+
+typedef struct {
+    HMODULE xess;
+    XessInstanceExtensionsFn xess_instance_extensions;
+    XessDeviceExtensionsFn xess_device_extensions;
+    const BbDlssApi *dlss;
+    int xess_result;
+    int dlss_configured;
+} Dlls;
+
+/* Loads the DLLs and adds their instance extensions to `list`. */
+static void load_upscaler_dlls(Dlls *dlls, const char **list, uint32_t *count) {
+    memset(dlls, 0, sizeof *dlls);
+    dlls->xess = load_beside_exe(L"libxess.dll");
+    if (dlls->xess) {
+        dlls->xess_instance_extensions =
+            (XessInstanceExtensionsFn)(void *)GetProcAddress(dlls->xess, "xessVKGetRequiredInstanceExtensions");
+        dlls->xess_device_extensions =
+            (XessDeviceExtensionsFn)(void *)GetProcAddress(dlls->xess, "xessVKGetRequiredDeviceExtensions");
+        const char *const *names = NULL;
+        uint32_t n = 0, min_api = 0;
+        if (dlls->xess_instance_extensions && dlls->xess_device_extensions) {
+            dlls->xess_result = dlls->xess_instance_extensions(&n, &names, &min_api);
+            if (dlls->xess_result >= 0)
+                for (uint32_t i = 0; i < n; ++i) add_instance_extension(list, count, names[i]);
+        } else {
+            dlls->xess_result = -1000;
+        }
+    }
+    HMODULE bridge = load_beside_exe(L"bbport_dlss.dll");
+    HMODULE ngx = load_beside_exe(L"nvngx_dlss.dll");
+    BbDlssGetApiFn get_api =
+        bridge && ngx ? (BbDlssGetApiFn)(void *)GetProcAddress(bridge, "BbDlssGetApi") : NULL;
+    const BbDlssApi *api = get_api ? get_api() : NULL;
+    if (!api || api->abi != BBPORT_DLSS_BRIDGE_ABI) return;
+    wchar_t folder[MAX_PATH + 32], data[MAX_PATH + 32];
+    DWORD length = GetModuleFileNameW(NULL, folder, MAX_PATH);
+    while (length && folder[length - 1] != L'\\') --length;
+    folder[length] = 0;
+    const DWORD temp = GetTempPathW(MAX_PATH, data);
+    if (!temp || temp > MAX_PATH) return;
+    wcscpy(data + temp, L"bbport-dlss-probe");
+    CreateDirectoryW(data, NULL);
+    dlls->dlss = api;
+    uint32_t n = 0;
+    const VkExtensionProperties *required = NULL;
+    if (api->Configure(folder, data, bridge_log) && api->InstanceExtensions(&n, &required)) {
+        dlls->dlss_configured = 1;
+        for (uint32_t i = 0; i < n; ++i) add_instance_extension(list, count, required[i].extensionName);
+    }
+}
+
+static void verdict_xess(const Dlls *dlls, VkInstance instance, VkPhysicalDevice device, int instance_ok,
+                         UpscalerVerdict *v) {
+    if (!dlls->xess) return fail(v, "libxess.dll is not installed");
+    if (dlls->xess_result < 0 || !instance_ok) return fail(v, "this Vulkan driver lacks what XeSS needs");
+    uint32_t n = 0;
+    const char *const *names = NULL;
+    const int result = dlls->xess_device_extensions(instance, device, &n, &names);
+    if (result < 0) return fail(v, "this GPU or driver does not support XeSS (DP4a needed)");
+    for (uint32_t i = 0; i < n; ++i)
+        if (!has_extension(device, names[i])) return fail(v, "needs the Vulkan extension %s", names[i]);
+    pass(v);
+}
+
+static void verdict_dlss(const Dlls *dlls, const VkPhysicalDeviceProperties *props, VkInstance instance,
+                         VkPhysicalDevice device, int instance_ok, UpscalerVerdict *v) {
+    if (props->vendorID != 0x10de) return fail(v, "not an NVIDIA RTX GPU");
+    if (!dlls->dlss) return fail(v, "bbport_dlss.dll and nvngx_dlss.dll are not installed");
+    if (!dlls->dlss_configured || !instance_ok) return fail(v, "the NVIDIA driver lacks what DLSS needs (update it)");
+    uint32_t n = 0;
+    const VkExtensionProperties *required = NULL;
+    if (!dlls->dlss->DeviceExtensions(instance, device, &n, &required))
+        return fail(v, "this GPU or driver does not support DLSS (GeForce RTX needed)");
+    for (uint32_t i = 0; i < n; ++i)
+        if (!has_extension(device, required[i].extensionName))
+            return fail(v, "needs the Vulkan extension %s", required[i].extensionName);
+    pass(v);
+}
+#endif
+
+static int upscalers_mode(void) {
+    const char *extensions[MAX_INSTANCE_EXTENSIONS];
+    uint32_t extension_count = 0;
+#ifdef _WIN32
+    Dlls dlls;
+    load_upscaler_dlls(&dlls, extensions, &extension_count);
+#endif
+    const VkApplicationInfo app = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pApplicationName = "bbport upscaler probe",
+        .apiVersion = VK_API_VERSION_1_3,
+    };
+    VkInstanceCreateInfo create = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &app,
+        .enabledExtensionCount = extension_count,
+        .ppEnabledExtensionNames = extensions,
+    };
+    int instance_ok = 1;
+    VkInstance instance = VK_NULL_HANDLE;
+    if (vkCreateInstance(&create, NULL, &instance) != VK_SUCCESS) {
+        /* An extension of DLSS or XeSS is missing: the other upscalers still get their answer. */
+        instance_ok = 0;
+        create.enabledExtensionCount = 0;
+        if (vkCreateInstance(&create, NULL, &instance) != VK_SUCCESS) {
+            fputs("GPU upscalers: cannot create Vulkan instance\n", stderr);
+            return 1;
+        }
+    }
+    const char *error = NULL;
+    const VkPhysicalDevice device = select_device(instance, &error);
+    if (!device) {
+        fprintf(stderr, "GPU upscalers: %s\n", error);
+        vkDestroyInstance(instance, NULL);
+        return 1;
+    }
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(device, &props);
+
+    VkPhysicalDeviceShaderMixedFloatDotProductFeaturesVALVE mixed = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MIXED_FLOAT_DOT_PRODUCT_FEATURES_VALVE};
+    VkPhysicalDeviceCooperativeMatrixFeaturesKHR matrix = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR, .pNext = &mixed};
+    VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR derivatives = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR, .pNext = &matrix};
+    VkPhysicalDeviceVulkan13Features vk13 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, .pNext = &derivatives};
+    VkPhysicalDeviceVulkan12Features vk12 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &vk13};
+    VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mutable_type = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT, .pNext = &vk12};
+    VkPhysicalDeviceFeatures2 features = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+                                          .pNext = &mutable_type};
+    vkGetPhysicalDeviceFeatures2(device, &features);
+    const int derivatives_ok = has_extension(device, "VK_KHR_compute_shader_derivatives") &&
+                               derivatives.computeDerivativeGroupLinear;
+    const int matrix_ok = has_extension(device, "VK_KHR_cooperative_matrix") && matrix.cooperativeMatrix;
+    const int mixed_ok = has_extension(device, "VK_VALVE_shader_mixed_float_dot_product") &&
+                         mixed.shaderMixedFloatDotProductFloat16AccFloat32;
+
+    UpscalerVerdict fsr3, fsr4, fsr411, dlss, xess;
+    pass(&fsr3);
+    if (!features.features.shaderStorageImageWriteWithoutFormat)
+        fail(&fsr3, "the GPU lacks shaderStorageImageWriteWithoutFormat");
+    /* vk_instance.h: IsFsr4Int8Supported. */
+    pass(&fsr4);
+    if (!(vk12.shaderFloat16 && vk12.shaderInt8 && features.features.shaderInt16 &&
+          vk13.shaderIntegerDotProduct && derivatives_ok &&
+          features.features.shaderStorageImageExtendedFormats))
+        fail(&fsr4, "the GPU or driver lacks the INT8 features FSR 4 needs");
+    if (fsr4.ok) {
+        /* RDNA3 and newer expose cooperative matrices (WMMA); older AMD GPUs run the INT8 model in
+         * plain shaders. The name also catches RDNA1/2 (RX 5000/6000) and Vega if a driver exposes
+         * matrices anyway. */
+        const int amd = props.vendorID == 0x1002;
+        const int old_name = strstr(props.deviceName, "RX 6") || strstr(props.deviceName, "RX 5") ||
+                             strstr(props.deviceName, "Vega");
+        if (amd && (!matrix_ok || old_name))
+            snprintf(fsr4.reason, sizeof fsr4.reason, "may be slow on this GPU");
+    }
+    /* IsFsr411Supported: FSR 4 INT8 plus the Valve extension (Linux Mesa in practice). */
+    pass(&fsr411);
+    if (!fsr4.ok) fail(&fsr411, "%s", fsr4.reason);
+    else if (!mixed_ok) fail(&fsr411, "needs VK_VALVE_shader_mixed_float_dot_product (Linux driver)");
+#ifdef _WIN32
+    verdict_dlss(&dlls, &props, instance, device, instance_ok, &dlss);
+    verdict_xess(&dlls, instance, device, instance_ok, &xess);
+    if (xess.ok && !mutable_type.mutableDescriptorType)
+        fail(&xess, "needs the Vulkan feature mutableDescriptorType");
+    if (xess.ok && !features.features.shaderStorageImageWriteWithoutFormat)
+        fail(&xess, "needs the Vulkan feature shaderStorageImageWriteWithoutFormat");
+#else
+    (void)instance_ok;
+    (void)mutable_type;
+    fail(&dlss, "DLSS is built for Windows only");
+    fail(&xess, "XeSS is built for Windows only");
+#endif
+    const struct { const char *name; const UpscalerVerdict *verdict; } rows[] = {
+        {"fsr4", &fsr4}, {"fsr411", &fsr411}, {"fsr3", &fsr3}, {"taa", &fsr3},
+        {"dlss", &dlss}, {"xess", &xess},
+    };
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; ++i) {
+        const UpscalerVerdict *v = rows[i].verdict;
+        if (v->ok && !v->reason[0]) printf("UPSCALER %s supported\n", rows[i].name);
+        else printf("UPSCALER %s %s: %s\n", rows[i].name, v->ok ? "supported" : "unsupported", v->reason);
+    }
+    fflush(stdout);
+    vkDestroyInstance(instance, NULL);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc > 1 && !strcmp(argv[1], "--upscalers")) {
+        return upscalers_mode();
+    }
     if (argc > 1 && !strcmp(argv[1], "--read-input")) {
         return read_input(argc > 2 ? argv[2] : "any");
     }
@@ -187,38 +475,15 @@ int main(int argc, char **argv) {
         fputs("GPU scene scaling: cannot create Vulkan instance\n", stderr);
         return 1;
     }
-    uint32_t count = 0;
-    if (vkEnumeratePhysicalDevices(instance, &count, NULL) != VK_SUCCESS || !count) {
-        fputs("GPU scene scaling: no Vulkan device\n", stderr);
+    const char *error = NULL;
+    const VkPhysicalDevice selected = select_device(instance, &error);
+    if (!selected) {
+        fprintf(stderr, "GPU scene scaling: %s\n", error);
         vkDestroyInstance(instance, NULL);
         return 1;
-    }
-    VkPhysicalDevice *devices = calloc(count, sizeof(*devices));
-    if (!devices || vkEnumeratePhysicalDevices(instance, &count, devices) != VK_SUCCESS) {
-        fputs("GPU scene scaling: cannot enumerate Vulkan devices\n", stderr);
-        free(devices);
-        vkDestroyInstance(instance, NULL);
-        return 1;
-    }
-    /* Match vk_instance.cpp's default ranking or its explicit BB_GPU_ID index. */
-    VkPhysicalDevice selected = devices[0];
-    const char *gpu_id = getenv("BB_GPU_ID");
-    if (gpu_id && atoi(gpu_id) >= 0) {
-        const unsigned long index = strtoul(gpu_id, NULL, 10);
-        if (index >= count) {
-            fputs("GPU scene scaling: BB_GPU_ID is outside the device list\n", stderr);
-            free(devices);
-            vkDestroyInstance(instance, NULL);
-            return 1;
-        }
-        selected = devices[index];
-    } else {
-        for (uint32_t i = 1; i < count; ++i)
-            if (better_device(devices[i], selected)) selected = devices[i];
     }
     if (live_mode) {
         printf("%d\n", live_resolution_suits(selected));
-        free(devices);
         vkDestroyInstance(instance, NULL);
         return 0;
     }
@@ -244,7 +509,6 @@ int main(int argc, char **argv) {
         }
     }
     if (supported) fprintf(stderr, "GPU scene scaling: %s supports live presets\n", props.deviceName);
-    free(devices);
     vkDestroyInstance(instance, NULL);
     return supported ? 0 : 1;
 }

@@ -22,6 +22,7 @@
 #include "video_core/renderer_vulkan/vk_common.h"
 #include "video_core/renderer_vulkan/vk_dlss.h"
 #include "video_core/renderer_vulkan/vk_fsr4.h"
+#include "video_core/renderer_vulkan/vk_xess.h"
 #include "video_core/texture_cache/image.h"
 
 struct FfxVkPortableUpscaleContext;
@@ -180,13 +181,19 @@ private:
     bool RecordDlss(vk::CommandBuffer cmdbuf, const Dlss::Resource& color,
                     const Dlss::Resource& depth, u32 w, u32 h, u32 ow, u32 oh, float frame_ms,
                     bool hdr);
+    /// bbport: XeSS selected and ready (libxess.dll, a GPU with DP4a).
+    [[nodiscard]] bool UseXess() const;
+    /// Records XeSS into `cmdbuf` (output in General). `hdr`: linear scene color input.
+    bool RecordXess(vk::CommandBuffer cmdbuf, const Xess::Resource& color,
+                    const Xess::Resource& depth, u32 w, u32 h, u32 ow, u32 oh, bool hdr);
     /// Records FSR 4 into output_image; on a permanent failure FSR 3 takes over.
     bool RecordFsr4(vk::CommandBuffer cmdbuf, Fsr4Upscaler::Image color, Fsr4Upscaler::Image depth,
                     u32 w, u32 h, u32 ow, u32 oh, float frame_ms);
     void RecordTaa(vk::CommandBuffer cmdbuf, vk::ImageView color, vk::ImageView depth);
     /// Sharpness above 1 for FSR 3/4 (their RCAS stops at 1): one more RCAS pass over the target
     /// (output_image, or the 8-bit UI image with ldr) in General layout after the upscaler.
-    void ExtraSharpen(vk::Image target, bool ldr, u32 w, u32 h);
+    /// `whole_range`: for XeSS, which has no sharpener, the pass covers the whole 0..2 sharpness.
+    void ExtraSharpen(vk::Image target, bool ldr, u32 w, u32 h, bool whole_range = false);
 
     const Instance& instance;
     Scheduler& scheduler;
@@ -264,6 +271,7 @@ private:
     std::unique_ptr<Fsr4Upscaler> fsr4;
     bool fsr4_failed = false;
     bool dlss_failed = false;
+    bool xess_failed = false;
     VideoCore::UniqueImage motion_image;
     VideoCore::UniqueImage output_image;
     vk::UniqueImageView motion_view;

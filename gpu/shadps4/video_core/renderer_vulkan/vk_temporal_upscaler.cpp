@@ -187,6 +187,12 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
                         : dlss->Problem();
         BbSettings::ConfigureDlssSupport(dlss && dlss->Available(), problem.c_str());
     }
+    {
+        const Xess* xess = Xess::Get();
+        static std::string problem;
+        problem = !xess ? "libxess.dll is not installed" : xess->Problem();
+        BbSettings::ConfigureXessSupport(xess && xess->Available(), problem.c_str());
+    }
     // Available unless BB_UPSCALER=none; on/off and the parameters are the menu's settings.
     const char* env = std::getenv("BB_UPSCALER");
     enabled = !(env && std::strcmp(env, "none") == 0);
@@ -247,14 +253,16 @@ bool TemporalUpscaler::Active() const {
            (BbSettings::Get().upscaler == BbSettings::UpscalerFsr3 ||
             BbSettings::IsFsr4(BbSettings::Get().upscaler) ||
             BbSettings::Get().upscaler == BbSettings::UpscalerTaa ||
-            BbSettings::Get().upscaler == BbSettings::UpscalerDlss) &&
+            BbSettings::Get().upscaler == BbSettings::UpscalerDlss ||
+            BbSettings::Get().upscaler == BbSettings::UpscalerXess) &&
            !BbToggle::Disabled(1u << 24);
 }
 
 bool TemporalUpscaler::ReactiveOn() const {
     // FSR 4 takes no reactive mask itself: the mask blends its output afterwards
-    // (RecordFsr4Reactive). DLSS takes none: the opaque snapshot and the mask pass would be wasted.
-    return BbSettings::Get().reactive && !BbToggle::Disabled(1u << 27) && !UseDlss() &&
+    // (RecordFsr4Reactive). DLSS and XeSS take none here: the opaque snapshot and the mask pass
+    // would be wasted.
+    return BbSettings::Get().reactive && !BbToggle::Disabled(1u << 27) && !UseDlss() && !UseXess() &&
            BbSettings::Get().upscaler != BbSettings::UpscalerTaa;
 }
 
@@ -426,8 +434,8 @@ void TemporalUpscaler::OnDispatch(u64 cs_hash) {
 }
 
 bool TemporalUpscaler::EnsureResources(u32 w, u32 h, u32 ow, u32 oh, bool hdr) {
-    // DLSS, like FSR 4, has its own context: no portable FSR 3 context is made.
-    const bool use_fsr4 = UseFsr4() || UseDlss();
+    // DLSS and XeSS, like FSR 4, have their own context: no portable FSR 3 context is made.
+    const bool use_fsr4 = UseFsr4() || UseDlss() || UseXess();
     const bool use_taa = BbSettings::Get().upscaler == BbSettings::UpscalerTaa;
     if (use_taa && (w != ow || h != oh)) {
         std::printf("TAA: remove BB_RENDER_RES to use native-resolution TAA\n");
@@ -831,9 +839,9 @@ void TemporalUpscaler::RecordTaa(vk::CommandBuffer cmdbuf, vk::ImageView color,
     taa_next = 1 - taa_next;
 }
 
-void TemporalUpscaler::ExtraSharpen(vk::Image target, bool ldr, u32 w, u32 h) {
+void TemporalUpscaler::ExtraSharpen(vk::Image target, bool ldr, u32 w, u32 h, bool whole_range) {
     const auto& settings = BbSettings::Get();
-    const float extra = std::clamp(settings.sharpness.load(), 0.0f, 2.0f) - 1.0f;
+    const float extra = std::clamp(settings.sharpness.load(), 0.0f, 2.0f) - (whole_range ? 0.0f : 1.0f);
     if (!settings.sharpen || extra <= 0.0f) {
         return;
     }
@@ -1211,6 +1219,12 @@ void TemporalUpscaler::Run() {
             {input_color, input_color_view, color.info.pixel_format, vk::ImageAspectFlagBits::eColor, w, h},
             {input_depth, input_depth_view, depth_format, vk::ImageAspectFlagBits::eDepth, w, h}, w, h,
             ow, oh, frame_ms, true);
+    } else if (UseXess()) {
+        dispatched = RecordXess(
+            cmdbuf,
+            {input_color, input_color_view, color.info.pixel_format, vk::ImageAspectFlagBits::eColor, w, h},
+            {input_depth, input_depth_view, depth_format, vk::ImageAspectFlagBits::eDepth, w, h}, w, h,
+            ow, oh, true);
     } else {
         FfxVkPortableUpscaleDispatchInfo info{};
         info.structSize = sizeof(info);
@@ -1284,7 +1298,7 @@ void TemporalUpscaler::Run() {
         reset = false;
         dispatched_last_frame = true;
         if (BbSettings::Get().upscaler != BbSettings::UpscalerTaa) {
-            ExtraSharpen(vk::Image(output_image), false, ow, oh);
+            ExtraSharpen(vk::Image(output_image), false, ow, oh, UseXess());
         }
         // bbport: BB_DUMP_TRIGGER on this (HDR scene color) path too: the upscaler's inputs and
         // its result, for ghosting and history checks (tools/dump_view.py).
@@ -1767,7 +1781,8 @@ void TemporalUpscaler::RunScaled() {
     last_frame = now;
 
     // bbport: FSR 4 writes its HDR-format output, copied into the output-size UI image.
-    if (UseFsr4() || UseDlss() || BbSettings::Get().upscaler == BbSettings::UpscalerTaa) {
+    if (UseFsr4() || UseDlss() || UseXess() ||
+        BbSettings::Get().upscaler == BbSettings::UpscalerTaa) {
         const auto cmdbuf = scheduler.CommandBuffer(); // after the commands recorded above
         barrier(vk::Image(output_image), vk::ImageAspectFlagBits::eColor,
                 vk::ImageLayout::eUndefined, all, vk::AccessFlagBits2::eNone,
@@ -1782,6 +1797,13 @@ void TemporalUpscaler::RunScaled() {
                              {depth_image, depth_view, depth_format, vk::ImageAspectFlagBits::eDepth,
                               source_width, source_height},
                              w, h, ow, oh, frame_ms, false);
+        } else if (UseXess()) {
+            ok4 = RecordXess(cmdbuf,
+                             {color_image, color_view, color.info.pixel_format,
+                              vk::ImageAspectFlagBits::eColor, source_width, source_height},
+                             {depth_image, depth_view, depth_format, vk::ImageAspectFlagBits::eDepth,
+                              source_width, source_height},
+                             w, h, ow, oh, false);
         } else {
             // bbport: FSR 4 treats its colour as linear light; this frame is the game's
             // tonemapped, sRGB-encoded one. Decoded first, the output encoded again below.
@@ -1882,7 +1904,7 @@ void TemporalUpscaler::RunScaled() {
         }
         if (ok4) {
             if (BbSettings::Get().upscaler != BbSettings::UpscalerTaa) {
-                ExtraSharpen(vk::Image(output_image), false, ow, oh);
+                ExtraSharpen(vk::Image(output_image), false, ow, oh, UseXess());
             }
             barrier(vk::Image(output_image), vk::ImageAspectFlagBits::eColor,
                     vk::ImageLayout::eGeneral, all, rw, vk::ImageLayout::eGeneral,
@@ -2247,6 +2269,49 @@ bool TemporalUpscaler::UseDlss() const {
     const Dlss* dlss = Dlss::Get();
     return BbSettings::Get().upscaler == BbSettings::UpscalerDlss && dlss && dlss->Available() &&
            !dlss_failed;
+}
+
+bool TemporalUpscaler::UseXess() const {
+    const Xess* xess = Xess::Get();
+    return BbSettings::Get().upscaler == BbSettings::UpscalerXess && xess && xess->Available() &&
+           !xess_failed;
+}
+
+bool TemporalUpscaler::RecordXess(vk::CommandBuffer cmdbuf, const Xess::Resource& color,
+                                  const Xess::Resource& depth, u32 w, u32 h, u32 ow, u32 oh,
+                                  bool hdr) {
+    Xess* xess = Xess::Get();
+    const Xess::FeatureDesc desc{w, h, ow, oh, hdr};
+    bool ok = true;
+    if (!xess->HasFeature(desc)) {
+        // XeSS initialization is blocking and uses the device's queue: nothing else may be in flight.
+        scheduler.WaitSubmittedWork();
+        xess->ReleaseFeature();
+        ok = xess->CreateFeature(desc);
+        reset = true;
+    }
+    if (ok) {
+        // The jitter and motion vectors FSR 3 and DLSS get: render pixels, current to previous.
+        const float sign = BbToggle::Disabled(1u << 26) ? -1.0f : 1.0f;
+        ok = xess->Evaluate(cmdbuf, {
+            .color = color,
+            .depth = depth,
+            .motion = {vk::Image(motion_image), *motion_view, vk::Format::eR16G16Sfloat,
+                       vk::ImageAspectFlagBits::eColor, w, h},
+            .output = {vk::Image(output_image), *output_view, vk::Format::eR16G16B16A16Sfloat,
+                       vk::ImageAspectFlagBits::eColor, ow, oh},
+            .jitter_x = sign * jitter[0],
+            .jitter_y = sign * jitter[1],
+            .reset = reset,
+        });
+    }
+    if (!ok) {
+        std::printf("Upscaler: XeSS failed; falling back to FSR 3.1\n");
+        BbSettings::Get().upscaler = BbSettings::UpscalerFsr3;
+        xess_failed = true; // EnsureResources creates the FSR 3 context next frame
+        reset = true;
+    }
+    return ok;
 }
 
 bool TemporalUpscaler::RecordDlss(vk::CommandBuffer cmdbuf, const Dlss::Resource& color,

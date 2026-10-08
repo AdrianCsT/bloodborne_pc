@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds dist/bbport-windows/ (and dist/bbport-windows.zip): BLauncher.exe (the launcher, frozen
 # with PyInstaller so players need no Python), bb-probe.exe with the MSYS2 CLANG64 DLLs it needs,
-# PkgTool (extracts the game from .pkg files), ReShade (optional post-processing, bin/reshade), the
+# PkgTool (extracts the game from .pkg files), ReShade (optional post-processing, bin/reshade), Intel XeSS
+# (libxess.dll, the XeSS upscaler's runtime), the
 # preparation scripts and run.py. Run from an MSYS2 CLANG64 shell after `bash build.sh`.
 # Freezing uses a Windows Python 3.10+ (python.org; WINPYTHON overrides) and a private venv in
 # out/pyenv with PyInstaller. FSR 4 assets in fsr4_shaders/ are included when present.
@@ -79,6 +80,30 @@ unzip -oq "out/reshade-cache/$reshade_exe" ReShade64.dll -d out/reshade || [[ $?
 echo "$reshade_dll_sha256 *out/reshade/ReShade64.dll" | sha256sum -c --status - ||
     { echo "ReShade64.dll from $reshade_exe does not match its SHA-256" >&2; exit 1; }
 
+# Intel XeSS SDK 3.0.2 (github.com/intel/xess, Intel Simplified Software License): libxess.dll, the Super
+# Resolution the XeSS upscaler loads at run time (it is DP4a based and runs on AMD, Intel and NVIDIA GPUs). The
+# license allows redistributing the unmodified binary with its license text; both are shipped untouched.
+# The release zip (77 MB) is cached in out/xess-cache like PkgTool and ReShade and pinned by SHA-256.
+xess_zip=XeSS_SDK_3.0.2.zip
+xess_url=https://github.com/intel/xess/releases/download/v3.0.2/$xess_zip
+xess_zip_sha256=88b8a373f30e33f3558a77a93e634f11b8132fc3047ea1a8edeead32b8471990
+xess_dll_sha256=251659dd84a3e84de67c886a4186e01f3eca49b00641906fe38bb6b807e5d5b7
+mkdir -p out/xess-cache
+if [[ ! -f out/xess-cache/$xess_zip ]]; then
+    curl -fsSL --retry 3 -o "out/xess-cache/$xess_zip.part" "$xess_url"
+    mv -f "out/xess-cache/$xess_zip.part" "out/xess-cache/$xess_zip"
+fi
+if ! echo "$xess_zip_sha256 *out/xess-cache/$xess_zip" | sha256sum -c --status -; then
+    rm -f "out/xess-cache/$xess_zip"
+    echo "$xess_zip does not match its SHA-256 (deleted); run again" >&2
+    exit 1
+fi
+rm -rf out/xess
+mkdir -p out/xess
+unzip -oq "out/xess-cache/$xess_zip" bin/libxess.dll LICENSE.txt third-party-programs.txt -d out/xess
+echo "$xess_dll_sha256 *out/xess/bin/libxess.dll" | sha256sum -c --status - ||
+    { echo "libxess.dll from $xess_zip does not match its SHA-256" >&2; exit 1; }
+
 # The package is assembled in a fresh staging folder and zipped from there; dist/bbport-windows
 # (a playable copy that may hold saves and settings) is only refreshed afterwards.
 dest=out/stage/bbport-windows
@@ -108,6 +133,11 @@ if [[ -f out/bbport_dlss.dll && -f out/nvngx_dlss.dll ]]; then
 else
     echo "DLSS bridge not built (packaging/windows/build_dlss.sh): no DLSS in this package" >&2
 fi
+# XeSS (Intel): libxess.dll next to bb-probe.exe, unmodified (not stripped), with Intel's license and third-party notices.
+mkdir -p "$dest/licenses"
+cp out/xess/bin/libxess.dll "$dest/bin/"
+cp out/xess/LICENSE.txt "$dest/licenses/Intel-XeSS-LICENSE.txt"
+cp out/xess/third-party-programs.txt "$dest/licenses/Intel-XeSS-third-party-programs.txt"
 mkdir -p "$dest/bin/pkgtool" "$dest/licenses"
 cp out/pkgtool/PkgTool.exe out/pkgtool/LibOrbisPkg.dll "$dest/bin/pkgtool/"
 cp out/pkgtool/LICENSE.txt "$dest/licenses/PkgTool-LICENSE.txt"

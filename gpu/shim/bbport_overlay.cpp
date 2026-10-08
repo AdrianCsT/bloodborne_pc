@@ -216,14 +216,14 @@ void Menu() {
     const char* upscalers[] = {
         BbSettings::MenuText("Off", "Выкл"), "FSR 3.1", "FSR 4 (INT8)", "FSR 4.1.1 (INT8)",
         BbSettings::MenuText("TAA (native anti-aliasing)", "TAA (нативное сглаживание)"),
-        "DLSS (NVIDIA RTX)"};
-    static const char* later[] = {"XeSS"};
+        "DLSS (NVIDIA RTX)", "XeSS (Intel, any GPU)"};
     int upscaler = s.upscaler;
     if (ImGui::BeginCombo(BbSettings::MenuText("Upscaler", "Апскейлер"), upscalers[upscaler])) {
         for (int i = 0; i < BbSettings::UpscalerCount; ++i) {
             const bool supported = i == BbSettings::UpscalerFsr4     ? s.fsr4_supported.load()
                                    : i == BbSettings::UpscalerFsr411 ? s.fsr411_supported.load()
                                    : i == BbSettings::UpscalerDlss   ? s.dlss_supported.load()
+                                   : i == BbSettings::UpscalerXess   ? s.xess_supported.load()
                                                                      : true;
             ImGui::BeginDisabled(!supported);
             if (ImGui::Selectable(upscalers[i], i == upscaler)) {
@@ -236,17 +236,13 @@ void Menu() {
                                                          "— не поддерживается видеокартой"));
             }
         }
-        for (const char* name : later) {
-            ImGui::BeginDisabled();
-            ImGui::Selectable(name, false);
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", BbSettings::MenuText("— in development", "— в работе"));
-        }
         ImGui::EndCombo();
     }
     if (const char* problem = s.dlss_problem.load(); problem && upscaler == BbSettings::UpscalerDlss) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "DLSS: %s", problem);
+    }
+    if (const char* problem = s.xess_problem.load(); problem && upscaler == BbSettings::UpscalerXess) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "XeSS: %s", problem);
     }
     if (const char* problem = s.fsr4_problem.load()) {
         ImGui::PushTextWrapPos();
@@ -569,6 +565,7 @@ void FpsCounter() {
                 : s.upscaler == BbSettings::UpscalerFsr411 ? "FSR 4.1.1"
                 : s.upscaler == BbSettings::UpscalerTaa    ? "TAA"
                 : s.upscaler == BbSettings::UpscalerDlss   ? "DLSS"
+                : s.upscaler == BbSettings::UpscalerXess   ? "XeSS"
                                                            : "");
     ImGui::End();
 }

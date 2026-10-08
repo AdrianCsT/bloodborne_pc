@@ -66,9 +66,17 @@ Problems
 Upscaling
 - DLSS: NVIDIA GeForce RTX 20 series or newer with a current driver (Graphics -> Upscaler ->
   DLSS, or the in-game menu). On other GPUs the option is greyed out.
+- XeSS (Intel XeSS Super Resolution 2.0.2, from the XeSS SDK 3.0.2, bin\libxess.dll): for AMD, Intel
+  and NVIDIA GPUs with DP4a support, a good choice where FSR 4 is slow or missing (for example
+  Radeon RX 6000). It has no sharpener of its own: the Sharpness setting adds one.
 - FSR 3.1 works on every GPU. FSR 4 needs its assets in fsr4_shaders\ (included in this
   package, or Graphics -> "Download FSR 4 assets"); GPUs without the required shader features
   fall back to FSR 3.1 by themselves.
+- The launcher checks what your PC can run: upscalers it cannot are marked "not available" with the
+  reason and cannot be picked. If the saved one cannot run, the launcher switches to DLSS (RTX
+  GPUs) or FSR 3.1 and says so once. FSR 4 is allowed on Radeon RX 5000/6000 GPUs but marked "may
+  be slow"; FSR 4.1.1 needs a Vulkan extension (VK_VALVE_shader_mixed_float_dot_product) that
+  only Linux (Mesa) drivers offer, so it shows as not available on Windows drivers without it.
 
 ReShade (optional)
 - Graphics -> "ReShade" (or "ReShade look" on the Play page) switches it on for the next game

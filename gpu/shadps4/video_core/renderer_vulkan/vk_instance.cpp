@@ -15,6 +15,7 @@
 #include "video_core/renderer_vulkan/vk_dlss.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
+#include "video_core/renderer_vulkan/vk_xess.h"
 
 #include <vk_mem_alloc.h>
 
@@ -452,6 +453,19 @@ bool Instance::CreateDevice() {
             }
         }
     }
+    // bbport: XeSS (optional libxess.dll) needs its own device extensions, on any GPU with DP4a.
+    std::vector<const char*> xess_extensions;
+    Xess* xess = Xess::Get();
+    if (xess) {
+        xess->AppendDeviceExtensions(*instance, physical_device, xess_extensions);
+        for (const char* name : xess_extensions) {
+            if (std::none_of(enabled_extensions.begin(), enabled_extensions.end(),
+                             [&](const char* e) { return std::string_view{e} == name; }) &&
+                enabled_extensions.size() < enabled_extensions.capacity()) {
+                enabled_extensions.push_back(name);
+            }
+        }
+    }
     vk::StructureChain device_chain = {
         vk::DeviceCreateInfo{
             .queueCreateInfoCount = queue_info_count,
@@ -679,6 +693,11 @@ bool Instance::CreateDevice() {
         device_chain.unlink<vk::PhysicalDeviceShaderFloat8FeaturesEXT>();
     }
 
+    if (xess) {
+        // The feature structures XeSS needs (mutable descriptor types, ...), set in the chain.
+        auto& create_info = device_chain.get<vk::DeviceCreateInfo>();
+        create_info.pNext = xess->PatchDeviceFeatures(*instance, physical_device, create_info.pNext);
+    }
     auto [device_result, dev] = physical_device.createDeviceUnique(device_chain.get());
     if (device_result != vk::Result::eSuccess) {
         LOG_CRITICAL(Render_Vulkan, "Failed to create device: {}", vk::to_string(device_result));
@@ -689,6 +708,9 @@ bool Instance::CreateDevice() {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(*device);
     if (Dlss* dlss = Dlss::Get()) {
         dlss->Initialize(*instance, physical_device, *device);
+    }
+    if (xess) {
+        xess->Initialize(*instance, physical_device, *device);
     }
 
     graphics_queue = device->getQueue(queue_family_index, 0);

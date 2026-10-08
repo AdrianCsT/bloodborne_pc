@@ -44,7 +44,7 @@ PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.6.4'
+VERSION = '1.6.5'
 RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases/latest'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
@@ -182,6 +182,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False}
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
+             ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
              ('fsr4', ('FSR 4 (best quality)', 'FSR 4 (лучшее качество)')),
              ('fsr411', ('FSR 4.1.1 (needs fsr4_411 assets)', 'FSR 4.1.1 (нужны ассеты fsr4_411)')),
              ('fsr3', ('FSR 3.1 (every GPU)', 'FSR 3.1 (любая видеокарта)')),
@@ -234,6 +235,59 @@ def fsr4_files():
 def fsr4_missing():
     folder = PORT_DIR / 'fsr4_shaders'
     return [name for name in fsr4_files() if not (folder / name).is_file() or not (folder / name).stat().st_size]
+
+
+UPSCALER_LINE = re.compile(r'^UPSCALER (\w+) (supported|unsupported)(?:: (.*))?$')
+
+
+def parse_upscaler_support(output):
+    """{name: (supported, note)} from the UPSCALER lines of `bb-gpu-capabilities --upscalers`; the note
+    is the reason when unsupported, a warning (FSR 4 on an RDNA2 GPU) when supported."""
+    support = {}
+    for line in output.splitlines():
+        found = UPSCALER_LINE.match(line.strip())
+        if found:
+            support[found[1]] = (found[2] == 'supported', found[3] or '')
+    return support
+
+
+def upscaler_state(name, support, assets_missing):
+    """('ok' | 'slow' | 'no', reason) of one upscaler. support is None until the GPU check has run (and
+    when it could not): then only the missing FSR 4 assets are known."""
+    verdict = (support or {}).get(name)
+    if verdict and not verdict[0]:
+        return 'no', verdict[1]
+    if name == 'fsr4' and assets_missing:
+        return 'no', 'download the FSR 4 assets in Graphics'
+    if verdict and verdict[1]:
+        return 'slow', verdict[1]
+    return 'ok', ''
+
+
+UPSCALER_REASONS_RU = {
+    'download the FSR 4 assets in Graphics': 'скачайте ассеты FSR 4 на вкладке «Графика»',
+    'may be slow on this GPU': 'на этой видеокарте может быть медленно',
+    'the GPU or driver lacks the INT8 features FSR 4 needs': 'видеокарте или драйверу не хватает INT8, нужного FSR 4',
+    'needs VK_VALVE_shader_mixed_float_dot_product (Linux driver)':
+        'нужно VK_VALVE_shader_mixed_float_dot_product (драйвер Linux)',
+    'not an NVIDIA RTX GPU': 'не видеокарта NVIDIA RTX',
+    'bbport_dlss.dll and nvngx_dlss.dll are not installed': 'bbport_dlss.dll и nvngx_dlss.dll не установлены',
+    'this GPU or driver does not support DLSS (GeForce RTX needed)':
+        'эта видеокарта или драйвер не поддерживает DLSS (нужна GeForce RTX)',
+    'libxess.dll is not installed': 'libxess.dll не установлена',
+    'this GPU or driver does not support XeSS (DP4a needed)':
+        'эта видеокарта или драйвер не поддерживает XeSS (нужен DP4a)',
+}
+
+
+def reason_text(reason):
+    """A reason of the GPU check in the launcher's language (unknown ones stay in English)."""
+    return _(reason, UPSCALER_REASONS_RU.get(reason))
+
+
+def best_upscaler(support):
+    """The upscaler a PC falls back to when the saved one cannot run: DLSS on an RTX GPU, else FSR 3.1."""
+    return 'dlss' if (support or {}).get('dlss', (False, ''))[0] else 'fsr3'
 
 
 def load_json(path, default):
@@ -1508,6 +1562,9 @@ class Launcher:
         self.output = queue.Queue()
         self.gpu_text = _('• Checking the graphics card…', '• Проверка видеокарты…')
         self.gpu_checking = True
+        # bb-gpu-capabilities --upscalers: None until it has run; the dropdowns of the Simple and
+        # Advanced views; the one-time line that says the saved upscaler was changed.
+        self.upscaler_support, self.upscaler_boxes, self.upscaler_notice = None, [], ''
         self.ui_calls = queue.Queue()  # work for the Tk thread from helper threads
         self.mod_order, self.mod_vars, self.patch_vars = [], {}, {}
         self.cards, self.hot_card, self.measures = set(), None, {}
@@ -1641,6 +1698,81 @@ class Launcher:
         box.bind('<<ComboboxSelected>>', lambda _e: var.set(values[box.current()]))
         var.trace_add('write', show)
         return box
+
+    def upscaler_states(self):
+        """{upscaler: (state, reason)} for the dropdown, from the GPU check and the FSR 4 assets."""
+        missing = bool(fsr4_missing())
+        return {value: upscaler_state(value, self.upscaler_support, missing) for value, _t in UPSCALERS}
+
+    def upscaler_choice(self, parent, width=None):
+        """The Upscaler dropdown. What this PC cannot run reads 'FSR 4.1.1 (not available: reason)', is
+        greyed in the open list and refuses to be picked; the Simple and Advanced views share it."""
+        var = self.var('upscaler', 'ini')
+        values = [v for v, _t in UPSCALERS]
+        style = f'Upscaler{len(self.upscaler_boxes)}.TCombobox'  # one per dropdown: each has its own width
+        box = self.ttk.Combobox(parent, state='readonly', width=width or 44, style=style)
+        ttk_style = self.ttk.Style(self.root)
+        if var.get() not in values:
+            var.set(values[0])
+
+        def fill(*_args):
+            texts = []
+            for value, (state, reason) in zip(values, self.upscaler_states().values()):
+                label = _(*dict(UPSCALERS)[value])
+                if state != 'ok':
+                    note = _('not available: {}', 'недоступно: {}').format(reason_text(reason)) if state == 'no' \
+                        else reason_text(reason)
+                    label = f"{label.split(' (')[0]} ({note})"
+                texts.append(label)
+            box.configure(values=texts)
+            box.current(values.index(var.get()) if var.get() in values else 0)
+            # The open list is as wide as the field; the long 'not available' lines need more.
+            need = max(self.measure(self.fonts['body'], text) for text in texts) + self.px(48)
+            ttk_style.configure(style, postoffset=(0, 0, max(0, need - box.winfo_reqwidth()), 0))
+
+        def picked(_event):
+            value = values[box.current()]
+            if value == var.get() or self.upscaler_states()[value][0] != 'no':
+                var.set(value)
+            else:
+                fill()  # refused: the list still shows the old choice
+
+        def grey():
+            """The popdown listbox is filled after -postcommand runs, hence the short delay."""
+            states = self.upscaler_states()
+            listbox = f"{self.root.tk.call('ttk::combobox::PopdownWindow', box)}.f.l"
+            try:
+                for index, value in enumerate(values):
+                    if states[value][0] == 'no':
+                        for option in ('-foreground', '-selectforeground'):
+                            self.root.tk.call(listbox, 'itemconfigure', index, option, MUTED)
+            except self.tk.TclError:
+                pass
+
+        box.refresh = fill
+        box.configure(postcommand=lambda: box.after(1, grey))
+        box.bind('<<ComboboxSelected>>', picked)
+        var.trace_add('write', fill)
+        self.upscaler_boxes.append(box)
+        fill()
+        return box
+
+    def apply_upscaler_support(self):
+        """After the GPU check or the FSR 4 download: re-mark the dropdowns; a saved upscaler the GPU
+        cannot run becomes the best one that works (DLSS on an RTX GPU, else FSR 3.1), said once."""
+        current = self.var('upscaler', 'ini').get()
+        verdict = (self.upscaler_support or {}).get(current)
+        if verdict and not verdict[0]:
+            better = best_upscaler(self.upscaler_support)
+            name = lambda value: _(*dict(UPSCALERS)[value]).split(' (')[0]
+            self.upscaler_notice = _('⚠ {} is not available on this PC ({}). The upscaler is now {}.',
+                                     '⚠ {} недоступен на этом ПК ({}). Теперь выбран {}.').format(
+                name(current), reason_text(verdict[1]), name(better))
+            self.var('upscaler', 'ini').set(better)
+        for box in self.upscaler_boxes:
+            box.refresh()
+        if self.upscaler_notice:
+            self.refresh_status()
 
     def button(self, parent, text, command, kind='ghost', bg=CARD, **options):
         return FlatButton(self, parent, text, command, kind, bg, **options)
@@ -1915,13 +2047,15 @@ class Launcher:
         info = self.card(page, _('Ready check', 'Проверка'), grid={'row': 0, 'column': 0, 'padx': (px(32), px(8)),
                                                                    'pady': px(24)})
         self.checks = {}
-        for key in ('game', 'saves', 'gpu', 'fsr4'):
+        for key in ('game', 'saves', 'gpu', 'fsr4', 'upscaler'):
             self.checks[key] = StatusLine(self, info)
             self.checks[key].frame.grid(row=self.next_row(info), column=0, columnspan=2, sticky='we', pady=(px(10), 0))
         self.button(info, _('Open folder', 'Открыть папку'), lambda: self.open_path(self.var('user_dir', 'app').get(), 'user_dir')).grid(
             row=self.next_row(info), column=0, columnspan=2, sticky='w', pady=(px(14), 0))
         self.note(info, _("In the game: Insert or L3+R3\nopens the port's menu.", 'В игре: Insert или L3+R3\nоткрывает меню порта.'),
                   top=14)
+        # Only shown after the saved upscaler was changed; hidden last so the rows below keep their place.
+        self.checks['upscaler'].frame.grid_remove()
         quick = self.card(page, _('Quick settings', 'Основное'), grid={'row': 0, 'column': 1, 'padx': (px(8), px(32)),
                                                                        'pady': px(24)})
         quick.columnconfigure(0, weight=1, uniform='quick', minsize=0)
@@ -1942,7 +2076,8 @@ class Launcher:
                                     (_('Launcher language', 'Язык лаунчера'), 'ui_language', 'app', UI_LANGUAGES))), 2):
             for column, (title, key, store, options) in enumerate(pairs):
                 holder = self.cell(quick, r, column, title)
-                self.choice(holder, key, store, options, 16).pack(fill='x')
+                (self.upscaler_choice(holder, 16) if key == 'upscaler' else
+                 self.choice(holder, key, store, options, 16)).pack(fill='x')
         if reshade_ready():
             self.reshade_box(self.cell(quick, 5, 0, _('ReShade look', 'Стиль ReShade')), simple=True).pack(fill='x')
             holder = self.cell(quick, 5, 1, ' ')
@@ -1973,7 +2108,7 @@ class Launcher:
                                   _('Stored in bbport.ini; the in-game menu (Insert or L3+R3) changes the same values.',
                                     'Хранится в bbport.ini; в игре меняется через меню (Insert или L3+R3).'))
         f = self.card(page, _('Upscaling', 'Апскейлинг'))
-        self.row(f, _('Upscaler', 'Апскейлер'), self.choice(f, 'upscaler', 'ini', UPSCALERS),
+        self.row(f, _('Upscaler', 'Апскейлер'), self.upscaler_choice(f),
                  _("Temporal upscaling with the game's own motion vectors. FSR 4 needs its assets (below) and "
                    'a GPU with INT8 dot products; otherwise the game falls back to FSR 3.1 by itself.',
                    'Временной апскейлинг с векторами движения игры. FSR 4 нужны ассеты (ниже) и GPU с INT8; '
@@ -2283,6 +2418,9 @@ class Launcher:
                   '• Нет ассетов FSR 4 («Графика»); пока используется FSR 3.1'))
         for key, text in (('game', game), ('saves', save), ('gpu', self.gpu_text), ('fsr4', fsr4)):
             self.checks[key].set(text, busy=key == 'gpu' and self.gpu_checking)
+        if self.upscaler_notice:
+            self.checks['upscaler'].set(self.upscaler_notice)
+            self.checks['upscaler'].frame.grid()
         for label in getattr(self, 'warnings', []):
             if info and info[1] != PATCH_VERSION:
                 label.configure(text=label.template.format(info[1]))
@@ -2313,6 +2451,13 @@ class Launcher:
             env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
         text = _('• Graphics card: not checked', '• Видеокарта: не проверена')
         try:
+            # What each upscaler needs of this PC; unknown (every upscaler offered) when this fails.
+            check = subprocess.run([str(exe), '--upscalers'], capture_output=True, text=True, timeout=30,
+                                   env=env, creationflags=NO_WINDOW)
+            self.upscaler_support = parse_upscaler_support(check.stdout) or None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        try:
             result = subprocess.run([str(exe), '--live-resolution'], capture_output=True, text=True, timeout=30,
                                     env=env, creationflags=NO_WINDOW)
             names = [line[5:].split(':')[0] for line in result.stderr.splitlines() if line.startswith('GPU: ')]
@@ -2324,6 +2469,7 @@ class Launcher:
         except (OSError, subprocess.TimeoutExpired):
             pass
         self.gpu_text, self.gpu_checking = text, False
+        self.ui_calls.put(self.apply_upscaler_support)
         self.ui_calls.put(self.refresh_status)
 
     def refresh_fsr4(self):
@@ -2334,6 +2480,8 @@ class Launcher:
             if not missing else _('{} of {} files missing in {}.', 'Нет {} из {} файлов в {}.').format(
                 missing, total, PORT_DIR / 'fsr4_shaders'))
         self.fsr4_button.configure(state='normal' if missing and not self.downloading else 'disabled')
+        for box in self.upscaler_boxes:  # FSR 4 becomes selectable once its assets are there
+            box.refresh()
 
     def download_fsr4(self):
         self.downloading = True
