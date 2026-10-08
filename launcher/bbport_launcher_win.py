@@ -2209,17 +2209,22 @@ class Launcher:
         note = self.label(holder, _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
                                     'Удваивает частоту кадров; добавляет немного задержки ввода. Лучше всего от 60 FPS.'),
                           'small', MUTED, wraplength=px(420), justify='left')
-        note.pack(anchor='w', padx=(px(54), 0), pady=(px(2), 0))
         self.grey_with_upscaler(row, note)
-        holder = tk.Frame(quick, bg=CARD)  # one line (caption, dropdown): the Play page has no room for more
-        holder.grid(row=7, column=0, columnspan=2, sticky='w', pady=(px(6), 0))
-        self.label(holder, _('Frame cap (unlocked mode)', 'Ограничение FPS (режим без ограничения)'), 'small', MUTED).pack(
+        # The cap matters for frame generation: while it is on, the cap (caption, dropdown) takes the
+        # note's place, so the Play page does not grow; with ReShade installed it has no room to.
+        cap = tk.Frame(holder, bg=CARD)
+        self.label(cap, _('Frame cap (unlocked mode)', 'Ограничение FPS (режим без ограничения)'), 'small', MUTED).pack(
             side='left', padx=(0, px(12)))
-        self.frame_cap_choice(holder).pack(side='left')
+        self.frame_cap_choice(cap).pack(side='left')
         generation = self.var('frame_generation', 'ini')
 
-        def show_cap(*_args):  # the cap matters for frame generation: shown while it is on
-            (holder.grid if generation.get() else holder.grid_remove)()
+        def show_cap(*_args):
+            if generation.get():
+                note.pack_forget()
+                cap.pack(anchor='w', pady=(px(6), 0))
+            else:
+                cap.pack_forget()
+                note.pack(anchor='w', padx=(px(54), 0), pady=(px(2), 0))
         generation.trace_add('write', show_cap)
         show_cap()
         for key in ('fps_mode', 'upscaler', 'output_res'):
