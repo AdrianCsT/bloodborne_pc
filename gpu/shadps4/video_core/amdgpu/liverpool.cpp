@@ -35,6 +35,7 @@
 #include "bbport_write_log.h"
 #include "bbport_free_check.h"
 #include "video_core/amdgpu/pm4_cmds.h"
+#include "video_core/amdgpu/pm4_resync.h"
 #include "video_core/renderdoc.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 
@@ -974,12 +975,6 @@ void ScanDcb(std::span<const u32> dcb, int depth) {
         st = DcbStats{};
     }
 }
-// bbport: a dword that can start a type 3 packet: reserved bits clear and the packet within the
-// `remaining` dwords.
-bool PlausibleType3(u32 dword, std::size_t remaining) {
-    const PM4Header header{.raw = dword};
-    return header.type == 3 && (dword & 0xfc) == 0 && header.type3.NumWords() < remaining;
-}
 // bbport: an invalid packet header (Steam Deck: "PM4 type 0" with dword 0, 8 or 0x10, mid-game): where
 // in which buffer, what surrounds it, and which logged writes of ours landed in the buffer.
 void ReportBadPacket(uintptr_t base, std::size_t dwords, const u32* at, u64 seq, int depth) {
@@ -1049,15 +1044,13 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
             // 0"). Seen at area loads: a SET_SH_REG cut short, whose declared body holds the
             // next packets, leaves the decoder inside them. Decoding resumes at the next dword
             // that can start a type 3 packet, so the rest of the buffer and its fences still
-            // run (dropping them would leave the guest waiting for them).
+            // run (dropping them would leave the guest waiting for them). The draw preparation
+            // scanner skips by the same rule (pm4_resync.h).
             static std::atomic<int> reports{0};
             if (reports.fetch_add(1, std::memory_order_relaxed) < 8) {
                 ReportBadPacket(base_addr, dcb_dwords, dcb.data(), seq, dcb_depth);
             }
-            std::size_t skip = 1;
-            while (skip < dcb.size() && !PlausibleType3(dcb[skip], dcb.size() - skip)) {
-                ++skip;
-            }
+            const std::size_t skip = ResyncSkip(dcb);
             std::fprintf(stderr,
                          "PM4: invalid header %#x at dword %zu of the buffer, resynced %zu dwords "
                          "later\n",
