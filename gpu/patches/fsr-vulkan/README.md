@@ -7,3 +7,6 @@ patches here to its working tree when they are not applied yet:
   statistics of each pass) in the FSR 4 v07 provider.
 - `0002-...`: `#include <mutex>` in the FFX Vulkan backend; libc++ (the Windows MSYS2 CLANG64
   build) does not include it transitively.
+- `0003-...`: `aspectMask` in `FfxFsr4VkExternalImageState` (0 = color). The layout barriers
+  of a registered external image named the color aspect, which is invalid for the
+  D32_SFLOAT_S8_UINT depth image.

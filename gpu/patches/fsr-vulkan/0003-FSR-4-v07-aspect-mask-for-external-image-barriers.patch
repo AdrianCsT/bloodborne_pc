@@ -1,0 +1,102 @@
+From: bbport
+Subject: [PATCH] FSR 4 v07: aspect mask for external image barriers
+
+FfxFsr4VkExternalImageState gets an aspectMask (0 = color). The layout
+barriers of a registered external image used VK_IMAGE_ASPECT_COLOR_BIT, which
+is invalid for the D32_SFLOAT_S8_UINT depth image (VUID-VkImageMemoryBarrier-
+image-03319, subresourceRange-09601).
+
+---
+diff --git a/include/ffx_vk_fsr4_v07.h b/include/ffx_vk_fsr4_v07.h
+index e856c0c..c698735 100644
+--- a/include/ffx_vk_fsr4_v07.h
++++ b/include/ffx_vk_fsr4_v07.h
+@@ -61,6 +61,11 @@ typedef struct FfxFsr4VkShaderBlob {
+  * GENERAL-to-GENERAL record is valid and still establishes the documented
+  * compute visibility boundary.  The record may be updated every frame; it is
+  * matched by `view` and does not transfer image/view ownership.
++ *
++ * bbport: `aspectMask` names the aspects of `image` that the layout barriers
++ * cover.  0 means VK_IMAGE_ASPECT_COLOR_BIT; a depth/stencil image needs all
++ * of its aspects (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT for
++ * D32_SFLOAT_S8_UINT).
+  */
+ typedef struct FfxFsr4VkExternalImageState {
+     uint32_t                structSize;
+@@ -72,6 +77,7 @@ typedef struct FfxFsr4VkExternalImageState {
+     VkImageLayout           restoreLayout;
+     VkPipelineStageFlags    restoreStageMask;
+     VkAccessFlags           restoreAccessMask;
++    VkImageAspectFlags      aspectMask;
+ } FfxFsr4VkExternalImageState;
+ 
+ // FSR4 has: pass0 (pre), pass1-12 (model), pass13 (post), rcas, spd_auto_exposure
+diff --git a/src/ffx_vk_fsr4_v07.c b/src/ffx_vk_fsr4_v07.c
+index eb42c16..4bb049c 100644
+--- a/src/ffx_vk_fsr4_v07.c
++++ b/src/ffx_vk_fsr4_v07.c
+@@ -104,6 +104,7 @@ typedef struct {
+     VkImageLayout  restoreLayout;
+     VkPipelineStageFlags restoreStageMask;
+     VkAccessFlags  restoreAccessMask;
++    VkImageAspectFlags aspectMask;  /* external images: aspects the barriers cover */
+     int            externalStateKnown;
+     int            externalTouched;
+ } VkRes;
+@@ -1049,6 +1050,8 @@ static FfxErrorCode cbRegisterRes(FfxInterface* I,
+         r->restoreLayout = state->restoreLayout;
+         r->restoreStageMask = state->restoreStageMask;
+         r->restoreAccessMask = state->restoreAccessMask;
++        r->aspectMask = state->aspectMask ? state->aspectMask
++                                          : VK_IMAGE_ASPECT_COLOR_BIT;
+         r->externalStateKnown = 1;
+     } else if (in->description.type == FFX_RESOURCE_TYPE_BUFFER) {
+         if (!in->description.size) return FFX_ERROR_INVALID_SIZE;
+@@ -1268,7 +1271,8 @@ static FfxErrorCode cbScheduleJob(FfxInterface* I, const FfxGpuJobDescription* j
+ 
+ // ── image layout barrier ──────────────────────────────────────────────────────
+ 
+-static void imgBarrier(VkCommandBuffer cmd, VkImage img,
++static void imgBarrierAspect(VkCommandBuffer cmd, VkImage img,
++    VkImageAspectFlags aspect,
+     VkImageLayout from, VkImageLayout to,
+     VkAccessFlags sa, VkAccessFlags da,
+     VkPipelineStageFlags ss, VkPipelineStageFlags ds)
+@@ -1280,10 +1284,18 @@ static void imgBarrier(VkCommandBuffer cmd, VkImage img,
+     b.oldLayout=from; b.newLayout=to;
+     b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+     b.image=img;
+-    b.subresourceRange=(VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};
++    b.subresourceRange=(VkImageSubresourceRange){aspect,0,1,0,1};
+     vkCmdPipelineBarrier(cmd,ss,ds,0,0,NULL,0,NULL,1,&b);
+ }
+ 
++static void imgBarrier(VkCommandBuffer cmd, VkImage img,
++    VkImageLayout from, VkImageLayout to,
++    VkAccessFlags sa, VkAccessFlags da,
++    VkPipelineStageFlags ss, VkPipelineStageFlags ds)
++{
++    imgBarrierAspect(cmd, img, VK_IMAGE_ASPECT_COLOR_BIT, from, to, sa, da, ss, ds);
++}
++
+ static void transitionExternalImagesToCompute(FfxFsr4VkContext* c,
+                                               VkCommandBuffer cmd)
+ {
+@@ -1296,7 +1308,7 @@ static void transitionExternalImagesToCompute(FfxFsr4VkContext* c,
+             ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : r->stageMask;
+         VkAccessFlags srcAccess = r->layout == VK_IMAGE_LAYOUT_UNDEFINED
+             ? 0u : r->accessMask;
+-        imgBarrier(cmd, r->img, r->layout, VK_IMAGE_LAYOUT_GENERAL,
++        imgBarrierAspect(cmd, r->img, r->aspectMask, r->layout, VK_IMAGE_LAYOUT_GENERAL,
+             srcAccess, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+             srcStage, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+         r->layout = VK_IMAGE_LAYOUT_GENERAL;
+@@ -1315,7 +1327,7 @@ static FfxErrorCode restoreExternalImages(FfxFsr4VkContext* c,
+         if (!r->external || r->kind != RES_IMAGE || !r->img ||
+             !r->externalStateKnown || !r->externalTouched)
+             continue;
+-        imgBarrier(cmd, r->img, r->layout, r->restoreLayout,
++        imgBarrierAspect(cmd, r->img, r->aspectMask, r->layout, r->restoreLayout,
+             r->accessMask, r->restoreAccessMask,
+             r->stageMask, r->restoreStageMask);
+         r->layout = r->restoreLayout;
