@@ -15,6 +15,12 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(dir);
     MotionVectors::params_address = 0x10000;
     MotionVectors::positions_address = 0x20000;
+    MotionVectors::diag_address = 0x30000;
+    MotionVectors::param_entries = 1 + 4 * 8192;
+    MotionVectors::position_elements = 1 + 2 * (4u << 20);
+    // Both ways of storing the position (BB_OM_STORE=plain) must validate.
+    for (bool plain_store : {false, true}) {
+    MotionVectors::plain_store = plain_store;
     for (bool vertex : {true, false}) {
         for (bool motion : {false, true}) {
             Info info{};
@@ -53,10 +59,12 @@ int main(int argc, char** argv) {
             Backend::Bindings bindings{};
             const auto code = Backend::SPIRV::EmitSPIRV(profile, runtime, program, bindings);
             const auto path = dir / (std::string(vertex ? "vertex" : "fragment") +
-                                      (motion ? "-motion.spv" : "-plain.spv"));
+                                      (motion ? "-motion" : "-plain") +
+                                      (plain_store ? "-plainstore.spv" : ".spv"));
             std::ofstream out(path, std::ios::binary);
             out.write(reinterpret_cast<const char*>(code.data()), code.size() * sizeof(u32));
             if (!out) { return 1; }
         }
+    }
     }
 }

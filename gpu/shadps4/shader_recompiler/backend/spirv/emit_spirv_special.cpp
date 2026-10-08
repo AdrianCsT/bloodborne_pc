@@ -70,13 +70,27 @@ void ConvertPositionToClipSpace(EmitContext& ctx) {
 // clip position for this frame and loads the one of the previous frame (same draw, same
 // vertex), both by buffer device address. Disabled accesses are branched around: a shared
 // scratch element would race between all the inactive vertex invocations.
+//
+// Every access is guarded: the params index must be inside the ring and the entry must carry
+// the tag of its words and draw (else it was overwritten under the GPU), and the positions
+// element of a store or load must be inside the buffer. A failed guard skips the access and
+// counts in the diagnostics array, so no params the CPU wrote wrongly can reach other memory.
 static void EmitVertexMotion(EmitContext& ctx) {
     const Id u32_type = ctx.U32[1];
+    const Id bool_type = ctx.U1[1];
     const Id position = ctx.OpLoad(ctx.F32[4], ctx.output_position);
     const Id param_ptr = ctx.OpAccessChain(ctx.TypePointer(spv::StorageClass::PushConstant, u32_type),
                                            ctx.push_data_block,
                                            ctx.ConstU32(PushData::MotionParamIndex));
-    const Id param_index = ctx.OpLoad(u32_type, param_ptr);
+    const Id motion_param = ctx.OpLoad(u32_type, param_ptr);
+    const Id param_index = ctx.OpBitwiseAnd(u32_type, motion_param, ctx.ConstU32(0xFFFFu));
+    const Id frame16 = ctx.OpShiftRightLogical(u32_type, motion_param, ctx.ConstU32(16u));
+    const Id active = ctx.OpINotEqual(bool_type, param_index, ctx.u32_zero_value);
+    const Id index_ok = ctx.OpLogicalAnd(
+        bool_type, active,
+        ctx.OpULessThan(bool_type, param_index, ctx.ConstU32(MotionVectors::param_entries)));
+    // An index outside the ring reads element 0 (always zero) instead.
+    const Id safe_index = ctx.OpSelect(u32_type, index_ok, param_index, ctx.u32_zero_value);
     const auto address = [&](u64 base, Id index, u32 stride) {
         return ctx.OpIAdd(ctx.U64, ctx.Constant(ctx.U64, base),
                           ctx.OpIMul(ctx.U64, ctx.OpUConvert(ctx.U64, index),
@@ -84,9 +98,11 @@ static void EmitVertexMotion(EmitContext& ctx) {
     };
     const Id u32x4_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, ctx.U32[4]);
     const Id f32x4_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, ctx.F32[4]);
+    const Id scalar_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, u32_type);
+    const Id scope = ctx.ConstU32(static_cast<u32>(spv::Scope::Device));
     const Id params = ctx.OpLoad(
         ctx.U32[4],
-        ctx.OpConvertUToPtr(u32x4_ptr, address(MotionVectors::params_address, param_index, 32)),
+        ctx.OpConvertUToPtr(u32x4_ptr, address(MotionVectors::params_address, safe_index, 32)),
         spv::MemoryAccessMask::Aligned, 16u);
     const Id store_base = ctx.OpCompositeExtract(u32_type, params, 0u);
     const Id load_base = ctx.OpCompositeExtract(u32_type, params, 1u);
@@ -94,41 +110,110 @@ static void EmitVertexMotion(EmitContext& ctx) {
     const Id flags = ctx.OpCompositeExtract(u32_type, params, 3u);
     const Id offsets = ctx.OpLoad(
         ctx.U32[4], ctx.OpConvertUToPtr(u32x4_ptr,
-            address(MotionVectors::params_address + 16, param_index, 32)),
+            address(MotionVectors::params_address + 16, safe_index, 32)),
         spv::MemoryAccessMask::Aligned, 16u);
     const Id first_vertex = ctx.OpCompositeExtract(u32_type, offsets, 0u);
     const Id first_instance = ctx.OpCompositeExtract(u32_type, offsets, 1u);
     const Id instances = ctx.OpCompositeExtract(u32_type, offsets, 2u);
+    const Id entry_tag = ctx.OpCompositeExtract(u32_type, offsets, 3u);
+    // The same mix as MotionVectors::Tag on the CPU.
+    Id tag = ctx.OpIAdd(u32_type, ctx.ConstU32(MotionVectors::TagSeed), frame16);
+    for (const Id word : {store_base, load_base, vertices, flags, first_vertex, first_instance,
+                          instances}) {
+        tag = ctx.OpIMul(u32_type, ctx.OpBitwiseXor(u32_type, tag, word),
+                         ctx.ConstU32(MotionVectors::TagPrime));
+    }
+    tag = ctx.OpBitwiseXor(u32_type, tag,
+                           ctx.OpShiftRightLogical(u32_type, tag, ctx.ConstU32(15u)));
+    const Id tag_ok = MotionVectors::guards ? ctx.OpIEqual(bool_type, tag, entry_tag)
+                                            : ctx.ConstantTrue(bool_type);
+    const Id entry_valid = ctx.OpLogicalAnd(bool_type, index_ok, tag_ok);
+
+    const auto diag_ptr = [&](u32 word) {
+        return ctx.OpConvertUToPtr(scalar_ptr, ctx.Constant(ctx.U64, MotionVectors::diag_address +
+                                                                         u64(word) * 4));
+    };
+    // Counts a violation (and notes the push constant of the last one) when `condition` holds.
+    const auto count = [&](Id condition, u32 counter, u32 note_word) {
+        if (!MotionVectors::diag_address) {
+            return;
+        }
+        const Id label = ctx.OpLabel();
+        const Id merge = ctx.OpLabel();
+        ctx.OpSelectionMerge(merge, spv::SelectionControlMask::MaskNone);
+        ctx.OpBranchConditional(condition, label, merge);
+        ctx.AddLabel(label);
+        ctx.OpAtomicIAdd(u32_type, diag_ptr(counter), scope, ctx.u32_zero_value, ctx.ConstU32(1u));
+        if (note_word) {
+            ctx.OpStore(diag_ptr(note_word), motion_param, spv::MemoryAccessMask::Aligned, 4u);
+        }
+        ctx.OpBranch(merge);
+        ctx.AddLabel(merge);
+    };
+    count(ctx.OpLogicalAnd(bool_type, active, ctx.OpLogicalNot(bool_type, index_ok)),
+          MotionVectors::DiagBadIndex, MotionVectors::DiagLastBadIndex);
+    count(ctx.OpLogicalAnd(bool_type, index_ok, ctx.OpLogicalNot(bool_type, tag_ok)),
+          MotionVectors::DiagTornParams, MotionVectors::DiagLastTorn);
+
     const Id vertex = ctx.OpISub(u32_type, ctx.OpLoad(u32_type, ctx.vertex_index), first_vertex);
     const Id instance = ctx.OpISub(u32_type, ctx.OpLoad(u32_type, ctx.instance_id), first_instance);
-    const Id bool_type = ctx.U1[1];
     const Id in_range = ctx.OpLogicalAnd(bool_type, ctx.OpULessThan(bool_type, vertex, vertices),
                                          ctx.OpULessThan(bool_type, instance, instances));
-    const Id slot = ctx.OpIAdd(u32_type, vertex, ctx.OpIMul(u32_type, instance, vertices));
-    const auto flag = [&](u32 bit) {
+    // The element offset in 64 bits: nothing wraps, whatever the params hold.
+    const Id slot = ctx.OpIAdd(ctx.U64, ctx.OpUConvert(ctx.U64, vertex),
+                               ctx.OpIMul(ctx.U64, ctx.OpUConvert(ctx.U64, instance),
+                                          ctx.OpUConvert(ctx.U64, vertices)));
+    const auto wanted = [&](u32 bit) {
         return ctx.OpLogicalAnd(
-            bool_type, in_range,
+            bool_type, ctx.OpLogicalAnd(bool_type, entry_valid, in_range),
             ctx.OpINotEqual(bool_type, ctx.OpBitwiseAnd(u32_type, flags, ctx.ConstU32(bit)),
                             ctx.u32_zero_value));
     };
-    const Id do_store = flag(MotionVectors::FlagStore);
-    const Id do_load = flag(MotionVectors::FlagLoad);
+    const auto element_ok = [&](Id element) {
+        if (!MotionVectors::guards) {
+            return ctx.ConstantTrue(bool_type);
+        }
+        return ctx.OpLogicalAnd(
+            bool_type,
+            ctx.OpUGreaterThanEqual(bool_type, element, ctx.Constant(ctx.U64, u64(1))),
+            ctx.OpULessThan(bool_type, element,
+                            ctx.Constant(ctx.U64, u64(MotionVectors::position_elements))));
+    };
+    const auto element_address = [&](Id element) {
+        return ctx.OpIAdd(ctx.U64, ctx.Constant(ctx.U64, MotionVectors::positions_address),
+                          ctx.OpIMul(ctx.U64, element, ctx.Constant(ctx.U64, u64(16))));
+    };
+    const Id want_store = wanted(MotionVectors::FlagStore);
+    const Id want_load = wanted(MotionVectors::FlagLoad);
+    const Id store_element = ctx.OpIAdd(ctx.U64, ctx.OpUConvert(ctx.U64, store_base), slot);
+    const Id load_element = ctx.OpIAdd(ctx.U64, ctx.OpUConvert(ctx.U64, load_base), slot);
+    const Id store_ok = element_ok(store_element);
+    const Id load_ok = element_ok(load_element);
+    count(ctx.OpLogicalAnd(bool_type, want_store, ctx.OpLogicalNot(bool_type, store_ok)),
+          MotionVectors::DiagStoreOob, 0);
+    count(ctx.OpLogicalAnd(bool_type, want_load, ctx.OpLogicalNot(bool_type, load_ok)),
+          MotionVectors::DiagLoadOob, 0);
+    const Id do_store = ctx.OpLogicalAnd(bool_type, want_store, store_ok);
+    const Id do_load = ctx.OpLogicalAnd(bool_type, want_load, load_ok);
     const Id store_label = ctx.OpLabel();
     const Id store_merge = ctx.OpLabel();
     ctx.OpSelectionMerge(store_merge, spv::SelectionControlMask::MaskNone);
     ctx.OpBranchConditional(do_store, store_label, store_merge);
     ctx.AddLabel(store_label);
-    const Id store_address = address(MotionVectors::positions_address,
-                                     ctx.OpIAdd(u32_type, store_base, slot), 16);
-    // Indexed draws may invoke the same vertex more than once. Atomic component stores
-    // avoid write/write races; all these invocations produce the same clip position.
-    const Id scalar_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, u32_type);
-    const Id scope = ctx.ConstU32(static_cast<u32>(spv::Scope::Device));
-    for (u32 i = 0; i < 4; ++i) {
-        const Id ptr = ctx.OpConvertUToPtr(scalar_ptr,
-            ctx.OpIAdd(ctx.U64, store_address, ctx.Constant(ctx.U64, u64(i * 4))));
-        const Id bits = ctx.OpBitcast(u32_type, ctx.OpCompositeExtract(ctx.F32[1], position, i));
-        ctx.OpAtomicExchange(u32_type, ptr, scope, ctx.u32_zero_value, bits);
+    const Id store_address = element_address(store_element);
+    if (MotionVectors::plain_store) {
+        // Indexed draws may invoke the same vertex more than once, all with the same value.
+        ctx.OpStore(ctx.OpConvertUToPtr(f32x4_ptr, store_address), position,
+                    spv::MemoryAccessMask::Aligned, 16u);
+    } else {
+        // Atomic component stores avoid write/write races; all these invocations produce the
+        // same clip position.
+        for (u32 i = 0; i < 4; ++i) {
+            const Id ptr = ctx.OpConvertUToPtr(scalar_ptr,
+                ctx.OpIAdd(ctx.U64, store_address, ctx.Constant(ctx.U64, u64(i * 4))));
+            const Id bits = ctx.OpBitcast(u32_type, ctx.OpCompositeExtract(ctx.F32[1], position, i));
+            ctx.OpAtomicExchange(u32_type, ptr, scope, ctx.u32_zero_value, bits);
+        }
     }
     ctx.OpBranch(store_merge);
     ctx.AddLabel(store_merge);
@@ -139,8 +224,8 @@ static void EmitVertexMotion(EmitContext& ctx) {
     ctx.OpBranchConditional(do_load, load_label, load_merge);
     ctx.AddLabel(load_label);
     const Id loaded = ctx.OpLoad(
-        ctx.F32[4], ctx.OpConvertUToPtr(f32x4_ptr, address(MotionVectors::positions_address,
-            ctx.OpIAdd(u32_type, load_base, slot), 16)), spv::MemoryAccessMask::Aligned, 16u);
+        ctx.F32[4], ctx.OpConvertUToPtr(f32x4_ptr, element_address(load_element)),
+        spv::MemoryAccessMask::Aligned, 16u);
     ctx.OpBranch(load_merge);
     ctx.AddLabel(load_merge);
     Id previous = ctx.OpPhi(ctx.F32[4], position, store_merge, loaded, load_label);

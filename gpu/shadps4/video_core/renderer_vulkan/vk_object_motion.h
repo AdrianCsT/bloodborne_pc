@@ -92,20 +92,41 @@ private:
     Scheduler& scheduler;
     bool enabled = false;
 
-    // Parameter ring (host visible): FrameSlots frames of ParamsPerFrame entries (two u32x4),
-    // element 0 all zero (motion off).
-    static constexpr u32 FrameSlots = 4;
+    // Parameter ring (host visible): `frame_slots` frames of ParamsPerFrame entries (two u32x4;
+    // the last word is a tag of the others, see Shader::MotionVectors::Tag), element 0 all zero
+    // (motion off). The push constant of a draw is `index | frame16 << 16`, so the index must
+    // fit 16 bits.
+    static constexpr u32 MaxFrameSlots = 4;
     static constexpr u32 ParamsPerFrame = 8192;
+    static_assert(1 + MaxFrameSlots * ParamsPerFrame <= 0xFFFF);
     // Positions (device local): two halves (current/previous frame) of vec4; element 0 is reserved.
     static constexpr u32 PositionsPerFrame = 4u << 20;
     Motion::History history{PositionsPerFrame};
     Motion::IndexRangeCache index_ranges;
-    std::array<u64, FrameSlots> params_ticks{};
+    u32 frame_slots = MaxFrameSlots; ///< BB_OM_SLOTS=1..4 (stress test)
+    bool no_param_wait = false;      ///< BB_OM_NOWAIT=1: reuse a ring slot without waiting (stress test)
+    std::array<u64, MaxFrameSlots> params_ticks{};
     vk::Buffer params_buffer{};
     VmaAllocation params_allocation{};
     u32* params_mapped{};
     vk::Buffer positions_buffer{};
     VmaAllocation positions_allocation{};
+
+    // Guard counters of the vertex shaders (Shader::MotionVectors::Diag*): device local, copied
+    // at the start of every frame into a ring of host readbacks that are read once the GPU is
+    // past the copy (the counters only ever grow).
+    static constexpr u32 DiagWords = 8;
+    vk::Buffer diag_buffer{};
+    VmaAllocation diag_allocation{};
+    vk::Buffer diag_read_buffer{};
+    VmaAllocation diag_read_allocation{};
+    const u32* diag_read_mapped{};
+    std::array<u64, MaxFrameSlots> diag_ticks{};
+    std::array<u32, DiagWords> diag_seen{};
+    bool diag_cleared = false;
+    bool diag_reported = false;
+    void ReadDiagnostics();
+    void RecordDiagnostics(u32 slot);
 
     u64 frame = 0;
     u32 params_used = 0;

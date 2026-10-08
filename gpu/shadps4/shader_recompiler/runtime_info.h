@@ -91,6 +91,32 @@ struct MotionVectors {
     static inline u64 positions_address = 0;
     static constexpr u32 FlagStore = 1;
     static constexpr u32 FlagLoad = 2;
+
+    /// Guards. The push constant motion_param is `index | frame16 << 16` (0: off). The shader
+    /// only touches memory inside the two buffers: `param_entries` params entries (element 0
+    /// included) and `position_elements` vec4 (element 0 is reserved). A params entry whose
+    /// word 7 differs from Tag() of the other seven words and the draw's frame16 is torn or
+    /// stale (overwritten while the GPU still reads it) and is skipped. Violations are counted
+    /// in the u32 array at `diag_address` (0: not counted; device local, read back by the CPU).
+    static inline u32 param_entries = 0;
+    static inline u32 position_elements = 0;
+    static inline u64 diag_address = 0;
+    /// BB_OM_STORE=plain: one 16-byte store of the position instead of four atomic exchanges.
+    static inline bool plain_store = false;
+    /// BB_OM_GUARD=0 (A/B tests only): no tag or element bounds checks in the shader.
+    static inline bool guards = true;
+    static constexpr u32 DiagStoreOob = 0, DiagLoadOob = 1, DiagTornParams = 2, DiagBadIndex = 3;
+    static constexpr u32 DiagLastBadIndex = 4, DiagLastTorn = 5; ///< last offending motion_param
+    static constexpr u32 DiagWords = 8;
+    static constexpr u32 TagSeed = 0x9E3779B9u, TagPrime = 0x01000193u;
+    /// Word 7 of a params entry: a mix of words 0-6 and the frame number (low 16 bits).
+    [[nodiscard]] static constexpr u32 Tag(const u32* words, u32 frame16) {
+        u32 h = TagSeed + frame16;
+        for (u32 i = 0; i < 7; ++i) {
+            h = (h ^ words[i]) * TagPrime;
+        }
+        return h ^ (h >> 15);
+    }
 };
 
 struct HwLocalRuntimeInfo {
