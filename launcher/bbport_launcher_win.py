@@ -209,11 +209,10 @@ DRAW_PIPE = [('', ('Auto (8+ threads)', 'Авто (8+ потоков)')), ('1', 
              ('0', ('Off (more stable)', 'Выключен (стабильнее)'))]
 READBACKS = [('', ('Relaxed (default)', 'Relaxed (по умолчанию)')), ('0', ('Off', 'Выключены')),
              ('2', ('Precise',))]
-# Frame cap of the unlocked mode (BB_FPS_LIMIT). '' leaves the port's own: the display refresh,
-# at most 120, because the game's movement timing breaks above about 120 FPS. 'half' becomes half
-# the display refresh rate in game_environment. The warning marks of the caps above 120 are added
-# by frame_cap_label.
-FRAME_CAPS = [('', ('Auto: display refresh, max 120 (recommended)', 'Авто: частота монитора, макс. 120 (рекомендуется)')),
+# Frame cap of the unlocked mode (BB_FPS_LIMIT). '' sets nothing and the port applies no cap
+# then; 'half' becomes half the display refresh rate in game_environment. The warning marks of the
+# caps above 120 (the game's movement timing breaks above about 120 FPS) are added by frame_cap_label.
+FRAME_CAPS = [('', ('Auto: no cap', 'Авто: без ограничения')),
               ('half', ('Half the refresh rate (for frame generation)',
                         'Половина частоты монитора (для генерации кадров)')),
               ('60', ('60',)), ('90', ('90',)), ('120', ('120',)), ('144', ('144',)), ('165', ('165',)),
