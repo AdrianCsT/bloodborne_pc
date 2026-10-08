@@ -5,6 +5,8 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <csetjmp>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -32,6 +34,13 @@
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
+#include "bbport_toggles.h"
+
+// bbport: common/assert.cpp calls it before stopping on a failed check (SpeculativeAssertExit).
+extern void (*g_assert_speculative_exit)();
+#ifdef _WIN32
+extern "C" [[noreturn]] void bb_longjmp(sigjmp_buf buffer, int value);
+#endif
 
 namespace Vulkan {
 
@@ -300,6 +309,28 @@ bool AsyncCompileEnabled() {
     const char* env = std::getenv("BB_ASYNC_COMPILE");
     return env ? env[0] != '0' : Default;
 }
+
+// bbport: a check that fails inside a speculative translation (draw preparation ahead of the
+// GPU thread: CompileNewProgram, CompilePermutation, GetProgramSpeculative) saw a descriptor the
+// game was still rewriting ("Thread ID buffer addressing is not supported outside of compute",
+// "MapNumberConversion: data_fmt = 6"). The attempt ends at its recovery point like a fault does
+// and the GPU thread translates the draw in order. Anywhere else the assertion still stops.
+void SpeculativeAssertExit() {
+    sigjmp_buf* const recover = runtime_fault_recover;
+    if (!recover) {
+        return;
+    }
+    runtime_fault_recover = nullptr;
+    std::fprintf(stderr,
+                 "GPU: speculative shader translation abandoned after the check above (%s); "
+                 "the GPU thread translates this draw in order\n",
+                 Common::GetCurrentThreadName().c_str());
+#ifdef _WIN32
+    bb_longjmp(*recover, 1);
+#else
+    siglongjmp(*recover, 1);
+#endif
+}
 } // namespace
 
 PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
@@ -371,6 +402,7 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .supports_shader_stencil_export = instance_.IsShaderStencilExportSupported(),
     };
     async_compile = AsyncCompileEnabled() && !EmulatorSettings.IsShaderCollect();
+    g_assert_speculative_exit = SpeculativeAssertExit;
     CreateDriverCache();
     WarmUp();
     if (Storage::DataBase::Instance().IsOpened() && DriverCacheEnabled()) {

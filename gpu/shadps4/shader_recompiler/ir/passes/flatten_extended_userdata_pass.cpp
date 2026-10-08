@@ -23,6 +23,7 @@
 #include "shader_recompiler/ir/reg.h"
 #include "shader_recompiler/ir/srt_gvn_table.h"
 #include "shader_recompiler/ir/value.h"
+#include "bbport_toggles.h"
 
 #ifdef ARCH_X86_64
 
@@ -35,9 +36,24 @@ static const u8* g_srt_codegen_start = nullptr;
 // walker at a time. Nothing under this lock reads guest memory.
 static std::mutex g_srt_codegen_mutex;
 
+// bbport: a speculative translation leaves through its recovery point on a fault or a failed
+// check (runtime_fault_recover, vk_pipeline_cache.cpp). A jump out of the lock above would leave
+// it locked for good, so the recovery point is disarmed while it is held: anything failing there
+// stops the port as it did before. Declared before the lock, so it is restored after unlocking.
+struct NoSpeculativeExit {
+    sigjmp_buf* const saved = runtime_fault_recover;
+    NoSpeculativeExit() {
+        runtime_fault_recover = nullptr;
+    }
+    ~NoSpeculativeExit() {
+        runtime_fault_recover = saved;
+    }
+};
+
 namespace Shader {
 
 PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
+    NoSpeculativeExit no_exit;
     std::scoped_lock lock{g_srt_codegen_mutex};
     const auto func_addr = (PFN_SrtWalker)g_srt_codegen.getCurr();
     g_srt_codegen.db(ptr, size);
@@ -645,6 +661,7 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
     if (pass_info.srt_roots.empty()) {
         return;
     }
+    NoSpeculativeExit no_exit;
     std::scoped_lock lock{g_srt_codegen_mutex};
 
     // Register the signal handler for SRT walker, if not already registered
