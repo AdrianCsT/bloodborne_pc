@@ -175,6 +175,21 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
         fprintf(stderr,"  #%d %s\n",depth,where);
         rbp=frame[0];
     }
+    /* bbport: system DLLs keep no frame pointers (a C++ throw raised in KERNELBASE showed
+     * rbp=1 and no frames above), so walk the x64 unwind tables too, and name the thread. */
+    typedef HRESULT (WINAPI *ThreadDescription)(HANDLE,PWSTR *);
+    ThreadDescription describe_thread=(ThreadDescription)(void *)GetProcAddress(GetModuleHandleA("kernel32.dll"),"GetThreadDescription");
+    PWSTR thread_name=NULL;
+    if (describe_thread && SUCCEEDED(describe_thread(GetCurrentThread(),&thread_name)) && thread_name) {
+        fprintf(stderr,"  thread name: %ls\n",thread_name);
+        LocalFree(thread_name);
+    }
+    void *unwound[48];
+    const USHORT unwound_count=RtlCaptureStackBackTrace(0,48,unwound,NULL);
+    for (USHORT i=0;i<unwound_count;++i) {
+        describe_address(where,sizeof(where),(uintptr_t)unwound[i]);
+        fprintf(stderr,"  @%u %s\n",(unsigned)i,where);
+    }
     fflush(NULL);
     TerminateProcess(GetCurrentProcess(),3);
     return EXCEPTION_CONTINUE_SEARCH;
