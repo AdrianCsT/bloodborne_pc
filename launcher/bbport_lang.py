@@ -201,6 +201,7 @@ KEYS = [
     "No frame limit: frame generation pauses whenever the game runs faster than half your screen's rate. Choose Auto.",
     'No cap.',
     'Caps the game at {} FPS.',
+    'Off on AMD graphics cards: there it cost frame rate and drew some objects wrong with frame generation.',
 ]
 
 TRANSLATIONS = {
@@ -383,6 +384,7 @@ TRANSLATIONS = {
         '⚠ {} غير متاح على هذا الجهاز ({}). المُكبِّر الآن هو {}.',
         'توليد الإطارات (FSR 3.1)', 'يضاعف معدل الإطارات ويضيف قليلاً من تأخر الإدخال. الأفضل مع 60 إطاراً في الثانية على الأقل.',
         'حتى {} إطارًا في الثانية للعبة، و{} على شاشتك البالغة {} هرتز.', 'حتى {} إطارًا في الثانية للعبة، و{} على الشاشة.', 'شاشتك بتردد {} هرتز: توليد الإطارات قليل الفائدة هنا، والأفضل إيقافه.', 'حد الإطارات لديك ({} إطارًا في الثانية) أعلى من أن يتضاعف على هذه الشاشة: اختر تلقائي في متقدم.', 'بدون حد للإطارات قد يتوقف توليد الإطارات: اختر تلقائي في متقدم.', 'مع توليد الإطارات: {} إطارًا في الثانية للعبة، و{} على الشاشة.', 'أعلى من أن يتضاعف على شاشتك البالغة {} هرتز، لذا يتوقف توليد الإطارات. اختر تلقائي.', 'بدون حد: يتوقف توليد الإطارات كلما زادت سرعة اللعبة عن نصف تردد شاشتك. اختر تلقائي.', 'بدون حد.', 'يحدّ اللعبة عند {} إطارًا في الثانية.',
+        'معطّل على بطاقات AMD الرسومية: كان يخفض معدل الإطارات ويعرض بعض الأجسام بشكل خاطئ مع توليد الإطارات.',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -563,6 +565,7 @@ TRANSLATIONS = {
         '⚠ {} no está disponible en este PC ({}). Ahora el escalador es {}.',
         'Generación de fotogramas (FSR 3.1)', 'Duplica la tasa de fotogramas; añade un poco de latencia de entrada. Mejor con al menos 60 FPS.',
         'Hasta {} FPS del juego, {} en tu pantalla de {} Hz.', 'Hasta {} FPS del juego, {} en pantalla.', 'Tu pantalla es de {} Hz: la generación de fotogramas ayuda poco aquí, mejor déjala desactivada.', 'Tu límite de {} FPS es demasiado alto para duplicar en esta pantalla: elige Auto en Avanzado.', 'Sin límite de FPS, la generación de fotogramas puede pausarse: elige Auto en Avanzado.', 'Con generación de fotogramas: {} FPS del juego, {} en pantalla.', 'Demasiado alto para duplicar en tu pantalla de {} Hz, así que la generación de fotogramas se pausa. Elige Auto.', 'Sin límite: la generación de fotogramas se pausa cuando el juego va a más de la mitad de la frecuencia de tu pantalla. Elige Auto.', 'Sin límite.', 'Limita el juego a {} FPS.',
+        'Apagado en tarjetas gráficas AMD: ahí bajaba los FPS y dibujaba mal algunos objetos con la generación de fotogramas.',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -743,6 +746,7 @@ TRANSLATIONS = {
         '⚠ {} não está disponível neste PC ({}). O upscaler agora é {}.',
         'Geração de quadros (FSR 3.1)', 'Dobra a taxa de quadros; adiciona um pouco de atraso de entrada. Melhor com pelo menos 60 FPS.',
         'Até {} FPS do jogo, {} na sua tela de {} Hz.', 'Até {} FPS do jogo, {} na tela.', 'Sua tela é de {} Hz: a geração de quadros ajuda pouco aqui, é melhor deixá-la desligada.', 'Seu limite de {} FPS é alto demais para dobrar nesta tela: escolha Auto em Avançado.', 'Sem limite de FPS, a geração de quadros pode pausar: escolha Auto em Avançado.', 'Com geração de quadros: {} FPS do jogo, {} na tela.', 'Alto demais para dobrar na sua tela de {} Hz, então a geração de quadros pausa. Escolha Auto.', 'Sem limite: a geração de quadros pausa sempre que o jogo roda acima da metade da taxa da sua tela. Escolha Auto.', 'Sem limite.', 'Limita o jogo a {} FPS.',
+        'Desligado em placas de vídeo AMD: nelas reduzia os FPS e desenhava alguns objetos errado com a geração de quadros.',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -923,6 +927,7 @@ TRANSLATIONS = {
         '⚠ {} n’est pas disponible sur ce PC ({}). L’upscaler est maintenant {}.',
         'Génération d\'images (FSR 3.1)', 'Double la fréquence d\'images ; ajoute un peu de latence d\'entrée. Idéal à partir de 60 FPS.',
         "Jusqu'à {} FPS dans le jeu, {} sur votre écran de {} Hz.", "Jusqu'à {} FPS dans le jeu, {} à l'écran.", "Votre écran est à {} Hz : la génération d'images n'apporte presque rien ici, mieux vaut la laisser désactivée.", 'Votre limite de {} FPS est trop haute pour doubler sur cet écran : choisissez Auto dans Avancé.', "Sans limite de FPS, la génération d'images peut se mettre en pause : choisissez Auto dans Avancé.", "Avec la génération d'images : {} FPS dans le jeu, {} à l'écran.", "Trop haut pour doubler sur votre écran de {} Hz, la génération d'images se met donc en pause. Choisissez Auto.", "Sans limite : la génération d'images se met en pause dès que le jeu dépasse la moitié de la fréquence de votre écran. Choisissez Auto.", 'Aucune limite.', 'Limite le jeu à {} FPS.',
+        "Désactivé sur les cartes graphiques AMD : il y réduisait les FPS et affichait mal certains objets avec la génération d'images.",
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1103,6 +1108,7 @@ TRANSLATIONS = {
         '⚠ {} ist auf diesem PC nicht verfügbar ({}). Der Upscaler ist jetzt {}.',
         'Bildgenerierung (FSR 3.1)', 'Verdoppelt die Bildrate; fügt etwas Eingabeverzögerung hinzu. Am besten ab 60 FPS.',
         'Bis zu {} FPS im Spiel, {} auf deinem {}-Hz-Bildschirm.', 'Bis zu {} FPS im Spiel, {} auf dem Bildschirm.', 'Dein Bildschirm hat {} Hz: Bildgenerierung bringt hier wenig, lass sie lieber aus.', 'Dein FPS-Limit von {} ist zu hoch, um auf diesem Bildschirm zu verdoppeln: Wähle Auto unter Erweitert.', 'Ohne FPS-Limit kann die Bildgenerierung pausieren: Wähle Auto unter Erweitert.', 'Mit Bildgenerierung: {} FPS im Spiel, {} auf dem Bildschirm.', 'Zu hoch zum Verdoppeln auf deinem {}-Hz-Bildschirm, deshalb pausiert die Bildgenerierung. Wähle Auto.', 'Ohne Limit pausiert die Bildgenerierung, sobald das Spiel schneller als die halbe Bildwiederholrate deines Bildschirms läuft. Wähle Auto.', 'Kein Limit.', 'Begrenzt das Spiel auf {} FPS.',
+        'Auf AMD-Grafikkarten aus: Dort kostete es Bildrate und stellte mit Frame-Generierung einige Objekte falsch dar.',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1283,6 +1289,7 @@ TRANSLATIONS = {
         '⚠ {} non è disponibile su questo PC ({}). Ora l’upscaler è {}.',
         'Generazione di frame (FSR 3.1)', 'Raddoppia il frame rate; aggiunge un po\' di input lag. Meglio con almeno 60 FPS.',
         'Fino a {} FPS nel gioco, {} sul tuo schermo da {} Hz.', 'Fino a {} FPS nel gioco, {} sullo schermo.', 'Il tuo schermo è a {} Hz: qui la generazione di frame serve a poco, meglio lasciarla disattivata.', 'Il tuo limite di {} FPS è troppo alto per raddoppiare su questo schermo: scegli Auto in Avanzate.', 'Senza limite di FPS la generazione di frame può andare in pausa: scegli Auto in Avanzate.', 'Con la generazione di frame: {} FPS nel gioco, {} sullo schermo.', 'Troppo alto per raddoppiare sul tuo schermo da {} Hz, quindi la generazione di frame va in pausa. Scegli Auto.', 'Senza limite: la generazione di frame va in pausa quando il gioco supera la metà della frequenza del tuo schermo. Scegli Auto.', 'Nessun limite.', 'Limita il gioco a {} FPS.',
+        'Disattivato sulle schede grafiche AMD: lì riduceva gli FPS e disegnava male alcuni oggetti con la generazione dei fotogrammi.',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1463,6 +1470,7 @@ TRANSLATIONS = {
         '⚠ {} jest niedostępny na tym komputerze ({}). Skaler to teraz {}.',
         'Generowanie klatek (FSR 3.1)', 'Podwaja liczbę klatek na sekundę; dodaje niewielkie opóźnienie sterowania. Najlepiej od 60 FPS.',
         'Do {} FPS w grze, {} na Twoim ekranie ({} Hz).', 'Do {} FPS w grze, {} na ekranie.', 'Twój ekran ma {} Hz: generowanie klatek niewiele tu daje, lepiej je wyłączyć.', 'Twój limit {} FPS jest za wysoki, by podwoić klatki na tym ekranie: wybierz Auto w Zaawansowane.', 'Bez limitu FPS generowanie klatek może się wstrzymywać: wybierz Auto w Zaawansowane.', 'Z generowaniem klatek: {} FPS w grze, {} na ekranie.', 'Za wysoko, by podwoić klatki na ekranie {} Hz, więc generowanie klatek jest wstrzymywane. Wybierz Auto.', 'Bez limitu: generowanie klatek jest wstrzymywane, gdy gra działa szybciej niż połowa częstotliwości ekranu. Wybierz Auto.', 'Bez limitu.', 'Ogranicza grę do {} FPS.',
+        'Wyłączone na kartach graficznych AMD: tam obniżało liczbę klatek i źle rysowało niektóre obiekty z generowaniem klatek.',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1643,6 +1651,7 @@ TRANSLATIONS = {
         '⚠ {} bu bilgisayarda kullanılamıyor ({}). Ölçekleyici artık {}.',
         'Kare üretimi (FSR 3.1)', 'Kare hızını ikiye katlar; girdi gecikmesini biraz artırır. En az 60 FPS ile en iyisidir.',
         'Oyunda en fazla {0} FPS; {2} Hz ekranınızda {1}.', 'Oyunda en fazla {} FPS, ekranda {}.', 'Ekranınız {} Hz: kare üretimi burada pek işe yaramaz, kapalı bırakmak daha iyi.', '{} FPS sınırınız bu ekranda ikiye katlamak için fazla yüksek: Gelişmiş bölümünde Otomatik seçin.', 'FPS sınırı olmadığında kare üretimi duraklayabilir: Gelişmiş bölümünde Otomatik seçin.', 'Kare üretimiyle: oyunda {} FPS, ekranda {}.', '{} Hz ekranınızda ikiye katlamak için fazla yüksek, bu yüzden kare üretimi duraklar. Otomatik seçin.', 'Sınır yok: oyun ekranınızın yenileme hızının yarısından hızlı çalıştığında kare üretimi duraklar. Otomatik seçin.', 'Sınır yok.', 'Oyunu {} FPS ile sınırlar.',
+        'AMD ekran kartlarında kapalı: orada kare hızını düşürüyor ve kare üretimiyle bazı nesneleri yanlış çiziyordu.',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -1823,6 +1832,7 @@ TRANSLATIONS = {
         '⚠ 此电脑不支持 {}（{}）。放大方式已改为 {}。',
         '帧生成 (FSR 3.1)', '帧率翻倍，会增加少许输入延迟。建议基础帧率至少 60 FPS。',
         '游戏最高 {0} FPS，在你的 {2} Hz 屏幕上为 {1}。', '游戏最高 {} FPS，屏幕上为 {}。', '你的屏幕是 {} Hz：帧生成在这里作用不大，最好保持关闭。', '你设置的 {} FPS 上限太高，无法在此屏幕上翻倍：请在“高级”中选择“自动”。', '不限制帧率时，帧生成可能会暂停：请在“高级”中选择“自动”。', '开启帧生成：游戏 {} FPS，屏幕上为 {}。', '对你的 {} Hz 屏幕来说太高，无法翻倍，帧生成会暂停。请选择“自动”。', '不限制：当游戏运行速度超过屏幕刷新率的一半时，帧生成会暂停。请选择“自动”。', '不限制。', '将游戏限制在 {} FPS。',
+        '在 AMD 显卡上保持关闭：在这些显卡上它会降低帧率，并在开启帧生成时让部分物体显示错误。',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2003,6 +2013,7 @@ TRANSLATIONS = {
         '⚠ このPCでは{}を利用できません（{}）。アップスケーラーを{}に変更しました。',
         'フレーム生成 (FSR 3.1)', 'フレームレートを2倍にしますが、入力遅延が少し増えます。60 FPS 以上を推奨します。',
         'ゲームは最大 {0} FPS、{2} Hz の画面では {1} FPS になります。', 'ゲームは最大 {} FPS、画面では {} FPS になります。', '画面は {} Hz です。ここではフレーム生成の効果が小さいので、オフのままがおすすめです。', 'フレームレート上限 {} FPS は、この画面で2倍にするには高すぎます。「詳細設定」で「自動」を選んでください。', '上限なしの場合、フレーム生成が一時停止することがあります。「詳細設定」で「自動」を選んでください。', 'フレーム生成あり: ゲーム {} FPS、画面では {} FPS。', '{} Hz の画面で2倍にするには高すぎるため、フレーム生成は一時停止します。「自動」を選んでください。', '上限なし: ゲームが画面のリフレッシュレートの半分より速く動くと、フレーム生成は一時停止します。「自動」を選んでください。', '上限なし。', 'ゲームを {} FPS に制限します。',
+        'AMD のグラフィックカードではオフのままです。フレームレートが下がり、フレーム生成で一部のオブジェクトが正しく描画されませんでした。',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2183,6 +2194,7 @@ TRANSLATIONS = {
         '⚠ 이 PC에서는 {}을(를) 사용할 수 없습니다 ({}). 업스케일러가 {}(으)로 바뀌었습니다.',
         '프레임 생성 (FSR 3.1)', '프레임 속도를 두 배로 높이며 입력 지연이 약간 늘어납니다. 60 FPS 이상을 권장합니다.',
         '게임은 최대 {0} FPS, {2} Hz 화면에서는 {1} FPS입니다.', '게임은 최대 {} FPS, 화면에서는 {} FPS입니다.', '화면이 {} Hz입니다. 여기서는 프레임 생성의 효과가 작으니 끄는 편이 좋습니다.', '프레임 상한 {} FPS는 이 화면에서 두 배로 만들기에 너무 높습니다. 고급에서 자동을 선택하세요.', '제한이 없으면 프레임 생성이 일시 중지될 수 있습니다. 고급에서 자동을 선택하세요.', '프레임 생성 사용 시: 게임 {} FPS, 화면에서는 {} FPS입니다.', '{} Hz 화면에서 두 배로 만들기에는 너무 높아 프레임 생성이 일시 중지됩니다. 자동을 선택하세요.', '제한 없음: 게임이 화면 주사율의 절반보다 빠르게 실행되면 프레임 생성이 일시 중지됩니다. 자동을 선택하세요.', '제한 없음.', '게임을 {} FPS로 제한합니다.',
+        'AMD 그래픽 카드에서는 꺼져 있습니다. 프레임 속도가 떨어지고 프레임 생성 시 일부 물체가 잘못 그려졌습니다.',
     ],
 }
 

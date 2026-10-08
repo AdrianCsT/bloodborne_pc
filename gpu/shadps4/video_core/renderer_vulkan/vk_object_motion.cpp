@@ -58,6 +58,18 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
         std::puts("Object motion: off (enable in menu or BB_OBJECT_MOTION=1)");
         return;
     }
+#ifdef _WIN32
+    // bbport: off on AMD under Windows whatever the saved setting says. On an RX 6700 XT it cost
+    // frame rate under FSR 4 and frame generation drew static props (vases, gravestones) wrong;
+    // turning it off fixed both. BB_OBJECT_MOTION_AMD=1 enables it.
+    if (instance.GetVendorID() == 0x1002) {
+        const char* env = std::getenv("BB_OBJECT_MOTION_AMD");
+        if (!env || std::strcmp(env, "1") != 0) {
+            std::puts("Object motion: off on AMD under Windows (BB_OBJECT_MOTION_AMD=1 enables it)");
+            return;
+        }
+    }
+#endif
     const auto& features = instance.GetPhysicalDevice().getFeatures();
     if (!features.vertexPipelineStoresAndAtomics) {
         std::printf("Object motion: vertexPipelineStoresAndAtomics unsupported, off\n");

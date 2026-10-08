@@ -2366,7 +2366,9 @@ class Launcher:
         self.row(f, _('Sharpness', 'Сила резкости'), holder)
         self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
                    _('Less ghosting on characters, cloth and weapons; costs about 10% FPS.',
-                     'Меньше гостинга на персонажах и одежде; стоит около 10% FPS.'))
+                     'Меньше гостинга на персонажах и одежде; стоит около 10% FPS.') + ' ' +
+                   _('Off on AMD graphics cards: there it cost frame rate and drew some objects wrong with frame generation.',
+                     'На видеокартах AMD выключено: там снижало FPS и неправильно рисовало некоторые объекты с генерацией кадров.'))
         self.grey_with_upscaler(*self.check(
             f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
             _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
