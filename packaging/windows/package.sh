@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds dist/bbport-windows/ (and dist/bbport-windows.zip): BLauncher.exe (the launcher, frozen
 # with PyInstaller so players need no Python), bb-probe.exe with the MSYS2 CLANG64 DLLs it needs,
-# PkgTool (extracts the game from .pkg files), the preparation scripts and run.py. Run from an MSYS2 CLANG64 shell after `bash build.sh`.
+# PkgTool (extracts the game from .pkg files), ReShade (optional post-processing, bin/reshade), the
+# preparation scripts and run.py. Run from an MSYS2 CLANG64 shell after `bash build.sh`.
 # Freezing uses a Windows Python 3.10+ (python.org; WINPYTHON overrides) and a private venv in
 # out/pyenv with PyInstaller. FSR 4 assets in fsr4_shaders/ are included when present.
 set -euo pipefail
@@ -55,6 +56,29 @@ unzip -oq "out/pkgtool-cache/$pkgtool_zip" -d out/pkgtool
 [[ -f out/pkgtool/PkgTool.exe && -f out/pkgtool/LibOrbisPkg.dll && -f out/pkgtool/LICENSE.txt ]] ||
     { echo "$pkgtool_zip is missing PkgTool.exe, LibOrbisPkg.dll or LICENSE.txt" >&2; exit 1; }
 
+# ReShade 6.8.0 (crosire/reshade, BSD-3-Clause), the optional post-processing the launcher turns on per
+# game run (bin/reshade). The official installer is a stub with a zip appended; ReShade64.dll is read
+# from it and checked against a pinned SHA-256. Cached in out/reshade-cache like PkgTool.
+reshade_exe=ReShade_Setup_6.8.0.exe
+reshade_url=https://reshade.me/downloads/$reshade_exe
+reshade_exe_sha256=207aea16205fbf952bc8fe1879966672454cf04002e7ad34237c7990a5b3c0b4
+reshade_dll_sha256=b2945c29e7095491a901746b400e58db9b1592ab092bacf2a888ce37f02d08da
+mkdir -p out/reshade-cache
+if [[ ! -f out/reshade-cache/$reshade_exe ]]; then
+    curl -fsSL --retry 3 -o "out/reshade-cache/$reshade_exe.part" "$reshade_url"
+    mv -f "out/reshade-cache/$reshade_exe.part" "out/reshade-cache/$reshade_exe"
+fi
+if ! echo "$reshade_exe_sha256 *out/reshade-cache/$reshade_exe" | sha256sum -c --status -; then
+    rm -f "out/reshade-cache/$reshade_exe"
+    echo "$reshade_exe does not match its SHA-256 (deleted); run again" >&2
+    exit 1
+fi
+rm -rf out/reshade
+mkdir -p out/reshade
+unzip -oq "out/reshade-cache/$reshade_exe" ReShade64.dll -d out/reshade || [[ $? == 1 ]]  # 1: warns about the stub
+echo "$reshade_dll_sha256 *out/reshade/ReShade64.dll" | sha256sum -c --status - ||
+    { echo "ReShade64.dll from $reshade_exe does not match its SHA-256" >&2; exit 1; }
+
 # The package is assembled in a fresh staging folder and zipped from there; dist/bbport-windows
 # (a playable copy that may hold saves and settings) is only refreshed afterwards.
 dest=out/stage/bbport-windows
@@ -87,6 +111,16 @@ fi
 mkdir -p "$dest/bin/pkgtool" "$dest/licenses"
 cp out/pkgtool/PkgTool.exe out/pkgtool/LibOrbisPkg.dll "$dest/bin/pkgtool/"
 cp out/pkgtool/LICENSE.txt "$dest/licenses/PkgTool-LICENSE.txt"
+# ReShade: the DLL, our layer manifest (it names the layer the launcher enables), its settings, only the
+# effects the presets use, the presets, and the licence of each. textures and screenshots hold a note
+# so the folders exist in the zip (ReShade saves screenshots into one and does not create it).
+reshade_src=packaging/windows/reshade
+mkdir -p "$dest/bin/reshade/textures" "$dest/bin/reshade/screenshots"
+cp out/reshade/ReShade64.dll "$reshade_src/VK_LAYER_bbport_reshade.json" "$reshade_src/ReShade.ini" "$dest/bin/reshade/"
+cp -r "$reshade_src/shaders" "$reshade_src/presets" "$dest/bin/reshade/"
+echo 'Texture files (.png) that effects load go here.' > "$dest/bin/reshade/textures/README.txt"
+echo 'ReShade saves its screenshots here (the key is Print Screen).' > "$dest/bin/reshade/screenshots/README.txt"
+cp "$reshade_src"/licenses/*.txt "$dest/licenses/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 mkdir -p dist
 rm -f dist/bbport-windows.zip
@@ -101,9 +135,20 @@ running=$(powershell -NoProfile -Command \
 if [[ ${running:-0} != 0 ]]; then
     echo "dist/bbport-windows is in use ($running processes): not refreshed; the zip is ready." >&2
 else
+    # The ReShade settings and presets of the playable copy survive too (the launcher's updater keeps them).
+    rm -rf out/reshade-keep
+    if [[ -f $play/bin/reshade/ReShade.ini ]]; then
+        mkdir -p out/reshade-keep
+        cp -r "$play/bin/reshade/ReShade.ini" "$play/bin/reshade/presets" out/reshade-keep/
+    fi
     mkdir -p "$play"
     find "$play" -mindepth 1 -maxdepth 1 ! -name user ! -name mods ! -name bbport.ini \
         ! -name mods.json ! -name patches.json -exec rm -rf {} +
     cp -r "$dest/." "$play/"
+    if [[ -d out/reshade-keep ]]; then
+        cp out/reshade-keep/ReShade.ini "$play/bin/reshade/"
+        cp -r out/reshade-keep/presets/. "$play/bin/reshade/presets/"
+        rm -rf out/reshade-keep
+    fi
 fi
 du -sh "$dest" dist/bbport-windows.zip

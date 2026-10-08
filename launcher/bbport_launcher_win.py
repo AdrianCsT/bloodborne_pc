@@ -44,12 +44,17 @@ PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.6.2'
+VERSION = '1.6.3'
 RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases/latest'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
 # Never copied over an installation by an update (the package does not hold them either).
 USER_FILES = ('user', 'out', 'mods', 'bbport.ini', 'mods.json', 'patches.json', 'last_run.log')
+# ReShade (packaging/windows/package.sh): turned on per game run through the Vulkan loader's layer
+# variables, see game_environment().
+RESHADE_DIR = PORT_DIR / 'bin' / 'reshade'
+RESHADE_LAYER = 'VK_LAYER_bbport_reshade'
+RESHADE_PRESET_PREFIX = 'Bloodborne - '  # the shipped presets; the dropdowns show the rest of the name
 
 
 # ---------------------------------------------------------------------------------------------
@@ -174,7 +179,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'frames_ahead': '', 'frame_stats': False, 'gpu_profile': False,
                 'vk_validation': False, 'extra_env': '', 'close_on_play': False,
                 'check_updates': True, 'ui_advanced': False, 'animations': True,
-                'addcont': '', 'pkg_dir': '', 'pkg_src': ''}
+                'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False}
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('fsr4', ('FSR 4 (best quality)', 'FSR 4 (лучшее качество)')),
@@ -285,6 +290,54 @@ def game_info(folder):
         return 'Bloodborne', '?'
 
 
+def reshade_ready():
+    """True when this build ships ReShade (a source tree has no bin/reshade)."""
+    return all((RESHADE_DIR / name).is_file() for name in ('ReShade64.dll', RESHADE_LAYER + '.json', 'ReShade.ini'))
+
+
+def reshade_presets():
+    """Names (file stems) of the presets in bin/reshade/presets."""
+    return sorted((path.stem for path in (RESHADE_DIR / 'presets').glob('*.ini')), key=str.casefold)
+
+
+def reshade_preset_label(name):
+    """The dropdown text of a preset: "Bloodborne - Natural" shows as Natural (translated)."""
+    text = name.removeprefix(RESHADE_PRESET_PREFIX)
+    return _(text, {'Natural': 'Естественный', 'Vivid': 'Яркий'}.get(text))
+
+
+def get_reshade_preset():
+    """The preset ReShade starts with: PresetPath of bin/reshade/ReShade.ini, without folder and extension."""
+    try:
+        lines = (RESHADE_DIR / 'ReShade.ini').read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return ''
+    for line in lines:
+        key, _sep, value = line.partition('=')
+        if key.strip() == 'PresetPath':
+            return Path(value.strip().replace('\\', '/')).stem
+    return ''
+
+
+def set_reshade_preset(name):
+    """Writes PresetPath in the [GENERAL] section of bin/reshade/ReShade.ini, keeping the rest of the file."""
+    path = RESHADE_DIR / 'ReShade.ini'
+    line = f'PresetPath=.\\presets\\{name}.ini'
+    lines, section, done = path.read_text(encoding='utf-8').splitlines(), None, False
+    for i, text in enumerate(lines):
+        if text.strip().startswith('['):
+            section = text.strip().lower()
+        elif section == '[general]' and text.partition('=')[0].strip() == 'PresetPath':
+            lines[i], done = line, True
+    if not done:
+        general = next((i for i, text in enumerate(lines) if text.strip().lower() == '[general]'), None)
+        if general is None:
+            lines[:0] = ['[GENERAL]', line, '']
+        else:
+            lines.insert(general + 1, line)
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+
 def game_environment(s):
     env = dict(os.environ)
     env['BB_GAME_DIR'] = s['game_dir']
@@ -318,6 +371,11 @@ def game_environment(s):
         if '=' in item:
             key, value = item.split('=', 1)
             env[key] = value
+    if s.get('reshade') and reshade_ready():
+        # An explicit layer for this run only; its files, settings and log stay in bin/reshade.
+        for name, value in (('VK_ADD_LAYER_PATH', str(RESHADE_DIR)), ('VK_INSTANCE_LAYERS', RESHADE_LAYER)):
+            env[name] = os.pathsep.join(filter(None, (env.get(name), value)))
+        env['RESHADE_BASE_PATH_OVERRIDE'] = str(RESHADE_DIR)
     env['PYTHONUNBUFFERED'] = '1'
     env['PYTHONIOENCODING'] = 'utf-8'
     return env
@@ -1440,6 +1498,9 @@ class Launcher:
         self.app = {**APP_DEFAULTS, **load_json(CONFIG_FILE, {})}
         self.ini, self.ini_lines = load_ini()
         self.vars = {}
+        # The ReShade preset lives in bin/reshade/ReShade.ini (the game's menu changes it too), not in settings.json.
+        self.reshade_preset = tk.StringVar(value=get_reshade_preset() if reshade_ready() else '')
+        self.reshade_started, self.reshade_refreshers = self.reshade_preset.get(), []
         self.process = self.job = None
         self.downloading = False
         self.installing, self.install_proc, self.install_cancel = False, None, threading.Event()
@@ -1464,7 +1525,8 @@ class Launcher:
         size = (min(self.px(1120), width - self.px(40)), min(self.px(780), height - self.px(90)))
         root.geometry(f'{size[0]}x{size[1]}+{(width - size[0]) // 2}+{max(0, (height - size[1]) // 3)}')
         root.minsize(min(self.px(980), size[0]), min(self.px(660), size[1]))
-        self.hero_tall = max(self.px(150), min(self.px(232), size[1] - self.px(88) - self.px(430)))
+        # The Play page needs about 430 px under the hero, 70 more for the ReShade look row.
+        self.hero_tall = max(self.px(150), min(self.px(232), size[1] - self.px(88) - self.px(500 if reshade_ready() else 430)))
         self.set_icon()
         self.pick_fonts()
         self.style()
@@ -1829,8 +1891,10 @@ class Launcher:
             self.refresh_lists()
         elif name == 'graphics':
             self.refresh_fsr4()
+            self.refresh_reshade()
         elif name == 'play':
             self.refresh_status()
+            self.refresh_reshade()
 
     def cell(self, parent, row, column, title, span=1):
         """A settings field of the Play page: a small caption above, the control returned in a frame."""
@@ -1879,7 +1943,11 @@ class Launcher:
             for column, (title, key, store, options) in enumerate(pairs):
                 holder = self.cell(quick, r, column, title)
                 self.choice(holder, key, store, options, 16).pack(fill='x')
-        holder = self.cell(quick, 5, 0, '', span=2)
+        if reshade_ready():
+            self.reshade_box(self.cell(quick, 5, 0, _('ReShade look', 'Стиль ReShade')), simple=True).pack(fill='x')
+            holder = self.cell(quick, 5, 1, ' ')
+        else:
+            holder = self.cell(quick, 5, 0, '', span=2)
         self.switch(holder, self.var('fullscreen', 'app'), _('Fullscreen', 'Полный экран')).pack(anchor='w')
         for key in ('fps_mode', 'upscaler', 'output_res'):
             self.vars[key].trace_add('write', lambda *_a: self.refresh_status())
@@ -1933,6 +2001,7 @@ class Launcher:
         self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
                    _('Less ghosting on characters, cloth and weapons; costs about 10% FPS.',
                      'Меньше гостинга на персонажах и одежде; стоит около 10% FPS.'))
+        self.build_reshade(page)
         f = self.card(page, _('FSR 4 assets', 'Ассеты FSR 4'))
         self.fsr4_label = self.label(f, '', wraplength=px(640), justify='left')
         self.fsr4_label.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(10), 0))
@@ -1951,6 +2020,59 @@ class Launcher:
         self.row(f, _('Model detail (LOD)', 'Детализация моделей'), self.choice(f, 'model_lod', 'ini', LODS),
                  _('A game patch (game version 1.09).', 'Патч игры (версия 1.09).'))
         self.check(f, 'show_fps', 'ini', _('Show the FPS counter', 'Показывать FPS'))
+
+    def build_reshade(self, page):
+        px = self.px
+        f = self.card(page, _('ReShade', 'ReShade'))
+        if not reshade_ready():
+            self.note(f, _('ReShade is not included in this build.', 'ReShade не входит в эту сборку.'), top=10)
+            return
+        self.check(f, 'reshade', 'app', _('Enable ReShade', 'Включить ReShade'),
+                   _('Sharpening, contrast and colour filters on top of the game. Applied when the game starts; '
+                     'costs a few percent of FPS.',
+                     'Фильтры резкости, контраста и цвета поверх игры. Применяется при запуске игры; '
+                     'стоит несколько процентов FPS.'))
+        self.row(f, _('Preset', 'Пресет'), self.reshade_box(f, simple=False, width=36),
+                 _("Make more in the game's ReShade menu, or copy .ini presets into the presets folder.",
+                   'Новые пресеты создаются в меню ReShade в игре или копируются как .ini в папку пресетов.'))
+        holder = self.tk.Frame(f, bg=CARD)
+        holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(12), 0))
+        self.button(holder, _('Open presets folder', 'Открыть папку пресетов'),
+                    lambda: self.open_path(RESHADE_DIR / 'presets')).pack(side='left')
+        self.note(f, _("In the game press Home to open ReShade's menu.", 'В игре нажмите Home, чтобы открыть меню ReShade.'),
+                  top=10)
+
+    def reshade_box(self, parent, simple, width=16):
+        """A dropdown of the ReShade presets. The Simple one also holds Off: it is the ReShade switch and
+        the preset in one."""
+        on, preset = self.var('reshade', 'app'), self.reshade_preset
+        box = self.ttk.Combobox(parent, state='readonly', width=width)
+
+        def show(*_args):
+            found = [(name, reshade_preset_label(name)) for name in reshade_presets()]
+            box.options = ([('', _('Off', 'Выключен'))] if simple else []) + found
+            current = '' if simple and not on.get() else preset.get()
+            box.configure(values=[text for _value, text in box.options])
+            box.set(next((text for value, text in box.options if value == current),
+                         reshade_preset_label(current) if current else ''))
+
+        def pick(_event):
+            value = box.options[box.current()][0]
+            if simple:
+                on.set(bool(value))
+            if value:
+                preset.set(value)
+        box.bind('<<ComboboxSelected>>', pick)
+        on.trace_add('write', show)
+        preset.trace_add('write', show)
+        self.reshade_refreshers.append(show)
+        show()
+        return box
+
+    def refresh_reshade(self):
+        """The presets folder may have changed since the dropdowns were filled."""
+        for show in self.reshade_refreshers:
+            show()
 
     def build_display(self):
         page = self.scrolled_page('display', _('Display & FPS', 'Экран и FPS'),
@@ -2309,6 +2431,10 @@ class Launcher:
         CONFIG_FILE.write_text(json.dumps(self.app, indent=2, ensure_ascii=False), encoding='utf-8')
         save_ini({key: self.ini[key] for key in INI_DEFAULTS}, self.ini_lines)
         self.ini, self.ini_lines = load_ini()
+        preset = self.reshade_preset.get()
+        if reshade_ready() and preset and preset != self.reshade_started:  # not undoing a change made in the game
+            set_reshade_preset(preset)
+            self.reshade_started = preset
         if self.mod_order:
             (DATA_DIR / 'mods.json').write_text(json.dumps(
                 {'order': self.mod_order, 'disabled': [n for n, v in self.mod_vars.items() if not v.get()]},
@@ -2993,17 +3119,32 @@ def latest_release():
     return version, url, release.get('html_url') or RELEASES_PAGE
 
 
+def update_ignore(target):
+    """What copying an update over TARGET skips: USER_FILES everywhere and, in bin/reshade, what is
+    already installed of ReShade.ini and the presets (players edit them; new presets still arrive)."""
+    plain = shutil.ignore_patterns(*USER_FILES)
+
+    def ignore(folder, names):
+        skipped = set(plain(folder, names))
+        relative = Path(folder).relative_to(PORT_DIR).as_posix()
+        if relative in ('bin/reshade', 'bin/reshade/presets'):
+            kept = ('ReShade.ini',) if relative == 'bin/reshade' else names
+            skipped |= {name for name in kept if name in names and (Path(target) / relative / name).exists()}
+        return skipped
+    return ignore
+
+
 def install_update(target, wait_pid):
     """--install-update TARGET PID, run by the downloaded version from its temporary folder:
     waits for the old launcher to close, copies this version over TARGET (never the saves,
-    settings or mods) and starts it."""
+    settings, mods or ReShade presets) and starts it."""
     target = Path(target)
     kernel = ctypes.windll.kernel32
     handle = kernel.OpenProcess(0x00100000, False, int(wait_pid))  # SYNCHRONIZE
     if handle:
         kernel.WaitForSingleObject(handle, 60000)
         kernel.CloseHandle(handle)
-    ignore = shutil.ignore_patterns(*USER_FILES)
+    ignore = update_ignore(target)
     for attempt in range(30):
         try:
             shutil.copytree(PORT_DIR, target, dirs_exist_ok=True, ignore=ignore)

@@ -1,0 +1,16 @@
+ReShade in this package (bin\reshade)
+=====================================
+
+ReShade 6.8.0 (ReShade64.dll), crosire/reshade, BSD-3-Clause: ReShade-LICENSE.txt. The official build,
+unmodified, taken from https://reshade.me/downloads/ReShade_Setup_6.8.0.exe when the package is built.
+
+Effects in bin\reshade\shaders (the upstream files, unmodified):
+  CAS.fx                   AMD FidelityFX CAS, MIT (AMD): ReShade-CAS-LICENSE.txt
+  Deband.fx                haasn / JPulowski, MIT: ReShade-Deband-LICENSE.txt
+  Vibrance.fx, Curves.fx,  CeeJay.dk (LiftGammaGain.fx with 3an), SweetFX, MIT: ReShade-SweetFX-LICENSE.txt
+  Vignette.fx, LiftGammaGain.fx
+  ReShade.fxh              crosire, CC0-1.0 (the notice is in the file)
+  ReShadeUI.fxh            written for this package, CC0-1.0 (it replaces the header of the same name
+                           from reshade-shaders, which carries no licence notice)
+
+Presets in bin\reshade\presets are part of this package (GPL-2.0-or-later, like the rest of it).

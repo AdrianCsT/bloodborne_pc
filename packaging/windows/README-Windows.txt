@@ -70,6 +70,24 @@ Upscaling
   package, or Graphics -> "Download FSR 4 assets"); GPUs without the required shader features
   fall back to FSR 3.1 by themselves.
 
+ReShade (optional)
+- Graphics -> "ReShade" (or "ReShade look" on the Play page) switches it on for the next game
+  start: two presets, Natural (sharpening, deband, a little contrast and colour) and Vivid (more
+  contrast and colour, a light vignette). ReShade 6.8.0 and the effects are inside this package
+  (bin\reshade\); nothing is installed on the system and nothing changes while it is off.
+  Measured on an RTX 4070 it costs about 0.3 ms per frame at 1080p and 0.5 ms at 1440p, 3 to 4%
+  of the frame at about 75 FPS. It does not read the game's depth, so there are no depth-based
+  effects (the game has its own depth of field and ambient occlusion).
+- In the game press Home to open ReShade's menu (Print Screen saves a screenshot to
+  bin\reshade\screenshots\). Changes are saved in the preset in use.
+- Your own presets: bin\reshade\presets\*.ini (create them in ReShade's menu, or copy .ini files
+  there; "Open presets folder" opens it). They show up in the dropdowns. Updates keep
+  bin\reshade\ReShade.ini and every preset already there, so your edits survive; delete a preset
+  file to get the shipped one back with the next update. ReShade's log is bin\reshade\ReShade.log.
+- It is a Vulkan layer enabled only for the game process (VK_ADD_LAYER_PATH, VK_INSTANCE_LAYERS and
+  RESHADE_BASE_PATH_OVERRIDE are set by the launcher), so a ReShade installed on the system is not
+  involved. Licences: licenses\ReShade-*.txt.
+
 Mods and patches
 - Put each mod in its own folder under mods\ (dvdroot_ps4\..., or chr\, parts\, ... directly);
   enable and order them on "Mods & patches". The game files are never changed. Without Windows
@@ -82,4 +100,7 @@ Credits
 - Windows port: https://github.com/Supermedo/bloodborne_pc
 - PkgTool, which extracts the .pkg files: maxton/LibOrbisPkg v0.2, LGPL-3.0, unmodified, in
   bin\pkgtool\ (license: licenses\PkgTool-LICENSE.txt, source: https://github.com/maxton/LibOrbisPkg).
+- ReShade, which the optional post-processing uses: crosire/reshade 6.8.0, BSD-3-Clause, unmodified,
+  in bin\reshade\ (https://reshade.me). Effects by CeeJay.dk (SweetFX, MIT), AMD (FidelityFX CAS, MIT)
+  and haasn/JPulowski (Deband, MIT); licenses: licenses\ReShade-*.txt.
 - The full list of projects and patch authors is in README.md (Credits and licenses).
