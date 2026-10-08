@@ -109,6 +109,9 @@ KEYS = [
     'You have the latest version ({}).',
     'Could not check for updates: {}',
     'Could not install the update. Download it from the releases page.',
+    # Launcher look (Simple / Advanced view, motion)
+    'Simple', 'Animations',
+    'Open folder',
 ]
 
 TRANSLATIONS = {
@@ -210,6 +213,9 @@ TRANSLATIONS = {
         'لديك أحدث إصدار ({}).',
         'تعذّر التحقق من التحديثات: {}',
         'تعذّر تثبيت التحديث. نزّله من صفحة الإصدارات.',
+        'بسيط',
+        'الرسوم المتحركة',
+        'فتح المجلد',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -309,6 +315,9 @@ TRANSLATIONS = {
         'Tienes la última versión ({}).',
         'No se pudieron buscar actualizaciones: {}',
         'No se pudo instalar la actualización. Descárgala desde la página de versiones.',
+        'Sencillo',
+        'Animaciones',
+        'Abrir carpeta',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -408,6 +417,9 @@ TRANSLATIONS = {
         'Você tem a versão mais recente ({}).',
         'Não foi possível procurar atualizações: {}',
         'Não foi possível instalar a atualização. Baixe-a na página de versões.',
+        'Simples',
+        'Animações',
+        'Abrir pasta',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -507,6 +519,9 @@ TRANSLATIONS = {
         'Vous avez la dernière version ({}).',
         'Impossible de rechercher les mises à jour : {}',
         'Impossible d’installer la mise à jour. Téléchargez-la depuis la page des versions.',
+        'Simple',
+        'Animations',
+        'Ouvrir le dossier',
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -606,6 +621,9 @@ TRANSLATIONS = {
         'Du hast die neueste Version ({}).',
         'Suche nach Updates fehlgeschlagen: {}',
         'Das Update konnte nicht installiert werden. Lade es von der Release-Seite herunter.',
+        'Einfach',
+        'Animationen',
+        'Ordner öffnen',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -705,6 +723,9 @@ TRANSLATIONS = {
         'Hai l’ultima versione ({}).',
         'Impossibile cercare aggiornamenti: {}',
         'Impossibile installare l’aggiornamento. Scaricalo dalla pagina delle versioni.',
+        'Semplice',
+        'Animazioni',
+        'Apri cartella',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -804,6 +825,9 @@ TRANSLATIONS = {
         'Masz najnowszą wersję ({}).',
         'Nie udało się sprawdzić aktualizacji: {}',
         'Nie udało się zainstalować aktualizacji. Pobierz ją ze strony wydań.',
+        'Prosty',
+        'Animacje',
+        'Otwórz folder',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -903,6 +927,9 @@ TRANSLATIONS = {
         'En son sürüme sahipsiniz ({}).',
         'Güncellemeler denetlenemedi: {}',
         'Güncelleme kurulamadı. Sürümler sayfasından indirin.',
+        'Basit',
+        'Animasyonlar',
+        'Klasörü aç',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -1002,6 +1029,9 @@ TRANSLATIONS = {
         '已是最新版本（{}）。',
         '无法检查更新：{}',
         '无法安装更新。请从发布页面下载。',
+        '简单',
+        '动画',
+        '打开文件夹',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -1101,6 +1131,9 @@ TRANSLATIONS = {
         '最新バージョンです（{}）。',
         '更新を確認できませんでした：{}',
         '更新をインストールできませんでした。リリースページからダウンロードしてください。',
+        'シンプル',
+        'アニメーション',
+        'フォルダーを開く',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -1200,6 +1233,9 @@ TRANSLATIONS = {
         '최신 버전입니다 ({}).',
         '업데이트를 확인할 수 없습니다: {}',
         '업데이트를 설치할 수 없습니다. 릴리스 페이지에서 다운로드하세요.',
+        '간단히',
+        '애니메이션',
+        '폴더 열기',
     ],
 }
 
