@@ -351,6 +351,18 @@ bool FrameGeneration::Idle() {
     }
     const float base_fps = 1000.0f / interval;
     const float half = refresh * 0.5f;
+    // A frame cap at or below half the refresh rate leaves a refresh slot for every generated
+    // frame, so there is nothing to pause for (the cap itself bounds the base rate).
+    const u32 cap = EmulatorSettings.GetFrameLimit();
+    if (cap > 0 && float(cap) <= half * 1.02f) {
+        idle = false;
+        if (!cap_reported) {
+            cap_reported = true;
+            std::printf("Frame generation: frame cap %u FPS fits half the refresh rate (%.0f Hz): "
+                        "always on\n", cap, refresh);
+        }
+        return false;
+    }
     if (!idle && base_fps > 0.9f * half) {
         idle = true;
         std::printf("Frame generation: idle, base FPS above half the refresh rate (%.0f FPS, "

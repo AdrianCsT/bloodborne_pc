@@ -179,6 +179,7 @@ private:
     bool was_requested = false;
     bool history_broken = true;   ///< the next frame restarts the interpolation history
     bool idle = false;
+    bool cap_reported = false;    ///< the "frame cap fits half the refresh rate" line was printed
     u64 frame_id = 0;
     std::deque<u64> ticks;        ///< submissions of the last frames the library recorded
     std::string reported;
