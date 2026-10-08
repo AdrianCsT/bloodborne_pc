@@ -53,7 +53,11 @@ This fork brings together the work of several people and adds a few things of it
 | [Supermedo](https://github.com/Supermedo/bloodborne_pc), Windows port v1.5 | The Windows port, a launcher in 13 languages, NVIDIA DLSS (RTX 20 series and newer), AMD FSR 3.1 and FSR 4 |
 | This fork | Support for *The Old Hunters* DLC license (experimental) |
 | This fork | A redesigned launcher with Simple and Advanced modes and animations |
-| This fork | Install from PKG: the launcher installs the game from your PS4 `.pkg` files (base game, update and DLC). This is being added now. |
+| This fork | Install from PKG: the launcher installs the game from your PS4 `.pkg` files (base game, update and DLC) |
+| This fork | Frame generation: FSR 3.1 frame interpolation on top of FSR 4, FSR 3.1, DLSS or XeSS, about twice the frames on screen from a 60 FPS base, with the HUD kept sharp |
+| This fork | Intel XeSS 3.0.2 as an upscaler for any GPU, and a launcher that greys out the upscalers a GPU cannot run, with the reason |
+| This fork | ReShade 6.8 with two Bloodborne presets (Natural and Vivid), switched on from the launcher |
+| This fork | Shaders compiled ahead of the frame on the draw-preparation threads, and the driver's pipeline cache saved between runs: fewer first-time stutters |
 | This fork | Object motion vectors on AMD GPUs under Windows: their driver lost the device on the raw-pointer stores, so the motion buffers are now storage-buffer bindings (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)) |
 | This fork | A fix for the crash when you are attacked on Intel 12th gen and newer CPUs (red-zone protection, from Supermedo [PR #2](https://github.com/Supermedo/bloodborne_pc/pull/2)) |
 | This fork | A live VRAM budget on Windows |
