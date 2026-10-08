@@ -58,19 +58,6 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
         std::puts("Object motion: off (enable in menu or BB_OBJECT_MOTION=1)");
         return;
     }
-#ifdef _WIN32
-    // bbport: AMD's Windows driver loses the device on the per-vertex motion stores 35-55 s in
-    // (deadinside28/bloodborne_pc#39: five of five runs; stable with the stores off). Off there
-    // unless BB_OBJECT_MOTION_AMD=1; the upscaler still runs with camera motion only.
-    if (instance.GetVendorID() == 0x1002) {
-        const char* env = std::getenv("BB_OBJECT_MOTION_AMD");
-        if (!env || std::strcmp(env, "1") != 0) {
-            std::puts("Object motion: off on AMD under Windows (driver hang, see #39; "
-                      "BB_OBJECT_MOTION_AMD=1 enables it)");
-            return;
-        }
-    }
-#endif
     const auto& features = instance.GetPhysicalDevice().getFeatures();
     if (!features.vertexPipelineStoresAndAtomics) {
         std::printf("Object motion: vertexPipelineStoresAndAtomics unsupported, off\n");
@@ -87,7 +74,7 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
         Shader::MotionVectors::guards = std::strcmp(env, "0") != 0;
     }
     if (const char* env = std::getenv("BB_OM_STORE")) {
-        Shader::MotionVectors::plain_store = std::strcmp(env, "plain") == 0;
+        Shader::MotionVectors::plain_store = std::strcmp(env, "atomic") != 0;
     }
     // Bisection of the AMD Windows device loss (see Shader::MotionVectors::Part).
     const char* part_name = "full";

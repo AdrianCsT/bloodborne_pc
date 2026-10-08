@@ -107,8 +107,11 @@ struct MotionVectors {
     /// in the u32 array of the diagnostics binding (device local, read back by the CPU).
     static inline u32 param_entries = 0;
     static inline u32 position_elements = 0;
-    /// BB_OM_STORE=plain: one 16-byte store of the position instead of four atomic exchanges.
-    static inline bool plain_store = false;
+    /// One 16-byte store of the position (default) or, with BB_OM_STORE=atomic, four atomic
+    /// exchanges. Two invocations of the same vertex write the same value to the same slot, so the
+    /// plain store is safe, and it costs a fifth of the atomics (RTX 4070, Hunter's Dream replay:
+    /// 150 FPS motion off, 123 atomic, 142 plain).
+    static inline bool plain_store = true;
     /// BB_OM_GUARD=0 (A/B tests only): no tag or element bounds checks in the shader.
     static inline bool guards = true;
     /// BB_OM_PART (bisection of the AMD Windows device loss; default Full). Read once when
