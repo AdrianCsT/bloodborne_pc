@@ -30,9 +30,31 @@ std::mutex m_request{};
 mz_zip_archive zip_ar{};
 bool ar_is_read_only{true};
 
+std::mutex hooks_mutex;
+u32 next_hook_id{1};
+std::vector<std::pair<u32, std::function<void()>>> shutdown_hooks;
+
 } // namespace
 
 namespace Storage {
+
+u32 AddShutdownHook(std::function<void()> hook) {
+    std::scoped_lock lock{hooks_mutex};
+    shutdown_hooks.emplace_back(next_hook_id, std::move(hook));
+    return next_hook_id++;
+}
+
+void RemoveShutdownHook(u32 id) {
+    std::scoped_lock lock{hooks_mutex};
+    std::erase_if(shutdown_hooks, [id](const auto& hook) { return hook.first == id; });
+}
+
+void RunShutdownHooks() {
+    std::scoped_lock lock{hooks_mutex};
+    for (const auto& [id, hook] : shutdown_hooks) {
+        hook();
+    }
+}
 
 void ProcessIO(const std::stop_token& stoken) {
     Common::SetCurrentThreadName("shadPS4:PipelineCacheIO");
@@ -287,6 +309,62 @@ void DataBase::Clear() {
         }
     }
     LOG_WARNING(Render, "Pipeline cache cleared ({} files): it is rebuilt for this build", removed);
+}
+
+std::filesystem::path DataBase::DriverCachePath() const {
+    // The extension is none of the blob extensions, so ForEachBlob never reads it as one.
+    return cache_path / "vk_pipeline_cache.vkc";
+}
+
+bool DataBase::LoadDriverCache(std::vector<u8>& data) {
+    if (!opened || EmulatorSettings.IsPipelineCacheArchived()) {
+        return false;
+    }
+    using namespace Common::FS;
+    std::error_code ec;
+    const auto path = DriverCachePath();
+    if (!std::filesystem::is_regular_file(path, ec)) {
+        return false;
+    }
+    const auto file = IOFile{path, FileAccessMode::Read};
+    if (!file.IsOpen()) {
+        return false;
+    }
+    data.resize(file.GetSize());
+    return file.Read(data) == data.size();
+}
+
+bool DataBase::SaveDriverCache(const std::vector<u8>& data) {
+    if (!opened || EmulatorSettings.IsPipelineCacheArchived()) {
+        return false;
+    }
+    using namespace Common::FS;
+    const auto path = DriverCachePath();
+    auto temp = path;
+    temp += ".tmp";
+    bool written = false;
+    {
+        const auto file = IOFile{temp, FileAccessMode::Create};
+        written = file.IsOpen() && file.Write(data) == data.size();
+    }
+    std::error_code ec;
+    if (written) {
+        std::filesystem::rename(temp, path, ec);
+    }
+    if (!written || ec) {
+        LOG_ERROR(Render, "Failed to write {}", path.string());
+        std::filesystem::remove(temp, ec);
+        return false;
+    }
+    return true;
+}
+
+void DataBase::DeleteDriverCache() {
+    if (!opened || EmulatorSettings.IsPipelineCacheArchived()) {
+        return;
+    }
+    std::error_code ec;
+    std::filesystem::remove(DriverCachePath(), ec);
 }
 
 void DataBase::FinishPreload() {

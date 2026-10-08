@@ -13,6 +13,13 @@
 
 namespace Storage {
 
+/// bbport: work to do when the game window is closed. The process then ends with _Exit, so no
+/// destructor runs: a cache that saves at shutdown registers here. Remove it before the object
+/// it captures dies (waits for a hook that is running).
+u32 AddShutdownHook(std::function<void()> hook);
+void RemoveShutdownHook(u32 id);
+void RunShutdownHooks();
+
 enum class BlobType : u32 {
     ShaderMeta,
     ShaderBinary,
@@ -43,7 +50,17 @@ public:
 
     void ForEachBlob(BlobType type, const std::function<void(std::vector<u8>&& data)>& func);
 
+    /// bbport: the driver's VkPipelineCache blob, kept beside the shader cache of the game. Not
+    /// queued like the blobs above: Load/Save are synchronous and Save is atomic (temporary
+    /// file renamed into place), so a crash leaves the old file or none. False when the cache is
+    /// not open, the file is missing or cannot be written.
+    bool LoadDriverCache(std::vector<u8>& data);
+    bool SaveDriverCache(const std::vector<u8>& data);
+    void DeleteDriverCache();
+
 private:
+    [[nodiscard]] std::filesystem::path DriverCachePath() const;
+
     std::jthread io_worker{};
     std::filesystem::path cache_path{};
     bool opened{};

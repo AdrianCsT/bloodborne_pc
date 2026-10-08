@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2025-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <chrono>
+#include <cstdio>
 #include <unordered_set>
 #include "common/serdes.h"
 #include "core/emulator_settings.h"
@@ -331,6 +333,7 @@ void PipelineCache::WarmUp() {
     }
 
     Storage::DataBase::Instance().Open();
+    const auto warm_up_start = std::chrono::steady_clock::now();
 
     // Check if cache is compatible
     std::vector<u8> profile_data{};
@@ -440,6 +443,11 @@ void PipelineCache::WarmUp() {
     }
 
     LOG_INFO(Render, "Preloaded {} pipelines", num_pipelines);
+    std::printf("GPU: Preloaded %u pipelines (%u cache entries) in %lld ms\n", num_pipelines,
+                num_total_pipelines,
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::steady_clock::now() - warm_up_start)
+                                           .count()));
     if (num_total_pipelines > num_pipelines) {
         LOG_WARNING(Render, "{} stale pipelines were found. Consider re-generating the cache",
                     num_total_pipelines - num_pipelines);

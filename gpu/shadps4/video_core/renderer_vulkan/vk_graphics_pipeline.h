@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <boost/container/static_vector.hpp>
 #include <xxhash.h>
 
@@ -100,6 +102,13 @@ public:
 
     const GraphicsPipelineKey& GetGraphicsKey() const {
         return key;
+    }
+
+    /// bbport: a pipeline a draw-preparation worker builds is described with the worker's copy of
+    /// each stage's Info (the user data of that draw); before it is shared, the stages are
+    /// pointed at the Infos of the programs, which the GPU thread binds resources through.
+    void SetStages(const std::array<const Shader::Info*, MaxShaderStages>& infos) {
+        std::ranges::copy(infos, stages.begin());
     }
 
     /// Gets the attributes and bindings for vertex inputs.

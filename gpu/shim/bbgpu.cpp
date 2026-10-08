@@ -32,6 +32,7 @@
 #include "core/memory.h"
 #include "core/signals.h"
 #include "sdl_window.h"
+#include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 
 extern "C" {
@@ -286,6 +287,8 @@ extern "C" int bbgpu_init(const BbGpuConfig* config) {
             SDL_Delay(2);
         }
         LOG_INFO(Frontend, "Window closed by user");
+        // The process ends here without destructors: caches that save at shutdown run now.
+        Storage::RunShutdownHooks();
         std::fflush(stdout);
         std::_Exit(0);
     });

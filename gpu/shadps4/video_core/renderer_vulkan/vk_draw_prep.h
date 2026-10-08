@@ -9,7 +9,10 @@
 // the graphics pipeline and resource sharps of each direct draw. All helpers run as
 // SCHED_IDLE: they only use idle cores. The GPU thread uses a prepared draw only when the
 // running register checksums match and the flattened user data it computes itself equals the
-// worker's; otherwise it takes the regular path. Workers never create or compile anything.
+// worker's; otherwise it takes the regular path. With BB_ASYNC_COMPILE (default) a worker also
+// compiles the shaders and the pipeline of a draw the caches lack, so the GPU thread finds them
+// instead of compiling when it gets there (see PipelineCache::GetProgramSpeculative).
+// Tessellation draws are not prepared.
 
 #pragma once
 
