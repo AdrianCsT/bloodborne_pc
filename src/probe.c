@@ -13,6 +13,7 @@
 #endif
 #ifdef _WIN32
 #include <windows.h>
+#include <timeapi.h>
 #else
 #include <sys/mman.h>
 #include <malloc.h>
@@ -442,6 +443,12 @@ void runtime_restart(void) {
 
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
+#ifdef _WIN32
+    /* bbport: 1 ms timer resolution for this process. Since Windows 10 2004 it is per process
+       (the launcher's own request does not reach the game), and without it a sleep can overshoot
+       by 15.6 ms: the frame generation wait between the two presents relies on it. */
+    timeBeginPeriod(1);
+#endif
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
