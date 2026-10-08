@@ -504,8 +504,13 @@ def set_reshade_preset(name):
 
 def game_environment(s, frame_generation=None):
     """The environment of the game. Frame generation is read from bbport.ini unless the caller knows it."""
+    ini = load_ini()[0]
     if frame_generation is None:
-        frame_generation = load_ini()[0].get('frame_generation') == '1'
+        frame_generation = ini.get('frame_generation') == '1'
+    # Auto caps the game only while frame generation can run: the game turns it off with the
+    # upscaler off or with HDR output, and the cap would then only cost frames.
+    frame_generation = (frame_generation and not s['hdr']
+                        and ini.get('upscaler', INI_DEFAULTS['upscaler']) != 'off')
     env = dict(os.environ)
     env['BB_GAME_DIR'] = s['game_dir']
     if s['user_dir']:
