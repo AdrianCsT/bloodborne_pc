@@ -98,6 +98,17 @@ Frame generation (optional)
   display paces the two images. With Mailbox or Immediate the port shows the interpolated frame
   and then the game frame half a frame interval later.
 - The frame cap (Display & FPS) limits the game frames: a cap of 60 shows 120 images a second.
+  "Auto" means no cap: the game runs as fast as it can, and generation pauses whenever that is
+  more than half of the display's refresh rate.
+- A cap at or below half of the refresh rate keeps generation on all the time: the cap leaves a
+  refresh slot for every interpolated image ("Frame generation: frame cap N FPS fits half the
+  refresh rate (R Hz): always on" in the log). "Half the refresh rate (for frame generation)"
+  picks that cap for your display (at least 30): 72 FPS shown as 144 on a 144 Hz display, 90 as
+  180 on 180 Hz, 120 as 240 on 240 Hz. Above 120 FPS the game's movement timing breaks, so on a
+  display faster than 240 Hz pick 120 yourself.
+- Caps of 60 and 90 work the same way on a display of at least 120 Hz and 180 Hz: 60 FPS shown
+  as 120, 90 as 180. With generation on, the cap list spells out what reaches the screen
+  ("90 -> 180 on screen") and flags the caps that are too high ("144 (frame generation pauses)").
 - The FPS counter reads "60 -> 120 FPS FG" while it works. With BB_FRAME_STATS=1 the log gets
   "Frame generation: N generated/s, M presented/s, base B FPS, X skipped" every 5 seconds.
 - ReShade and other overlays see every shown image, so twice as many presents as game frames.
