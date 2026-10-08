@@ -211,12 +211,13 @@ READBACKS = [('', ('Relaxed (default)', 'Relaxed (по умолчанию)')), (
              ('2', ('Precise',))]
 # Frame cap of the unlocked mode (BB_FPS_LIMIT). '' leaves the port's own: the display refresh,
 # at most 120, because the game's movement timing breaks above about 120 FPS. 'half' becomes half
-# the display refresh rate in game_environment.
+# the display refresh rate in game_environment. The warning marks of the caps above 120 are added
+# by frame_cap_label.
 FRAME_CAPS = [('', ('Auto: display refresh, max 120 (recommended)', 'Авто: частота монитора, макс. 120 (рекомендуется)')),
               ('half', ('Half the refresh rate (for frame generation)',
                         'Половина частоты монитора (для генерации кадров)')),
-              ('60', ('60',)), ('90', ('90',)), ('120', ('120',)), ('144', ('144  ⚠',)), ('165', ('165  ⚠',)),
-              ('240', ('240  ⚠',)), ('0', ('No limit  ⚠', 'Без ограничения  ⚠'))]
+              ('60', ('60',)), ('90', ('90',)), ('120', ('120',)), ('144', ('144',)), ('165', ('165',)),
+              ('240', ('240',)), ('0', ('No limit  ⚠', 'Без ограничения  ⚠'))]
 
 
 _refresh_hz = None
@@ -259,6 +260,23 @@ def display_refresh():
 def half_refresh():
     """The 'half' frame cap: half the display refresh rate, at least 30 (60 Hz when it is unknown)."""
     return max(30, (display_refresh() or 60) // 2)
+
+
+def frame_cap_label(value, text, frame_generation):
+    """Dropdown text of one frame cap. With frame generation on it says what reaches the screen: a cap
+    whose double fits the refresh rate reads 'N -> 2N on screen', a higher one pauses generation."""
+    label = _(*text)
+    if value in ('', '0'):
+        return label
+    cap = half_refresh() if value == 'half' else int(value)
+    refresh = display_refresh()
+    if frame_generation and value == 'half':
+        label = _('Half the refresh rate: {} -> {} on screen',
+                  'Половина частоты монитора: {} -> {} на экране').format(cap, 2 * cap)
+    elif frame_generation and refresh:
+        label = (_('{} -> {} on screen', '{} -> {} на экране') if 2 * cap <= refresh + 2 else
+                 _('{} (frame generation pauses)', '{} (генерация кадров приостанавливается)')).format(cap, 2 * cap)
+    return label + (WARN if cap > 120 else '')
 
 
 FRAMES_AHEAD = [('', ('1 (default)', '1 (по умолчанию)')), ('2', ('2',)), ('0', ('Unbounded', 'Без ограничения'))]
@@ -1642,9 +1660,9 @@ class Launcher:
         size = (min(self.px(1120), width - self.px(40)), min(self.px(780), height - self.px(90)))
         root.geometry(f'{size[0]}x{size[1]}+{(width - size[0]) // 2}+{max(0, (height - size[1]) // 3)}')
         root.minsize(min(self.px(980), size[0]), min(self.px(660), size[1]))
-        # The Play page needs about 510 px under the hero (the frame generation row included), 70 more for
-        # the ReShade look row.
-        self.hero_tall = max(self.px(150), min(self.px(232), size[1] - self.px(88) - self.px(580 if reshade_ready() else 510)))
+        # The Play page needs about 550 px under the hero (the frame generation row and its frame cap line
+        # included), 70 more for the ReShade look row.
+        self.hero_tall = max(self.px(140), min(self.px(232), size[1] - self.px(88) - self.px(620 if reshade_ready() else 550)))
         self.set_icon()
         self.pick_fonts()
         self.style()
@@ -1758,6 +1776,26 @@ class Launcher:
         show()
         box.bind('<<ComboboxSelected>>', lambda _e: var.set(values[box.current()]))
         var.trace_add('write', show)
+        return box
+
+    def frame_cap_choice(self, parent):
+        """The frame cap dropdown. Its texts follow the frame generation switch (see frame_cap_label); the
+        Simple and Advanced views each get one and both are relabelled together."""
+        var = self.var('frame_cap', 'app')
+        generation = self.var('frame_generation', 'ini')
+        values = [v for v, _t in FRAME_CAPS]
+        width = max(len(frame_cap_label(v, t, on)) for v, t in FRAME_CAPS for on in (False, True)) + 3
+        box = self.ttk.Combobox(parent, state='readonly', width=width)
+        if var.get() not in values:
+            var.set(values[0])
+
+        def fill(*_args):
+            box.configure(values=[frame_cap_label(v, t, generation.get()) for v, t in FRAME_CAPS])
+            box.current(values.index(var.get()) if var.get() in values else 0)
+        fill()
+        box.bind('<<ComboboxSelected>>', lambda _e: var.set(values[box.current()]))
+        var.trace_add('write', fill)
+        generation.trace_add('write', fill)
         return box
 
     def upscaler_states(self):
@@ -2174,6 +2212,17 @@ class Launcher:
                           'small', MUTED, wraplength=px(420), justify='left')
         note.pack(anchor='w', padx=(px(54), 0), pady=(px(2), 0))
         self.grey_with_upscaler(row, note)
+        holder = tk.Frame(quick, bg=CARD)  # one line (caption, dropdown): the Play page has no room for more
+        holder.grid(row=7, column=0, columnspan=2, sticky='w', pady=(px(6), 0))
+        self.label(holder, _('Frame cap (unlocked mode)', 'Ограничение FPS (режим без ограничения)'), 'small', MUTED).pack(
+            side='left', padx=(0, px(12)))
+        self.frame_cap_choice(holder).pack(side='left')
+        generation = self.var('frame_generation', 'ini')
+
+        def show_cap(*_args):  # the cap matters for frame generation: shown while it is on
+            (holder.grid if generation.get() else holder.grid_remove)()
+        generation.trace_add('write', show_cap)
+        show_cap()
         for key in ('fps_mode', 'upscaler', 'output_res'):
             self.vars[key].trace_add('write', lambda *_a: self.refresh_status())
 
@@ -2314,7 +2363,7 @@ class Launcher:
                    'Патчи сообщества для версии 1.09. «Без ограничения» — игра использует реальное время кадра. '
                    'Другие версии всегда работают в 30 FPS.'))
         self.row(f, _('Frame cap (unlocked mode)', 'Ограничение FPS (режим без ограничения)'),
-                 self.choice(f, 'frame_cap', 'app', FRAME_CAPS),
+                 self.frame_cap_choice(f),
                  _("Above about 120 FPS the game's movement timing breaks (running and rolling get slower, "
                    'physics and animations can glitch): higher caps are at your own risk.',
                    'Выше ~120 FPS ломается тайминг движения игры (бег и перекаты замедляются, возможны '
