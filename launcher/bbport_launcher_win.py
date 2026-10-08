@@ -167,9 +167,10 @@ TWEAKS = [
     ('tweak_ragdoll', ('Dark Souls-style ragdoll physics (corpses fly further)',
                        'Физика тел как в Dark Souls (тела отлетают дальше)'), False),
 ]
-INI_FLAGS = {'sharpen', 'object_motion', 'show_fps', *(k for k, _t, _o in EFFECTS + EXTRAS + CHEATS + TWEAKS)}
+INI_FLAGS = {'sharpen', 'object_motion', 'frame_generation', 'show_fps', *(k for k, _t, _o in EFFECTS + EXTRAS + CHEATS + TWEAKS)}
 INI_DEFAULTS = {'upscaler': 'fsr4', 'preset': '1', 'sharpen': '1', 'sharpness': '0.50',
-                'object_motion': '1', 'show_fps': '1', 'output_res': '1920x1080', 'model_lod': '0',
+                'object_motion': '1', 'frame_generation': '0', 'show_fps': '1',
+                'output_res': '1920x1080', 'model_lod': '0',
                 'live_resolution': 'auto',
                 **{key: '1' if on else '0' for key, _t, on in EFFECTS + EXTRAS + CHEATS + TWEAKS}}
 APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'), 'user_dir': '',
@@ -1127,6 +1128,7 @@ class Switch(Widget):
     def __init__(self, ui, parent, var, bg=CARD):
         px = ui.px
         self.w, self.h, self.var, self.pos = px(42), px(22), var, 1.0 if var.get() else 0.0
+        self.enabled = True
         super().__init__(ui, parent, self.w, self.h, bg, takefocus=True)
         c = self.canvas
         self.track = c.create_rectangle(0, 0, self.w - 1, self.h - 1, width=1)
@@ -1146,7 +1148,14 @@ class Switch(Widget):
         self.paint()
 
     def toggle(self):
-        self.var.set(not self.var.get())
+        if self.enabled:
+            self.var.set(not self.var.get())
+
+    def set_enabled(self, enabled):
+        """A greyed switch keeps its value and ignores clicks."""
+        self.enabled = enabled
+        self.canvas.configure(cursor='hand2' if enabled else 'arrow')
+        self.paint()
 
     def sync(self):
         self.ui.motion.tween((id(self), 'pos'), 170, self.pos, 1.0 if self.var.get() else 0.0, self.move)
@@ -1159,9 +1168,13 @@ class Switch(Widget):
         c, p, px = self.canvas, self.pos, self.ui.px
         pad = px(3)
         x = pad + p * (self.w - self.h)
+        c.coords(self.knob, x, pad, x + self.h - 2 * pad, self.h - pad - 1)
+        if not self.enabled:
+            c.itemconfigure(self.track, fill=mix('#221c1e', DIM, .2 + .2 * p), outline=mix(LINE_HI, '#221c1e', .5))
+            c.itemconfigure(self.knob, fill=mix(DIM, '#221c1e', .35))
+            return
         c.itemconfigure(self.track, fill=mix('#221c1e', BLOOD, p), outline=MUTED if self.focused else
                         mix(LINE_HI, BLOOD_HI, p))
-        c.coords(self.knob, x, pad, x + self.h - 2 * pad, self.h - pad - 1)
         c.itemconfigure(self.knob, fill=mix(mix(DIM, MUTED, self.hover), TEXT, p))
 
 
@@ -1582,8 +1595,9 @@ class Launcher:
         size = (min(self.px(1120), width - self.px(40)), min(self.px(780), height - self.px(90)))
         root.geometry(f'{size[0]}x{size[1]}+{(width - size[0]) // 2}+{max(0, (height - size[1]) // 3)}')
         root.minsize(min(self.px(980), size[0]), min(self.px(660), size[1]))
-        # The Play page needs about 430 px under the hero, 70 more for the ReShade look row.
-        self.hero_tall = max(self.px(150), min(self.px(232), size[1] - self.px(88) - self.px(500 if reshade_ready() else 430)))
+        # The Play page needs about 510 px under the hero (the frame generation row included), 70 more for
+        # the ReShade look row.
+        self.hero_tall = max(self.px(150), min(self.px(232), size[1] - self.px(88) - self.px(580 if reshade_ready() else 510)))
         self.set_icon()
         self.pick_fonts()
         self.style()
@@ -1837,20 +1851,40 @@ class Launcher:
 
     def switch(self, parent, var, text, wrap=0):
         frame = self.tk.Frame(parent, bg=CARD)
-        Switch(self, frame, var).pack(side='left')
+        knob = frame.knob = Switch(self, frame, var)
+        knob.pack(side='left')
         label = self.label(frame, text, cursor='hand2', justify='left', anchor='w', wraplength=wrap)
         label.pack(side='left', padx=(self.px(12), 0))
-        label.bind('<Button-1>', lambda _e: var.set(not var.get()))
+        frame.caption = label
+        label.bind('<Button-1>', lambda _e: knob.toggle())
         return frame
 
     def check(self, parent, key, store, title, hint=None):
+        """A switch row with an optional note under it; returns (switch frame, note label or None)."""
         px = self.px
         r = self.next_row(parent)
-        self.switch(parent, self.var(key, store), title, px(560)).grid(row=r, column=0, columnspan=2, sticky='w',
-                                                                      pady=(px(12), 0))
+        row = self.switch(parent, self.var(key, store), title, px(560))
+        row.grid(row=r, column=0, columnspan=2, sticky='w', pady=(px(12), 0))
+        note = None
         if hint:
-            self.label(parent, hint, 'small', MUTED, wraplength=px(560), justify='left').grid(
-                row=r + 1, column=0, columnspan=2, sticky='w', padx=(px(54), 0), pady=(px(2), 0))
+            note = self.label(parent, hint, 'small', MUTED, wraplength=px(560), justify='left')
+            note.grid(row=r + 1, column=0, columnspan=2, sticky='w', padx=(px(54), 0), pady=(px(2), 0))
+        return row, note
+
+    def grey_with_upscaler(self, row, *notes):
+        """Frame generation works on top of an upscaler: the switch is greyed while the upscaler is Off
+        (its value is kept)."""
+        upscaler = self.var('upscaler', 'ini')
+
+        def apply(*_args):
+            on = upscaler.get() != 'off'
+            row.knob.set_enabled(on)
+            row.caption.configure(fg=TEXT if on else DIM)
+            for note in notes:
+                if note is not None:
+                    note.configure(fg=MUTED if on else DIM)
+        upscaler.trace_add('write', apply)
+        apply()
 
     def note(self, parent, text, top=12):
         self.label(parent, text, 'small', MUTED, wraplength=self.px(680), justify='left').grid(
@@ -2084,6 +2118,15 @@ class Launcher:
         else:
             holder = self.cell(quick, 5, 0, '', span=2)
         self.switch(holder, self.var('fullscreen', 'app'), _('Fullscreen', 'Полный экран')).pack(anchor='w')
+        holder = self.cell(quick, 6, 0, '', span=2)
+        row = self.switch(holder, self.var('frame_generation', 'ini'),
+                          _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'))
+        row.pack(anchor='w')
+        note = self.label(holder, _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
+                                    'Удваивает частоту кадров; добавляет немного задержки ввода. Лучше всего от 60 FPS.'),
+                          'small', MUTED, wraplength=px(420), justify='left')
+        note.pack(anchor='w', padx=(px(54), 0), pady=(px(2), 0))
+        self.grey_with_upscaler(row, note)
         for key in ('fps_mode', 'upscaler', 'output_res'):
             self.vars[key].trace_add('write', lambda *_a: self.refresh_status())
 
@@ -2136,6 +2179,10 @@ class Launcher:
         self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
                    _('Less ghosting on characters, cloth and weapons; costs about 10% FPS.',
                      'Меньше гостинга на персонажах и одежде; стоит около 10% FPS.'))
+        self.grey_with_upscaler(*self.check(
+            f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
+            _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
+              'Удваивает частоту кадров; добавляет немного задержки ввода. Лучше всего от 60 FPS.')))
         self.build_reshade(page)
         f = self.card(page, _('FSR 4 assets', 'Ассеты FSR 4'))
         self.fsr4_label = self.label(f, '', wraplength=px(640), justify='left')

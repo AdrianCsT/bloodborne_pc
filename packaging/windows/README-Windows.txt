@@ -78,6 +78,30 @@ Upscaling
   be slow"; FSR 4.1.1 needs a Vulkan extension (VK_VALVE_shader_mixed_float_dot_product) that
   only Linux (Mesa) drivers offer, so it shows as not available on Windows drivers without it.
 
+Frame generation (optional)
+- Graphics -> "Frame generation (FSR 3.1)" (also on the Play page and in the in-game menu, or
+  frame_generation=1 in bbport.ini, or BB_FRAME_GEN=1 for one run) shows one interpolated frame
+  between every two game frames: 60 FPS of the game are shown as 120. It is AMD's FSR 3.1 frame
+  interpolation and optical flow, driven by the game's depth and motion vectors, on top of the
+  upscaler you picked (FSR 4, FSR 3.1, DLSS, XeSS or TAA). The HUD of the game frame is kept over
+  the interpolated frame, so it does not smear. Default: off.
+- It costs input lag: the game frame is shown about half a frame interval later than without
+  it. Best with at least 60 FPS before generation; below that the interpolated frames show
+  more artifacts and the lag is more noticeable.
+- It is off, with a line in the log, when the upscaler is Off, with HDR output, and when the
+  scene is rendered larger than the window. While the game runs faster than half of the
+  display's refresh rate there is no room for a second image per frame: generation pauses
+  ("Frame generation: idle, base FPS above half the refresh rate" in the log) and returns when
+  the rate falls. For example on a 144 Hz display it works up to about 65 FPS of the game.
+- Menus, loading screens and movies are shown as they are; generation restarts with the scene.
+- With vertical sync (present mode Fifo, which AMD GPUs use on Windows; BB_PRESENT_MODE) the
+  display paces the two images. With Mailbox or Immediate the port shows the interpolated frame
+  and then the game frame half a frame interval later.
+- The frame cap (Display & FPS) limits the game frames: a cap of 60 shows 120 images a second.
+- The FPS counter reads "60 -> 120 FPS FG" while it works. With BB_FRAME_STATS=1 the log gets
+  "Frame generation: N generated/s, M presented/s, base B FPS, X skipped" every 5 seconds.
+- ReShade and other overlays see every shown image, so twice as many presents as game frames.
+
 ReShade (optional)
 - Graphics -> "ReShade" (or "ReShade look" on the Play page) switches it on for the next game
   start: two presets, Natural (sharpening, deband, a little contrast and colour) and Vivid (more

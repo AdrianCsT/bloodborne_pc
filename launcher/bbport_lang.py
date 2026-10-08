@@ -189,6 +189,8 @@ KEYS = [
     'libxess.dll is not installed',
     'this GPU or driver does not support XeSS (DP4a needed)',
     '⚠ {} is not available on this PC ({}). The upscaler is now {}.',
+    'Frame generation (FSR 3.1)',
+    'Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
 ]
 
 TRANSLATIONS = {
@@ -369,6 +371,7 @@ TRANSLATIONS = {
         'الملف libxess.dll غير مثبّت',
         'هذه البطاقة أو برنامج التشغيل لا يدعم XeSS (يلزم DP4a)',
         '⚠ {} غير متاح على هذا الجهاز ({}). المُكبِّر الآن هو {}.',
+        'توليد الإطارات (FSR 3.1)', 'يضاعف معدل الإطارات ويضيف قليلاً من تأخر الإدخال. الأفضل مع 60 إطاراً في الثانية على الأقل.',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -547,6 +550,7 @@ TRANSLATIONS = {
         'libxess.dll no está instalada',
         'esta GPU o controlador no admite XeSS (hace falta DP4a)',
         '⚠ {} no está disponible en este PC ({}). Ahora el escalador es {}.',
+        'Generación de fotogramas (FSR 3.1)', 'Duplica la tasa de fotogramas; añade un poco de latencia de entrada. Mejor con al menos 60 FPS.',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -725,6 +729,7 @@ TRANSLATIONS = {
         'libxess.dll não está instalada',
         'esta GPU ou driver não oferece suporte a XeSS (é preciso DP4a)',
         '⚠ {} não está disponível neste PC ({}). O upscaler agora é {}.',
+        'Geração de quadros (FSR 3.1)', 'Dobra a taxa de quadros; adiciona um pouco de atraso de entrada. Melhor com pelo menos 60 FPS.',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -903,6 +908,7 @@ TRANSLATIONS = {
         'libxess.dll n’est pas installée',
         'ce GPU ou ce pilote ne prend pas en charge XeSS (DP4a requis)',
         '⚠ {} n’est pas disponible sur ce PC ({}). L’upscaler est maintenant {}.',
+        'Génération d\'images (FSR 3.1)', 'Double la fréquence d\'images ; ajoute un peu de latence d\'entrée. Idéal à partir de 60 FPS.',
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1081,6 +1087,7 @@ TRANSLATIONS = {
         'libxess.dll ist nicht installiert',
         'diese GPU oder dieser Treiber unterstützt XeSS nicht (DP4a nötig)',
         '⚠ {} ist auf diesem PC nicht verfügbar ({}). Der Upscaler ist jetzt {}.',
+        'Bildgenerierung (FSR 3.1)', 'Verdoppelt die Bildrate; fügt etwas Eingabeverzögerung hinzu. Am besten ab 60 FPS.',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1259,6 +1266,7 @@ TRANSLATIONS = {
         'libxess.dll non è installata',
         'questa GPU o driver non supporta XeSS (serve DP4a)',
         '⚠ {} non è disponibile su questo PC ({}). Ora l’upscaler è {}.',
+        'Generazione di frame (FSR 3.1)', 'Raddoppia il frame rate; aggiunge un po\' di input lag. Meglio con almeno 60 FPS.',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1437,6 +1445,7 @@ TRANSLATIONS = {
         'libxess.dll nie jest zainstalowana',
         'ten GPU lub sterownik nie obsługuje XeSS (potrzebne DP4a)',
         '⚠ {} jest niedostępny na tym komputerze ({}). Skaler to teraz {}.',
+        'Generowanie klatek (FSR 3.1)', 'Podwaja liczbę klatek na sekundę; dodaje niewielkie opóźnienie sterowania. Najlepiej od 60 FPS.',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1615,6 +1624,7 @@ TRANSLATIONS = {
         'libxess.dll yüklü değil',
         'bu GPU veya sürücü XeSS’i desteklemiyor (DP4a gerekir)',
         '⚠ {} bu bilgisayarda kullanılamıyor ({}). Ölçekleyici artık {}.',
+        'Kare üretimi (FSR 3.1)', 'Kare hızını ikiye katlar; girdi gecikmesini biraz artırır. En az 60 FPS ile en iyisidir.',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -1793,6 +1803,7 @@ TRANSLATIONS = {
         '未安装 libxess.dll',
         '此显卡或驱动不支持 XeSS（需要 DP4a）',
         '⚠ 此电脑不支持 {}（{}）。放大方式已改为 {}。',
+        '帧生成 (FSR 3.1)', '帧率翻倍，会增加少许输入延迟。建议基础帧率至少 60 FPS。',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -1971,6 +1982,7 @@ TRANSLATIONS = {
         'libxess.dllがインストールされていません',
         'このGPUまたはドライバーはXeSSに対応していません（DP4aが必要）',
         '⚠ このPCでは{}を利用できません（{}）。アップスケーラーを{}に変更しました。',
+        'フレーム生成 (FSR 3.1)', 'フレームレートを2倍にしますが、入力遅延が少し増えます。60 FPS 以上を推奨します。',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2149,6 +2161,7 @@ TRANSLATIONS = {
         'libxess.dll이 설치되어 있지 않습니다',
         '이 GPU 또는 드라이버는 XeSS를 지원하지 않습니다 (DP4a 필요)',
         '⚠ 이 PC에서는 {}을(를) 사용할 수 없습니다 ({}). 업스케일러가 {}(으)로 바뀌었습니다.',
+        '프레임 생성 (FSR 3.1)', '프레임 속도를 두 배로 높이며 입력 지연이 약간 늘어납니다. 60 FPS 이상을 권장합니다.',
     ],
 }
 
