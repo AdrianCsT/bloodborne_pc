@@ -235,7 +235,7 @@ The launcher shows a new version at the bottom left. **Update** downloads and in
 
 </details>
 
-Still stuck? Ask on the [Discord server](https://discord.gg/yTMG8c4Bqm) or open an [issue](https://github.com/Supermedo/bloodborne_pc/issues).
+Still stuck? Ask on the [Discord server](https://discord.gg/yTMG8c4Bqm) or open an [issue](https://github.com/AdrianCsT/bloodborne_pc/issues).
 
 ## How it works
 
