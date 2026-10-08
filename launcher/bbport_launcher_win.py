@@ -44,7 +44,7 @@ PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.6.6'
+VERSION = '1.6.7'
 RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases/latest'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
@@ -2624,9 +2624,24 @@ class Launcher:
             self.root.after(5000, self.root.destroy)  # the game keeps running
 
     def read_output(self, process):
+        # The same file the windowless start writes (play_without_window), so a crash report
+        # survives the launcher being closed and scripts (amd-motion-test) find it in one place.
+        try:
+            log_dir = Path(self.app.get('user_dir') or DATA_DIR / 'user')
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log = open(log_dir / 'last_run.log', 'w', encoding='utf-8', buffering=1)
+        except OSError:
+            log = None
         for raw in iter(process.stdout.readline, b''):
-            self.output.put(raw.decode('utf-8', errors='replace'))
-        self.output.put((process.wait(),))
+            text = raw.decode('utf-8', errors='replace')
+            if log:
+                log.write(text)
+            self.output.put(text)
+        code = process.wait()
+        if log:
+            log.write(f'\n-- the game exited (code {code}) --\n')
+            log.close()
+        self.output.put((code,))
 
     def drain_output(self):
         while not self.ui_calls.empty():

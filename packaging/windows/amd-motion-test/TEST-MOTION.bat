@@ -17,11 +17,17 @@ set "OUT=%DESK%\bloodborne-motion-test"
 set "ZIP=%DESK%\bloodborne-motion-test.zip"
 if not exist "%OUT%" mkdir "%OUT%"
 
+rem The game writes last_run.log into the saves folder chosen in the launcher (default: user).
+set "LOGDIR=%GAME%\user"
+for /f "usebackq delims=" %%U in (`powershell -NoProfile -Command "try { $s = Get-Content -Raw (Join-Path $env:APPDATA 'bbport-launcher\settings.json') | ConvertFrom-Json; if ($s.user_dir) { $s.user_dir } } catch {}"`) do set "LOGDIR=%%U"
+echo Logs are read from: %LOGDIR%> "%OUT%\where.txt"
+
 powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion | Format-List" > "%OUT%\gpu.txt" 2>&1
 
 echo.
 echo ===== RUN A of 2 =====
 echo The game starts now. Press Continue, play for about 2 minutes, then close the game.
+echo If the launcher window opens instead of the game, press PLAY in it, then close the launcher after the game.
 echo If the game closes by itself with an error, that is fine: just wait for this window.
 echo.
 pause
@@ -32,10 +38,10 @@ set BB_OBJECT_MOTION=1
 set BB_UPSCALER=fsr3
 set BB_FRAME_STATS=1
 set BB_OM_STORE=
-if exist "%GAME%\user\last_run.log" del "%GAME%\user\last_run.log"
+if exist "%LOGDIR%\last_run.log" del "%LOGDIR%\last_run.log"
 start /wait "" "%GAME%\Bloodborne.exe"
-if exist "%GAME%\user\last_run.log" (
-    copy /y "%GAME%\user\last_run.log" "%OUT%\A.log" > nul
+if exist "%LOGDIR%\last_run.log" (
+    copy /y "%LOGDIR%\last_run.log" "%OUT%\A.log" > nul
     echo Run A log saved.
     findstr /c:"Object motion: on" "%OUT%\A.log" > nul || echo WARNING: object motion did not switch on in run A. Tell the person who sent you this test.
 ) else (
@@ -45,13 +51,14 @@ if exist "%GAME%\user\last_run.log" (
 echo.
 echo ===== RUN B of 2 =====
 echo Same again: press Continue, play for about 2 minutes, then close the game.
+echo If the launcher window opens instead of the game, press PLAY in it, then close the launcher after the game.
 echo.
 pause
 set BB_OM_STORE=plain
-if exist "%GAME%\user\last_run.log" del "%GAME%\user\last_run.log"
+if exist "%LOGDIR%\last_run.log" del "%LOGDIR%\last_run.log"
 start /wait "" "%GAME%\Bloodborne.exe"
-if exist "%GAME%\user\last_run.log" (
-    copy /y "%GAME%\user\last_run.log" "%OUT%\B.log" > nul
+if exist "%LOGDIR%\last_run.log" (
+    copy /y "%LOGDIR%\last_run.log" "%OUT%\B.log" > nul
     echo Run B log saved.
     findstr /c:"Object motion: on" "%OUT%\B.log" > nul || echo WARNING: object motion did not switch on in run B. Tell the person who sent you this test.
 ) else (
