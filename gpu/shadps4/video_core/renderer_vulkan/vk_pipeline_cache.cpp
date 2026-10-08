@@ -35,12 +35,67 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "bbport_toggles.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // bbport: common/assert.cpp calls it before stopping on a failed check (SpeculativeAssertExit).
 extern void (*g_assert_speculative_exit)();
 #ifdef _WIN32
 extern "C" [[noreturn]] void bb_longjmp(sigjmp_buf buffer, int value);
 #endif
+extern "C" int runtime_memory_vma_info(uintptr_t address, int* prot, int* type, uintptr_t* end);
+extern "C" const uint64_t* runtime_memory_generation(void);
+
+namespace {
+// bbport: a stage's program address points at readable memory. A malformed command buffer (a
+// register packet whose values are the next packets) set a shader address of 0x4c0012d0000 and
+// reading the program there ended the game; such a draw or dispatch is skipped instead.
+template <typename Program>
+bool ProgramReadable(const Program& pgm) {
+    const auto address = reinterpret_cast<uintptr_t>(pgm.template Address<u32*>());
+    if (!address) {
+        return false;
+    }
+    // Checked for every stage of every draw: the last readable mapping found is remembered for
+    // as long as the mapping table keeps its generation (an odd one is a change in progress).
+    thread_local uintptr_t known_start = 0, known_end = 0;
+    thread_local uint64_t known_generation = 1;
+    const uint64_t generation = *runtime_memory_generation();
+    if (generation == known_generation && address >= known_start && address < known_end) {
+        return true;
+    }
+    int prot = 0, type = -1;
+    uintptr_t end = 0;
+    if (runtime_memory_vma_info(address, &prot, &type, &end)) {
+        if ((prot & 1) != 0 && (generation & 1) == 0) {
+            known_start = address; // the mapping's start is not known: from here on
+            known_end = end;
+            known_generation = generation;
+        }
+        return (prot & 1) != 0;
+    }
+#ifdef _WIN32
+    // Not a guest mapping (the executable's image): readable committed memory.
+    MEMORY_BASIC_INFORMATION info;
+    const DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READ |
+                           PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+    const bool ok = VirtualQuery(reinterpret_cast<void*>(address), &info, sizeof(info)) &&
+                    info.State == MEM_COMMIT && (info.Protect & readable) != 0 &&
+                    (info.Protect & PAGE_GUARD) == 0;
+#else
+    const bool ok = true;
+#endif
+    if (!ok) {
+        static int reports = 0;
+        if (reports++ < 8) {
+            std::fprintf(stderr, "Pipeline: shader program address %#llx is not readable; the draw "
+                                 "is skipped\n", (unsigned long long)address);
+        }
+    }
+    return ok;
+}
+} // namespace
 
 namespace Vulkan {
 
@@ -648,7 +703,7 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
     for (u32 i = 0; i < prepared.num_stages; ++i) {
         const auto& stage = prepared.stages[i];
         const auto* pgm = regs.ProgramForStage(static_cast<u32>(stage.hw_stage));
-        if (!pgm || !pgm->Address<u32*>()) {
+        if (!pgm || !ProgramReadable(*pgm)) {
             return nullptr;
         }
         const auto params = AmdGpu::GetParams(*pgm);
@@ -1043,7 +1098,7 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
         }
 
         const auto* pgm = regs.ProgramForStage(stage_in_idx);
-        if (!pgm || !pgm->Address<u32*>()) {
+        if (!pgm || !ProgramReadable(*pgm)) {
             key.stage_hashes[stage_out_idx] = 0;
             sel.infos[stage_out_idx] = nullptr;
             return false;
@@ -1154,6 +1209,9 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
 bool PipelineCache::RefreshComputeKey() {
     Shader::Backend::Bindings binding{};
     const auto& cs_pgm = liverpool->GetCsRegs();
+    if (!ProgramReadable(cs_pgm)) {
+        return false;
+    }
     const auto cs_params = AmdGpu::GetParams(cs_pgm);
     std::tie(sel.infos[0], sel.modules[0], sel.fetch_shader, compute_key.value) =
         GetProgram(sel, HwStage::Compute, SwStage::Compute, cs_params, binding);

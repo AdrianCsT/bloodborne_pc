@@ -5,6 +5,7 @@
 
 #include "bbport_toggles.h"
 #include "bbport_free_check.h"
+#include "bbport_memory_hash.h"
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -182,7 +183,7 @@ void TextureCache::DownloadImageMemory(ImageId image_id, bool sync) {
 /// first check never matched). Such an image lies within the faulting page: cheap to hash
 /// whole, and a CPU write past its first pixels still counts.
 u64 TextureCache::MaybeDirtyHash(const Image& image) {
-    return XXH3_64bits(std::bit_cast<const u8*>(image.info.guest_address), image.info.guest_size);
+    return BbMemory::HashBacking(image.info.guest_address, image.info.guest_size);
 }
 
 void TextureCache::MarkAsMaybeDirty(ImageId image_id, Image& image) {
@@ -876,8 +877,7 @@ void TextureCache::RefreshImage(Image& image) {
         // had no reference, and the first CPU write anywhere in its page replaced the GPU's
         // contents with stale guest memory (a 1x1 exposure texture computed once: the
         // character creation preview went black after one frame).
-        const u8* mip_addr = std::bit_cast<u8*>(image.info.guest_address) + mip_offset;
-        const u64 mip_hash = XXH3_64bits(mip_addr, mip_size);
+        const u64 mip_hash = BbMemory::HashBacking(image.info.guest_address + mip_offset, mip_size);
         if (is_gpu_modified && !is_gpu_dirty && image.mip_hashes[m] == mip_hash) {
             continue;
         }
