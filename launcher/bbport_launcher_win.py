@@ -210,10 +210,57 @@ DRAW_PIPE = [('', ('Auto (8+ threads)', 'Авто (8+ потоков)')), ('1', 
 READBACKS = [('', ('Relaxed (default)', 'Relaxed (по умолчанию)')), ('0', ('Off', 'Выключены')),
              ('2', ('Precise',))]
 # Frame cap of the unlocked mode (BB_FPS_LIMIT). '' leaves the port's own: the display refresh,
-# at most 120, because the game's movement timing breaks above about 120 FPS.
+# at most 120, because the game's movement timing breaks above about 120 FPS. 'half' becomes half
+# the display refresh rate in game_environment.
 FRAME_CAPS = [('', ('Auto: display refresh, max 120 (recommended)', 'Авто: частота монитора, макс. 120 (рекомендуется)')),
+              ('half', ('Half the refresh rate (for frame generation)',
+                        'Половина частоты монитора (для генерации кадров)')),
               ('60', ('60',)), ('90', ('90',)), ('120', ('120',)), ('144', ('144  ⚠',)), ('165', ('165  ⚠',)),
               ('240', ('240  ⚠',)), ('0', ('No limit  ⚠', 'Без ограничения  ⚠'))]
+
+
+_refresh_hz = None
+
+
+def display_refresh():
+    """Current refresh rate (Hz) of the primary display from Win32, 0 when unknown. Read once per run."""
+    global _refresh_hz
+    if _refresh_hz is None:
+        _refresh_hz = 0
+        try:
+            from ctypes import wintypes
+
+            class DEVMODEW(ctypes.Structure):
+                _fields_ = [('dmDeviceName', wintypes.WCHAR * 32), ('dmSpecVersion', wintypes.WORD),
+                            ('dmDriverVersion', wintypes.WORD), ('dmSize', wintypes.WORD),
+                            ('dmDriverExtra', wintypes.WORD), ('dmFields', wintypes.DWORD),
+                            ('dmPosition', ctypes.c_long * 2), ('dmDisplayOrientation', wintypes.DWORD),
+                            ('dmDisplayFixedOutput', wintypes.DWORD), ('dmColor', ctypes.c_short),
+                            ('dmDuplex', ctypes.c_short), ('dmYResolution', ctypes.c_short),
+                            ('dmTTOption', ctypes.c_short), ('dmCollate', ctypes.c_short),
+                            ('dmFormName', wintypes.WCHAR * 32), ('dmLogPixels', wintypes.WORD),
+                            ('dmBitsPerPel', wintypes.DWORD), ('dmPelsWidth', wintypes.DWORD),
+                            ('dmPelsHeight', wintypes.DWORD), ('dmDisplayFlags', wintypes.DWORD),
+                            ('dmDisplayFrequency', wintypes.DWORD), ('dmICMMethod', wintypes.DWORD),
+                            ('dmICMIntent', wintypes.DWORD), ('dmMediaType', wintypes.DWORD),
+                            ('dmDitherType', wintypes.DWORD), ('dmReserved1', wintypes.DWORD),
+                            ('dmReserved2', wintypes.DWORD), ('dmPanningWidth', wintypes.DWORD),
+                            ('dmPanningHeight', wintypes.DWORD)]
+            mode = DEVMODEW()
+            mode.dmSize = ctypes.sizeof(DEVMODEW)
+            if ctypes.windll.user32.EnumDisplaySettingsW(None, -1, ctypes.byref(mode)):  # ENUM_CURRENT_SETTINGS
+                hz = int(mode.dmDisplayFrequency)
+                _refresh_hz = hz if hz > 1 else 0  # 0 and 1 mean "the hardware default"
+        except (AttributeError, OSError, ImportError):
+            pass
+    return _refresh_hz
+
+
+def half_refresh():
+    """The 'half' frame cap: half the display refresh rate, at least 30 (60 Hz when it is unknown)."""
+    return max(30, (display_refresh() or 60) // 2)
+
+
 FRAMES_AHEAD = [('', ('1 (default)', '1 (по умолчанию)')), ('2', ('2',)), ('0', ('Unbounded', 'Без ограничения'))]
 UI_LANGUAGES = bbport_lang.LANGUAGE_NAMES
 
@@ -414,7 +461,7 @@ def game_environment(s):
         env['BB_HDR'] = '1'
     env['BB_FPS'] = s['fps_mode']
     if s.get('frame_cap', ''):
-        env['BB_FPS_LIMIT'] = s['frame_cap']
+        env['BB_FPS_LIMIT'] = str(half_refresh()) if s['frame_cap'] == 'half' else s['frame_cap']
     for key, name in (('draw_pipe', 'BB_DRAW_PIPE'), ('readbacks', 'BB_READBACKS'), ('frames_ahead', 'BB_FRAMES_AHEAD')):
         if s[key]:
             env[name] = s[key]
@@ -2271,7 +2318,11 @@ class Launcher:
                  _("Above about 120 FPS the game's movement timing breaks (running and rolling get slower, "
                    'physics and animations can glitch): higher caps are at your own risk.',
                    'Выше ~120 FPS ломается тайминг движения игры (бег и перекаты замедляются, возможны '
-                   'сбои физики и анимаций): более высокие значения — на ваш риск.'))
+                   'сбои физики и анимаций): более высокие значения — на ваш риск.') +
+                 ('' if display_refresh() else ' ' + _("The display's refresh rate could not be read; "
+                                                      '60 Hz is assumed for the half option.',
+                                                      'Не удалось определить частоту монитора; для половинного '
+                                                      'значения принято 60 Гц.')))
         self.row(f, _('Frames ahead of the GPU', 'Кадров впереди GPU'), self.choice(f, 'frames_ahead', 'app', FRAMES_AHEAD),
                  _('1 keeps frame pacing even; more can raise FPS when the graphics card is the limit.',
                    '1 — ровная подача кадров; больше может поднять FPS, если упирается в видеокарту.'))
