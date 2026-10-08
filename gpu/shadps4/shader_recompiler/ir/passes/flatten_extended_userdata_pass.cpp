@@ -50,11 +50,16 @@ struct NoSpeculativeExit {
     }
 };
 
+namespace {
+void EnsureSrtFaultHandler();
+}
+
 namespace Shader {
 
 PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
     NoSpeculativeExit no_exit;
     std::scoped_lock lock{g_srt_codegen_mutex};
+    EnsureSrtFaultHandler();
     const auto func_addr = (PFN_SrtWalker)g_srt_codegen.getCurr();
     g_srt_codegen.db(ptr, size);
     g_srt_codegen.ready();
@@ -99,6 +104,17 @@ static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
         return false; // Not in SRT code range
     }
 
+    // bbport: draw-preparation workers run the same walker concurrently. A thread that faulted
+    // on the instruction before another one patched it finds the patch here and retries; decoding
+    // it as the original MOV would trip the ASSERT below (exit 23).
+    static std::mutex patch_mutex;
+    std::scoped_lock patch_lock{patch_mutex};
+    const u8* bytes = reinterpret_cast<const u8*>(code);
+    if ((bytes[0] == 0x48 && bytes[1] == 0x31 && bytes[2] == 0xFF) ||
+        (bytes[0] == 0x45 && bytes[1] == 0x31 && bytes[2] == 0xD2)) {
+        return true;
+    }
+
     // Patch instruction to zero register
     ZydisDecodedInstruction instruction;
     ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT];
@@ -140,6 +156,19 @@ static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
                 fault_address);
 
     return true;
+}
+
+// Registers the walker fault handler once, whichever walker is added first (generated here or
+// loaded from the pipeline cache through RegisterWalkerCode). Called with g_srt_codegen_mutex
+// held, so the buffer is still empty and its current position is its start.
+void EnsureSrtFaultHandler() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        g_srt_codegen_start = g_srt_codegen.getCurr();
+        // Call after the memory invalidation handler
+        constexpr u32 priority = 1;
+        Core::Signals::Instance()->RegisterAccessViolationHandler(SrtWalkerSignalHandler, priority);
+    });
 }
 
 using namespace Shader;
@@ -665,13 +694,7 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
     std::scoped_lock lock{g_srt_codegen_mutex};
 
     // Register the signal handler for SRT walker, if not already registered
-    if (g_srt_codegen_start == nullptr) {
-        g_srt_codegen_start = c.getCurr();
-        auto* signals = Core::Signals::Instance();
-        // Call after the memory invalidation handler
-        constexpr u32 priority = 1;
-        signals->RegisterAccessViolationHandler(SrtWalkerSignalHandler, priority);
-    }
+    EnsureSrtFaultHandler();
 
     info.srt_info.walker_func = c.getCurr<PFN_SrtWalker>();
     pass_info.dst_off_dw = NUM_USER_DATA_REGS;
