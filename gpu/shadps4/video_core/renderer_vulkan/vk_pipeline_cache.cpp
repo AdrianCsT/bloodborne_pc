@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <mutex>
 #include <ranges>
 #include <string>
@@ -48,6 +49,31 @@ extern "C" int runtime_memory_vma_info(uintptr_t address, int* prot, int* type, 
 extern "C" const uint64_t* runtime_memory_generation(void);
 
 namespace {
+// bbport: work done ahead of the GPU thread reads game memory the game may still be writing. A
+// C++ exception from that data (a container over its capacity, an empty optional) ends the
+// attempt like a fault does, and the GPU thread translates the draw when it gets there; it must
+// not end the game. bb_longjmp restores registers without unwinding, so a fault jump out of this
+// try block is unaffected.
+template <typename F>
+bool SpeculativeCall(F&& f) {
+    static std::atomic<int> logged{0};
+    try {
+        f();
+        return true;
+    } catch (const std::exception& e) {
+        if (logged.fetch_add(1, std::memory_order_relaxed) < 8) {
+            LOG_WARNING(Render_Vulkan, "Shader work ahead of the GPU thread stopped: {}",
+                        e.what());
+        }
+    } catch (...) {
+        if (logged.fetch_add(1, std::memory_order_relaxed) < 8) {
+            LOG_WARNING(Render_Vulkan,
+                        "Shader work ahead of the GPU thread stopped (unknown exception)");
+        }
+    }
+    return false;
+}
+
 // bbport: a stage's program address points at readable memory. A malformed command buffer (a
 // register packet whose values are the next packets) set a shader address of 0x4c0012d0000 and
 // reading the program there ended the game; such a draw or dispatch is skipped instead.
@@ -1345,7 +1371,7 @@ std::optional<PipelineCache::Result> PipelineCache::CompileNewProgram(
             faulted = true;
         } else {
             runtime_fault_recover = &recover;
-            compile();
+            faulted = !SpeculativeCall(compile);
             runtime_fault_recover = nullptr;
         }
         runtime_fault_recover = nullptr;
@@ -1471,7 +1497,7 @@ std::optional<PipelineCache::Result> PipelineCache::CompilePermutation(
             faulted = true;
         } else {
             runtime_fault_recover = &recover;
-            compile();
+            faulted = !SpeculativeCall(compile);
             runtime_fault_recover = nullptr;
         }
         runtime_fault_recover = nullptr;
@@ -1542,14 +1568,21 @@ PipelineCache::Result PipelineCache::GetProgramSpeculative(PipelineSelection& se
         return {};
     }
     runtime_fault_recover = &recover;
-    info.RefreshFlatBuf();
-    auto spec = Shader::StageSpecialization(info, runtime_info, profile, binding);
+    std::optional<Shader::StageSpecialization> spec;
+    const bool specialized = SpeculativeCall([&] {
+        info.RefreshFlatBuf();
+        spec.emplace(info, runtime_info, profile, binding);
+    });
     runtime_fault_recover = nullptr;
+    if (!specialized) {
+        worker.failed = true;
+        return {};
+    }
 
     std::optional<Result> result;
     {
         std::shared_lock lock{programs_mutex};
-        if (const auto idx = FindReadyPermutation(*program, spec)) {
+        if (const auto idx = FindReadyPermutation(*program, *spec)) {
             result = std::make_tuple(&info, program->modules[*idx].module,
                                      program->modules[*idx].spec.fetch_shader_data,
                                      HashCombine(params.hash, *idx));
@@ -1561,7 +1594,7 @@ PipelineCache::Result PipelineCache::GetProgramSpeculative(PipelineSelection& se
         if (!worker.pools) {
             worker.pools = std::make_unique<Shader::Pools>();
         }
-        result = CompilePermutation(*program, info, spec, hw_stage, sw_stage, params, binding,
+        result = CompilePermutation(*program, info, *spec, hw_stage, sw_stage, params, binding,
                                     runtime_info, *worker.pools, true);
     }
     if (!result) {
