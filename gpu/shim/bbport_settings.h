@@ -92,6 +92,14 @@ struct Values {
     /// XeSS (libxess.dll, any GPU with DP4a) is ready, or why not (null before the device exists).
     std::atomic<bool> xess_supported{false};
     std::atomic<const char*> xess_problem{nullptr};
+    /// FSR 3.1 frame generation (vk_frame_generation.h): one interpolated frame between every
+    /// two game frames, on top of the selected upscaler. Off by default (bbport.ini
+    /// frame_generation, BB_FRAME_GEN).
+    std::atomic<bool> frame_generation{false};
+    /// What the presenter measured (overlay): interpolated frames are being shown, game frames
+    /// and presented images a second.
+    std::atomic<bool> fg_active{false};
+    std::atomic<float> fg_base_fps{0.0f}, fg_presented_fps{0.0f};
 
     /// Startup settings for the explicit BB_RENDER_RES compatibility patch only.
     int startup_preset = NativeAA;

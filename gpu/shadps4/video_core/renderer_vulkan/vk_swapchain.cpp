@@ -5,6 +5,7 @@
 #include <limits>
 #include "common/assert.h"
 #include "common/logging/log.h"
+#include "bbport_settings.h"
 #include "core/emulator_settings.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
@@ -17,6 +18,12 @@ static constexpr vk::SurfaceFormatKHR SURFACE_FORMAT_HDR = {
     .format = vk::Format::eA2B10G10R10UnormPack32,
     .colorSpace = vk::ColorSpaceKHR::eHdr10St2084EXT,
 };
+
+bool Swapchain::WantsFrameGenerationImages() const {
+    const auto& settings = BbSettings::Get();
+    return !needs_hdr && settings.frame_generation.load(std::memory_order_relaxed) &&
+           settings.upscaler.load(std::memory_order_relaxed) != BbSettings::UpscalerOff;
+}
 
 Swapchain::Swapchain(const Instance& instance_, const Frontend::WindowSDL& window_)
     : instance{instance_}, window{window_}, surface{CreateSurface(instance.GetInstance(), window)} {
@@ -244,6 +251,11 @@ void Swapchain::SetSurfaceProperties() {
 
     // Select number of images in swap chain, we prefer one buffer in the background to work on
     image_count = capabilities.minImageCount + 1;
+    // bbport: frame generation presents two images per game frame, one more waits in the queue.
+    fg_images = WantsFrameGenerationImages();
+    if (fg_images) {
+        ++image_count;
+    }
     if (capabilities.maxImageCount > 0) {
         image_count = std::min(image_count, capabilities.maxImageCount);
     }

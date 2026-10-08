@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <deque>
 
 #include <condition_variable>
@@ -11,6 +12,7 @@
 #include "core/libraries/videoout/buffer.h"
 #include "video_core/renderer_vulkan/host_passes/fsr_pass.h"
 #include "video_core/renderer_vulkan/host_passes/pp_pass.h"
+#include "video_core/renderer_vulkan/vk_frame_generation.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -38,7 +40,8 @@ struct Frame {
     u64 ready_tick;
     bool is_hdr{false};
     u8 id{};
-
+    /// bbport: frame generation: the interpolated frame shown right before this one (Present).
+    Frame* generated{nullptr};
 };
 
 enum SchedulerType {
@@ -105,7 +108,16 @@ public:
 private:
     Frame* GetRenderFrame();
 
-    void RecreateFrame(Frame* frame, u32 width, u32 height);
+    void RecreateFrame(Frame* frame, u32 width, u32 height, vk::Format format = {},
+                       vk::ImageUsageFlags extra_usage = {});
+    void DestroyFrameImage(Frame& frame);
+
+    /// One image of the swapchain: the frame blitted, the overlay drawn over it, presented.
+    void PresentFrame(Frame* frame, bool is_reusing_frame, bool is_game_frame);
+    /// bbport: the next image of the ring of interpolated frames, free and of this size.
+    Frame* AcquireGeneratedFrame(u32 width, u32 height, vk::Format format);
+    /// bbport: the frame without UI, made by the host passes like the presented one.
+    Frame* AcquireHudlessFrame(u32 width, u32 height, vk::Format format);
 
     void SetExpectedGameSize(s32 width, s32 height);
 
@@ -123,6 +135,8 @@ private:
     std::mutex passes_mutex; ///< bbport: the passes are recorded on the recording threads
     AmdGpu::Liverpool* liverpool;
     Scheduler draw_scheduler;
+    /// bbport: FSR 3.1 frame generation; before the rasterizer, whose upscaler feeds it.
+    FrameGeneration frame_generation;
     std::deque<u64> recent_frame_ticks; ///< bbport: BB_FRAMES_AHEAD bound (PrepareFrame)
     Scheduler present_scheduler;
     Scheduler flip_scheduler;
@@ -132,6 +146,11 @@ private:
     VideoCore::TextureCache& texture_cache;
     vk::UniqueCommandPool command_pool;
     std::vector<Frame> present_frames;
+    /// bbport: interpolated frames (Presenter::Present shows one before its game frame) and the
+    /// game frame without UI; their images exist only while frame generation is on.
+    std::array<Frame, 4> generated_frames{};
+    u32 next_generated{0};
+    Frame hudless_frame{};
     std::queue<Frame*> free_queue;
     Frame* last_submit_frame;
     std::mutex free_mutex;

@@ -209,8 +209,13 @@ void Menu() {
             language == 1 ? BbSettings::MenuLanguage::Russian : BbSettings::MenuLanguage::English;
         BbSettings::Save();
     }
-    ImGui::Text(BbSettings::MenuText("%.0f FPS  (%.1f ms)", "%.0f FPS  (%.1f мс)"),
-                frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f, frame_ms_avg);
+    if (s.fg_active) {
+        ImGui::Text(BbSettings::MenuText("%.0f -> %.0f FPS FG", "%.0f -> %.0f FPS FG"),
+                    s.fg_base_fps.load(), s.fg_presented_fps.load());
+    } else {
+        ImGui::Text(BbSettings::MenuText("%.0f FPS  (%.1f ms)", "%.0f FPS  (%.1f мс)"),
+                    frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f, frame_ms_avg);
+    }
 
     ImGui::SeparatorText(BbSettings::MenuText("Temporal upscaler", "Временной апскейлер"));
     const char* upscalers[] = {
@@ -370,6 +375,18 @@ void Menu() {
         "more detail from multiple frames. Without it, only history-based anti-aliasing remains.",
         "Каждый кадр сцена сдвигается на долю пикселя, и апскейлер собирает из нескольких "
         "кадров больше деталей. Без него получается только сглаживание по истории."));
+    Checkbox(BbSettings::MenuText("Frame generation (FSR 3.1)", "Генерация кадров (FSR 3.1)"),
+             s.frame_generation);
+    Hint(BbSettings::MenuText(
+        "Doubles the frame rate: one interpolated frame between every two game frames, from the "
+        "upscaled scene, its depth and motion vectors. Adds a little input lag. Best with at "
+        "least 60 FPS. Needs SDR output; it pauses while the frame rate is above half the "
+        "display's refresh rate. Applies at once.",
+        "Удваивает частоту кадров: между каждыми двумя кадрами игры показывается один "
+        "интерполированный, по увеличенной сцене, её глубине и векторам движения. Добавляет "
+        "немного задержки ввода. Лучше всего от 60 FPS. Нужен SDR-вывод; пока частота кадров "
+        "выше половины частоты обновления экрана, генерация приостанавливается. Применяется "
+        "сразу."));
 
     ImGui::SeparatorText(BbSettings::MenuText("Reactive mask", "Маска реактивности"));
     ImGui::BeginDisabled(taa);
@@ -558,15 +575,22 @@ void FpsCounter() {
                      ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
                      ImGuiWindowFlags_NoFocusOnAppearing);
     const auto& s = BbSettings::Get();
-    ImGui::Text(BbSettings::MenuText("%.0f FPS  %.1f ms  %s", "%.0f FPS  %.1f мс  %s"),
-                frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f, frame_ms_avg,
-                s.upscaler == BbSettings::UpscalerFsr3     ? "FSR 3.1"
-                : s.upscaler == BbSettings::UpscalerFsr4   ? "FSR 4"
-                : s.upscaler == BbSettings::UpscalerFsr411 ? "FSR 4.1.1"
-                : s.upscaler == BbSettings::UpscalerTaa    ? "TAA"
-                : s.upscaler == BbSettings::UpscalerDlss   ? "DLSS"
-                : s.upscaler == BbSettings::UpscalerXess   ? "XeSS"
-                                                           : "");
+    const char* upscaler_name = s.upscaler == BbSettings::UpscalerFsr3     ? "FSR 3.1"
+                                : s.upscaler == BbSettings::UpscalerFsr4   ? "FSR 4"
+                                : s.upscaler == BbSettings::UpscalerFsr411 ? "FSR 4.1.1"
+                                : s.upscaler == BbSettings::UpscalerTaa    ? "TAA"
+                                : s.upscaler == BbSettings::UpscalerDlss   ? "DLSS"
+                                : s.upscaler == BbSettings::UpscalerXess   ? "XeSS"
+                                                                           : "";
+    if (s.fg_active) {
+        // Game frames -> frames shown: the interval of the shown images is half the game's.
+        ImGui::Text("%.0f -> %.0f FPS FG  %s", s.fg_base_fps.load(), s.fg_presented_fps.load(),
+                    upscaler_name);
+    } else {
+        ImGui::Text(BbSettings::MenuText("%.0f FPS  %.1f ms  %s", "%.0f FPS  %.1f мс  %s"),
+                    frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f, frame_ms_avg,
+                    upscaler_name);
+    }
     ImGui::End();
 }
 

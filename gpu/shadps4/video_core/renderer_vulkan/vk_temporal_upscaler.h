@@ -38,6 +38,7 @@ class Scheduler;
 class Runtime;
 class CameraMotion;
 class SceneTargets;
+class FrameGeneration;
 
 /// bbport BB_FINAL_DUMP_TRIGGER: the frame as presented (after FSR and post processing) is saved
 /// as final_<w>x<h> in BB_DUMP_DIR when the trigger file exists (consumed). `image` in General.
@@ -53,6 +54,12 @@ public:
 
     [[nodiscard]] bool Enabled() const noexcept {
         return enabled;
+    }
+
+    /// bbport: FSR 3.1 frame generation (vk_frame_generation.h) takes each frame's depth and
+    /// motion vectors at the upscale and the scene before the first UI draw.
+    void SetFrameGeneration(FrameGeneration* value) noexcept {
+        frame_generation = value;
     }
 
     /// A draw into a full-size RGBA16F target with the scene depth: the scene color.
@@ -150,6 +157,12 @@ private:
 
     void Run();
     void RunScaled();
+    /// The upscale of this frame is recorded: hands frame generation what the game overwrites
+    /// before the frame is presented.
+    void CaptureForFrameGeneration(vk::Image depth, vk::ImageLayout layout, vk::Format format,
+                                   u32 w, u32 h, float frame_ms, bool was_reset);
+    /// The first UI draw of a native-size frame: the finished scene is copied for frame generation.
+    void CaptureNativeHudless(VideoCore::ImageId color);
     void RunUiOnly(VideoCore::ImageId color, VideoCore::ImageId depth);
     void EnsureUiResources(u32 width, u32 height, vk::Format color, vk::Format depth);
     void PrepareUiDepth(VideoCore::ImageId depth);
@@ -195,6 +208,7 @@ private:
     /// `whole_range`: for XeSS, which has no sharpener, the pass covers the whole 0..2 sharpness.
     void ExtraSharpen(vk::Image target, bool ldr, u32 w, u32 h, bool whole_range = false);
 
+    FrameGeneration* frame_generation = nullptr;
     const Instance& instance;
     Scheduler& scheduler;
     VideoCore::TextureCache& texture_cache;
