@@ -10,8 +10,8 @@ THIS PROJECT IS NOT RELATED TO SHADPS4. ALL QUESTIONS RELATED TO THIS PROJECT SH
 ![The launcher](docs/screenshots/launcher-simple.png)
 
 1. Download `bbport-windows.zip` from the [latest release](https://github.com/AdrianCsT/bloodborne_pc/releases/latest) and unzip it anywhere.
-2. Open `Bloodborne.exe` and choose the folder of your own Bloodborne dump (CUSA03173, game version 1.09).
-3. Press **PLAY**.
+2. Open `Bloodborne.exe`. The first time, the launcher opens: choose the folder of your own Bloodborne dump (CUSA03173, game version 1.09) and press **PLAY**.
+3. After that, `Bloodborne.exe` starts the game straight away. Open `BLauncher.exe` whenever you want to change settings.
 
 You need nothing else: no compiler, no Python, no emulator. Windows 10 or 11 and a Vulkan graphics card are enough.
 The launcher tells you when a new version is out and installs it for you. Your saves and settings stay.
@@ -54,7 +54,7 @@ Mesa/RADV) has been tested thoroughly.
 ## Windows version
 
 **Bloodborne running natively on Windows 10 and 11, by [Supermedo](https://github.com/Supermedo) Mohammed Albarghouthi.**
-Unpack the zip, start `Bloodborne.exe`, pick your game folder and press **PLAY**.
+Unpack the zip, start `Bloodborne.exe`, pick your game folder and press **PLAY**. Settings live in `BLauncher.exe`.
 
 **[Download the latest version](https://github.com/AdrianCsT/bloodborne_pc/releases/latest)** · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
 
@@ -72,7 +72,7 @@ Unpack the zip, start `Bloodborne.exe`, pick your game folder and press **PLAY**
 - **Cheats page** (never die, stealth, silent footsteps, Rally that never fades, enemy control)
   and gameplay tweaks (camera distance, no camera auto-rotation, easier running, ragdoll physics).
 - **Game effects** on and off, **mods and third-party patches** loaded without changing your
-  game files, and **`Play Bloodborne.exe`**, which starts the game straight away with your saved
+  game files, and **`Bloodborne.exe`**, which starts the game straight away with your saved
   settings (good for a desktop shortcut or Steam).
 - **Controller and keyboard**, an in-game settings menu (Insert or L3+R3), name entry on
   screen, a desktop shortcut, and a button to clear the shader cache.
@@ -82,7 +82,7 @@ and a current driver; about 6 GB of free memory (RAM + page file), 10 GB for 144
 for DLSS an NVIDIA GeForce RTX 20 series or newer. Nothing else to install: everything the game
 needs is in the zip.
 
-How to play: start `Bloodborne.exe`, choose your game folder (the one with `eboot.bin`) on
+How to play: start `BLauncher.exe`, choose your game folder (the one with `eboot.bin`) on
 **Game & effects**, press **PLAY**. In the game, **Insert** (or **L3+R3** on a controller) opens
 the settings menu. Keyboard: WASD move, arrows camera, Space Cross, Left Shift Circle, E Square,
 Q Triangle, 1/3 L1/R1, R/F L2/R2, Z/C L3/R3, I/K/J/L d-pad, Enter Options, Tab touchpad.

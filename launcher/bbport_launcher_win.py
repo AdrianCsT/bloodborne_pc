@@ -9,7 +9,7 @@ Launcher options live in %APPDATA%/bbport-launcher/settings.json. The window has
 (Play and the few settings a player needs) and an Advanced one (every tab); BB_LAUNCHER_ANIMATIONS=0
 turns the motion off.
 
-Frozen with PyInstaller (packaging/windows/package.sh) the same Bloodborne.exe also runs the
+Frozen with PyInstaller (packaging/windows/package.sh) the same BLauncher.exe also runs the
 game without the window (`--play`), run.py (`--run`) and the preparation scripts (`--script`),
 so a packaged port needs no Python installation.
 """
@@ -42,7 +42,7 @@ PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.6'
+VERSION = '1.6.1'
 RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases/latest'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
@@ -2257,11 +2257,11 @@ class Launcher:
                 with zipfile.ZipFile(archive) as package:
                     package.extractall(UPDATE_DIR / 'new')
                 archive.unlink()
-                new = next((p.parent for p in (UPDATE_DIR / 'new').rglob('Bloodborne.exe')), None)
+                new = next((p.parent for p in (UPDATE_DIR / 'new').rglob('BLauncher.exe')), None)
                 if not new:
-                    raise OSError('Bloodborne.exe is missing from the download')
+                    raise OSError('BLauncher.exe is missing from the download')
                 # The new launcher copies itself over this installation once this one has closed.
-                subprocess.Popen([str(new / 'Bloodborne.exe'), '--install-update', str(PORT_DIR), str(os.getpid())],
+                subprocess.Popen([str(new / 'BLauncher.exe'), '--install-update', str(PORT_DIR), str(os.getpid())],
                                  cwd=str(new), stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
                 self.ui_calls.put(self.root.destroy)
             except (OSError, zipfile.BadZipFile) as failure:
@@ -2285,9 +2285,10 @@ class Launcher:
                                                  'минут будет подтормаживать, пока кэш собирается заново.'))
 
     def shortcut(self):
-        """Bloodborne.lnk on the desktop."""
+        """Bloodborne.lnk on the desktop: Bloodborne.exe, which starts the game (or this launcher
+        while no game folder is chosen)."""
         if FROZEN:
-            target, arguments, icon = sys.executable, '', f'{sys.executable},0'
+            target, arguments, icon = str(PORT_DIR / 'Bloodborne.exe'), '', f'{sys.executable},0'
         else:  # a source tree: the launcher script with the windowless Python
             pythonw = Path(sys.executable).with_name('pythonw.exe')
             target = str(pythonw if pythonw.exists() else sys.executable)
@@ -2392,7 +2393,7 @@ def install_update(target, wait_pid):
             'Не удалось установить обновление. Скачайте его со страницы релизов.'), 'Bloodborne', 0x10)
         webbrowser.open(RELEASES_PAGE)
         return 1
-    subprocess.Popen([str(target / 'Bloodborne.exe')], cwd=str(target))
+    subprocess.Popen([str(target / 'BLauncher.exe')], cwd=str(target))
     return 0
 
 
