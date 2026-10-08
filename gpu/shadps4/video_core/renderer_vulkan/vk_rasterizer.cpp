@@ -3652,7 +3652,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         FrameCapture::BeginPass(colors.data(), state.num_color_attachments, depth);
     }
     // bbport: object motion vector attachment of G-buffer pipelines.
-    if (key.motion_vectors) {
+    if (key.motion_vectors && Shader::MotionVectors::WritesFragmentOutput()) {
         object_motion->Attach(state, state.width, state.height);
     }
     return state;

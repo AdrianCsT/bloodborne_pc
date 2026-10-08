@@ -109,6 +109,26 @@ struct MotionVectors {
     static inline bool plain_store = false;
     /// BB_OM_GUARD=0 (A/B tests only): no tag or element bounds checks in the shader.
     static inline bool guards = true;
+    /// BB_OM_PART (bisection of the AMD Windows device loss; default Full). Read once when
+    /// ObjectMotion is built, before any shader is compiled, so one process only ever holds
+    /// one variant (the motion vertex shaders are never persisted either).
+    ///   NoBda:  the vertex shader writes both varyings (previous = current, z = 0 invalid)
+    ///           without any buffer device address access; no PhysicalStorageBuffer.
+    ///   NoFs:   vertex shader unchanged; no fragment output, no attachment 7.
+    ///   NoVary: vertex shader accesses the buffers but writes no varyings; no fragment output,
+    ///           no attachment 7.
+    enum class Part : u32 { Full, NoBda, NoFs, NoVary };
+    static inline Part part = Part::Full;
+    [[nodiscard]] static bool UsesBda() {
+        return part != Part::NoBda;
+    }
+    [[nodiscard]] static bool WritesVaryings() {
+        return part != Part::NoVary;
+    }
+    /// Fragment motion output and attachment 7.
+    [[nodiscard]] static bool WritesFragmentOutput() {
+        return part == Part::Full || part == Part::NoBda;
+    }
     static constexpr u32 DiagStoreOob = 0, DiagLoadOob = 1, DiagTornParams = 2, DiagBadIndex = 3;
     static constexpr u32 DiagLastBadIndex = 4, DiagLastTorn = 5; ///< last offending motion_param
     static constexpr u32 DiagWords = 8;

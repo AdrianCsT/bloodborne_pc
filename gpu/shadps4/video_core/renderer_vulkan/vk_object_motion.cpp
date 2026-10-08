@@ -92,6 +92,23 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
     if (const char* env = std::getenv("BB_OM_STORE")) {
         Shader::MotionVectors::plain_store = std::strcmp(env, "plain") == 0;
     }
+    // Bisection of the AMD Windows device loss (see Shader::MotionVectors::Part).
+    const char* part_name = "full";
+    if (const char* env = std::getenv("BB_OM_PART"); env && env[0]) {
+        using Part = Shader::MotionVectors::Part;
+        if (std::strcmp(env, "nobda") == 0) {
+            Shader::MotionVectors::part = Part::NoBda;
+            part_name = "nobda";
+        } else if (std::strcmp(env, "nofs") == 0) {
+            Shader::MotionVectors::part = Part::NoFs;
+            part_name = "nofs";
+        } else if (std::strcmp(env, "novary") == 0) {
+            Shader::MotionVectors::part = Part::NoVary;
+            part_name = "novary";
+        } else if (std::strcmp(env, "full") != 0) {
+            std::printf("Object motion: unknown BB_OM_PART=%s, using full\n", env);
+        }
+    }
     void* mapped = nullptr;
     void* read_mapped = nullptr;
     u64 params_address = 0, positions_address = 0, diag_address = 0, read_address = 0;
@@ -119,10 +136,11 @@ ObjectMotion::ObjectMotion(const Instance& instance_, Scheduler& scheduler_)
     Shader::MotionVectors::position_elements = 1 + 2 * PositionsPerFrame;
     Shader::MotionVectors::diag_address = diag_address;
     enabled = true;
-    std::printf("Object motion: on (%u vertices per frame, %u parameter slots%s, %s stores%s)\n",
+    std::printf("Object motion: on (%u vertices per frame, %u parameter slots%s, %s stores%s, "
+                "part=%s)\n",
                 PositionsPerFrame, frame_slots, no_param_wait ? ", no slot wait" : "",
                 Shader::MotionVectors::plain_store ? "plain" : "atomic",
-                Shader::MotionVectors::guards ? "" : ", GUARDS OFF");
+                Shader::MotionVectors::guards ? "" : ", GUARDS OFF", part_name);
 }
 
 ObjectMotion::~ObjectMotion() {

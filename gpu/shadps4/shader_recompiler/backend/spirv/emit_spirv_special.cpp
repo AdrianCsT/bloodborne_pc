@@ -79,7 +79,16 @@ static void EmitVertexMotion(EmitContext& ctx) {
     const Id u32_type = ctx.U32[1];
     const Id bool_type = ctx.U1[1];
     const Id position = ctx.OpLoad(ctx.F32[4], ctx.output_position);
-    const Id param_ptr = ctx.OpAccessChain(ctx.TypePointer(spv::StorageClass::PushConstant, u32_type),
+    if (!MotionVectors::UsesBda()) {
+        // BB_OM_PART=nobda: the varyings alone. No params load, no positions access, no
+        // diagnostics: previous = current with z = 0 (invalid), so the output stays zero.
+        const Id previous = ctx.OpCompositeInsert(ctx.F32[4], ctx.Constant(ctx.F32[1], 0.0f),
+                                                  position, 2u);
+        ctx.OpStore(ctx.motion_out_cur, position);
+        ctx.OpStore(ctx.motion_out_prev, previous);
+        return;
+    }
+    const Id param_ptr =ctx.OpAccessChain(ctx.TypePointer(spv::StorageClass::PushConstant, u32_type),
                                            ctx.push_data_block,
                                            ctx.ConstU32(PushData::MotionParamIndex));
     const Id motion_param = ctx.OpLoad(u32_type, param_ptr);
@@ -232,8 +241,16 @@ static void EmitVertexMotion(EmitContext& ctx) {
     const Id valid = ctx.OpSelect(ctx.F32[1], do_load, ctx.Constant(ctx.F32[1], 1.0f),
                                   ctx.Constant(ctx.F32[1], 0.0f));
     previous = ctx.OpCompositeInsert(ctx.F32[4], valid, previous, 2u);
-    ctx.OpStore(ctx.motion_out_cur, position);
-    ctx.OpStore(ctx.motion_out_prev, previous);
+    if (MotionVectors::WritesVaryings()) {
+        ctx.OpStore(ctx.motion_out_cur, position);
+        ctx.OpStore(ctx.motion_out_prev, previous);
+    } else {
+        // BB_OM_PART=novary: no varyings. The loaded history goes to the scratch element 0
+        // (never a real vertex), or the driver would drop the dead load.
+        ctx.OpStore(ctx.OpConvertUToPtr(f32x4_ptr,
+                                        ctx.Constant(ctx.U64, MotionVectors::positions_address)),
+                    previous, spv::MemoryAccessMask::Aligned, 16u);
+    }
 }
 
 // Screen-space motion (previous minus current, pixels) through the viewport scale; z = valid.
@@ -272,7 +289,7 @@ static void EmitFragmentMotion(EmitContext& ctx) {
 }
 
 void EmitEpilogue(EmitContext& ctx) {
-    if (Sirit::ValidId(ctx.motion_out_cur)) {
+    if (ctx.VertexMotion()) {
         EmitVertexMotion(ctx);
     }
     if (Sirit::ValidId(ctx.motion_frag_out)) {

@@ -262,6 +262,14 @@ public:
         return sw_stage == SwStage::Vertex && hw_stage == HwStage::Vertex &&
                runtime_info.hw.vs.motion_vectors && MotionVectors::positions_address != 0;
     }
+    /// The vertex shader accesses the motion buffers by device address (BB_OM_PART=nobda: no).
+    [[nodiscard]] bool VertexMotionBda() const {
+        return VertexMotion() && MotionVectors::UsesBda();
+    }
+    /// The vertex shader writes the two motion varyings (BB_OM_PART=novary: no).
+    [[nodiscard]] bool VertexMotionVaryings() const {
+        return VertexMotion() && MotionVectors::WritesVaryings();
+    }
     [[nodiscard]] bool FragmentMotion() const {
         return sw_stage == SwStage::Fragment && runtime_info.hw.fs.motion_vectors;
     }

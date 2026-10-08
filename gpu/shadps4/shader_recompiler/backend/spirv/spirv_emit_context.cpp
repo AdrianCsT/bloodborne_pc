@@ -72,7 +72,7 @@ EmitContext::EmitContext(const Profile& profile_, const RuntimeInfo& runtime_inf
                          Bindings& binding_)
     : Sirit::Module(profile_.supported_spirv), info{info_}, runtime_info{runtime_info_},
       profile{profile_}, hw_stage{info.hw_stage}, sw_stage{info.sw_stage}, binding{binding_} {
-    if (info.uses_dma || VertexMotion()) {
+    if (info.uses_dma || VertexMotionBda()) {
         SetMemoryModel(spv::AddressingModel::PhysicalStorageBuffer64, spv::MemoryModel::GLSL450);
     } else {
         SetMemoryModel(spv::AddressingModel::Logical, spv::MemoryModel::GLSL450);
@@ -644,7 +644,7 @@ void EmitContext::DefineOutputs() {
                 ++num_attrs;
             }
 
-            if (VertexMotion()) {
+            if (VertexMotionVaryings()) {
                 motion_out_cur = DefineOutput(F32[4], MotionVectors::CurrentLocation);
                 motion_out_prev = DefineOutput(F32[4], MotionVectors::PreviousLocation);
                 Name(motion_out_cur, "motion_cur");

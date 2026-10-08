@@ -198,7 +198,8 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
                 ? regs.aa_config.NumSamples()
                 : 1;
         info.hw.fs.z_export_format = regs.z_export_format;
-        info.hw.fs.motion_vectors = sel.motion;
+        // BB_OM_PART nofs / novary: the fragment shader is the normal one.
+        info.hw.fs.motion_vectors = sel.motion && Shader::MotionVectors::WritesFragmentOutput();
         u8 stencil_ref_export_enable = regs.depth_shader_control.stencil_op_val_export_enable |
                                        regs.depth_shader_control.stencil_test_val_export_enable;
         info.hw.fs.mrtz_mask = regs.depth_shader_control.z_export_enable |
@@ -985,15 +986,18 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         key.num_samples = std::max(key.num_samples, color_samples);
     }
 
+    // BB_OM_PART nofs / novary: the vertex side stays (key.motion_vectors drives the params)
+    // but there is no attachment 7, as if the fragment shader had motion_vectors false.
     if (sel.motion) {
-        constexpr u32 mv = Shader::MotionVectors::Output;
         key.motion_vectors = 1;
+    }
+    if (sel.motion && Shader::MotionVectors::WritesFragmentOutput()) {
+        constexpr u32 mv = Shader::MotionVectors::Output;
         // The slots between the shader's last target and the motion attachment have no image in
         // the render pass. The first pass above filled them from every bound color buffer, also
         // ones this shader never writes; left in, the pipeline declares a format there (e.g.
         // R16G16B16A16 at 6) where the rendering has none (VUID-vkCmdDrawIndexed-
-        // dynamicRenderingUnusedAttachments-08912). AMD then writes that target without an image
-        // and loses the device on the first motion draw; NVIDIA ignores it.
+        // dynamicRenderingUnusedAttachments-08912).
         for (u32 cb = key.num_color_attachments; cb < mv; ++cb) {
             std::memset(&key.color_buffers[cb], 0, sizeof(Shader::PsColorBuffer));
             key.write_masks[cb] = {};

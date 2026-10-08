@@ -18,7 +18,16 @@ int main(int argc, char** argv) {
     MotionVectors::diag_address = 0x30000;
     MotionVectors::param_entries = 1 + 4 * 8192;
     MotionVectors::position_elements = 1 + 2 * (4u << 20);
-    // Both ways of storing the position (BB_OM_STORE=plain) must validate.
+    // Every BB_OM_PART variant, and both ways of storing the position (BB_OM_STORE=plain),
+    // must validate. Full keeps the original file names.
+    const std::pair<MotionVectors::Part, const char*> parts[] = {
+        {MotionVectors::Part::Full, ""},
+        {MotionVectors::Part::NoBda, "-nobda"},
+        {MotionVectors::Part::NoFs, "-nofs"},
+        {MotionVectors::Part::NoVary, "-novary"},
+    };
+    for (const auto& [part, part_suffix] : parts) {
+    MotionVectors::part = part;
     for (bool plain_store : {false, true}) {
     MotionVectors::plain_store = plain_store;
     for (bool vertex : {true, false}) {
@@ -31,7 +40,8 @@ int main(int argc, char** argv) {
             if (vertex) {
                 runtime.hw.vs.motion_vectors = motion;
             } else {
-                runtime.hw.fs.motion_vectors = motion;
+                // As the pipeline cache sets it.
+                runtime.hw.fs.motion_vectors = motion && MotionVectors::WritesFragmentOutput();
                 runtime.hw.fs.color_buffers[0].num_format = AmdGpu::NumberFormat::Float;
             }
             Common::ObjectPool<IR::Inst> pool;
@@ -59,12 +69,13 @@ int main(int argc, char** argv) {
             Backend::Bindings bindings{};
             const auto code = Backend::SPIRV::EmitSPIRV(profile, runtime, program, bindings);
             const auto path = dir / (std::string(vertex ? "vertex" : "fragment") +
-                                      (motion ? "-motion" : "-plain") +
+                                      (motion ? "-motion" : "-plain") + part_suffix +
                                       (plain_store ? "-plainstore.spv" : ".spv"));
             std::ofstream out(path, std::ios::binary);
             out.write(reinterpret_cast<const char*>(code.data()), code.size() * sizeof(u32));
             if (!out) { return 1; }
         }
+    }
     }
     }
 }
