@@ -156,10 +156,35 @@ def expand(directory):
         directory.mkdir(exist_ok=True)
 
 
+GB = 1024 ** 3
+
+
 def beside_game(game, out):
     """Hard links only reach files on the same volume: with the game on another drive than out,
     the overlay goes beside the game."""
     return os.name == 'nt' and out.drive.casefold() != game.drive.casefold()
+
+
+def copy_bytes(game, replacements):
+    """Bytes an overlay copies when no file can be hard-linked (the game and out on different
+    volumes): the game's files at the top and in each folder a mod reaches (the other folders
+    become junctions, which cross volumes), plus the mod files. A game file a mod replaces is
+    copied first and removed after, so it counts."""
+    reached = {()}
+    for relative, _ in replacements:
+        parts = [part.casefold() for part in relative.parts[:-1]]
+        reached.update(tuple(parts[:depth]) for depth in range(1, len(parts) + 1))
+    total = sum(source.stat().st_size for _, source in replacements)
+    pending = [(game, ())]
+    while pending:
+        directory, key = pending.pop()
+        for entry in directory.iterdir():
+            if entry.is_dir():
+                if key + (entry.name.casefold(),) in reached:
+                    pending.append((entry, key + (entry.name.casefold(),)))
+            else:
+                total += entry.stat().st_size
+    return total
 
 
 def build_overlay(game, out, mods):
@@ -186,9 +211,17 @@ def build_overlay(game, out, mods):
             overlay = Path(tempfile.mkdtemp(prefix='mod-game-', dir=game.parent))
         except OSError as error:
             # A read-only or access-restricted library: build on out's volume instead. Files that
-            # cannot be hard-linked across volumes are copied (never symlinked, upstream #102).
+            # cannot be hard-linked across volumes are copied (never symlinked, upstream #102),
+            # for every launch: the overlay is private to a launch and removed when it ends.
+            need, free = copy_bytes(game, replacements), shutil.disk_usage(out).free
+            if need > free:
+                raise ValueError(
+                    f'cannot write to {game.parent} ({error.strerror or error}), so the overlay would be built '
+                    f'in {out}, where hard links cannot reach the game: it needs a copy of {need / GB:.1f} GB '
+                    f'and only {free / GB:.1f} GB are free there. Either make {game.parent} writable, '
+                    f'or put the game on the same drive as {out}.') from None
             print(f'Mods: cannot write to {game.parent} ({error.strerror or error}); '
-                  f'building the overlay in {out}, copying files that cannot be linked', file=sys.stderr)
+                  f'building the overlay in {out}, this build copies {need / GB:.1f} GB', file=sys.stderr)
     if overlay is None:
         overlay = Path(tempfile.mkdtemp(prefix='mod-game-', dir=out))
     try:

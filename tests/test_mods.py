@@ -253,40 +253,88 @@ class WindowsLinkTests(unittest.TestCase):
         self.assertFalse((self.root / 'copy').is_symlink())
         mods.LINKED.pop(str(self.root / 'copy'))
 
-    def build_with_game_on_another_drive(self, writable_parent):
-        """build_overlay as for a game on another drive than out; returns (overlay, stderr)."""
+    def build_with_game_on_another_drive(self, writable_parent, link_fails=False, need_gb=None, free_gb=None):
+        """build_overlay as for a game on another drive than out; returns the overlay and keeps
+        stderr in self.log. link_fails: os.link refuses like across volumes (EXDEV). need_gb and
+        free_gb stand in for the size of the copy and the free space on out's volume."""
         import contextlib
+        import errno
         import io
         real = tempfile.mkdtemp
+        gb = 1024 ** 3
 
         def mkdtemp(*args, dir=None, **kwargs):
             if Path(dir).resolve() == self.game.parent.resolve() and not writable_parent:
                 raise PermissionError(13, 'Access is denied', str(dir))
             return real(*args, dir=dir, **kwargs)
-        log = io.StringIO()
-        with mock.patch.object(mods, 'beside_game', return_value=True), \
-                mock.patch.object(mods.tempfile, 'mkdtemp', mkdtemp), contextlib.redirect_stderr(log):
+        self.log = io.StringIO()
+        self.link = mock.Mock(side_effect=OSError(errno.EXDEV, 'Invalid cross-device link'))
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(mods, 'beside_game', return_value=True))
+            stack.enter_context(mock.patch.object(mods.tempfile, 'mkdtemp', mkdtemp))
+            stack.enter_context(contextlib.redirect_stderr(self.log))
+            if link_fails:
+                stack.enter_context(mock.patch('os.link', self.link))
+            if need_gb is not None:
+                stack.enter_context(mock.patch.object(mods, 'copy_bytes', return_value=int(need_gb * gb)))
+            if free_gb is not None:
+                usage = types.SimpleNamespace(total=100 * gb, used=0, free=int(free_gb * gb))
+                stack.enter_context(mock.patch.object(mods.shutil, 'disk_usage', return_value=usage))
             overlay = mods.build_overlay(self.game, self.root / 'out', self.layers)
         self.addCleanup(shutil.rmtree, overlay, True)
-        return overlay, log.getvalue()
+        return overlay
 
     def test_game_on_another_drive_gets_its_overlay_beside_it(self):
-        overlay, log = self.build_with_game_on_another_drive(writable_parent=True)
+        overlay = self.build_with_game_on_another_drive(writable_parent=True)
         self.assertEqual(overlay.parent, self.game.parent.resolve())
         self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
+        self.assertNotIn('copies', self.log.getvalue())
 
     def test_unwritable_game_folder_falls_back_to_out_and_says_so(self):
-        overlay, log = self.build_with_game_on_another_drive(writable_parent=False)
+        overlay = self.build_with_game_on_another_drive(writable_parent=False)
         out = (self.root / 'out').resolve()
         self.assertEqual(overlay.parent, out)
         self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
         self.assertEqual((overlay / 'dvdroot_ps4/chr/new.dcx').read_bytes(), b'new')
         self.assertEqual((overlay / 'dvdroot_ps4/map/a.dcx').read_bytes(), b'original map')
         self.assertEqual((overlay / 'eboot.bin').read_bytes(), b'original executable')
-        notes = [line for line in log.splitlines() if str(out) in line]
-        self.assertEqual(len(notes), 1, log)
+        notes = [line for line in self.log.getvalue().splitlines() if str(out) in line]
+        self.assertEqual(len(notes), 1, self.log.getvalue())
         self.assertTrue(notes[0].startswith('Mods: '), notes[0])
-        self.assertFalse([p for p in [overlay, *overlay.rglob('*')] if p.is_symlink() and os.name == 'nt'])
+        self.assertRegex(notes[0], r'this build copies \d+\.\d GB')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows links files with os.link; the others use symlinks')
+    def test_files_that_cannot_be_hard_linked_are_copied_never_symlinked(self):
+        overlay = self.build_with_game_on_another_drive(writable_parent=False, link_fails=True)
+        self.assertTrue(self.link.called)  # the copy path ran: every link attempt was refused
+        for name, original in (('eboot.bin', self.game / 'eboot.bin'),
+                               ('dvdroot_ps4/chr/a.dcx', self.mod / 'a.dcx'),
+                               ('dvdroot_ps4/chr/new.dcx', self.mod / 'new.dcx')):
+            with self.subTest(name=name):
+                self.assertEqual((overlay / name).read_bytes(), original.read_bytes())
+                self.assertFalse((overlay / name).samefile(original))  # a copy, not a link
+        self.assertFalse([p for p in [overlay, *overlay.rglob('*')] if p.is_symlink()])
+
+    def test_copy_bytes_counts_the_files_a_cross_volume_overlay_copies(self):
+        replacements = list(mods.mod_files(self.root / 'mods' / 'A'))
+        # The game's top-level files, its files in the folders the mod touches (chr; map stays a
+        # junction), and the mod's own files.
+        expected = len(b'original executable') + len(b'original chr') + len(b'mod') + len(b'new')
+        self.assertEqual(mods.copy_bytes(self.game.resolve(), replacements), expected)
+
+    def test_a_copy_that_does_not_fit_stops_before_copying_and_says_why(self):
+        with self.assertRaises(ValueError) as caught:
+            self.build_with_game_on_another_drive(writable_parent=False, need_gb=50, free_gb=20)
+        message = str(caught.exception)
+        self.assertIn('50.0 GB', message)
+        self.assertIn('20.0 GB', message)
+        self.assertIn(str(self.game.parent.resolve()), message)  # the folder to make writable
+        self.assertIn('same drive', message)
+        self.assertEqual(list((self.root / 'out').glob('mod-game-*')), [])
+
+    def test_a_copy_that_fits_says_how_big_it_is(self):
+        self.build_with_game_on_another_drive(writable_parent=False, need_gb=5, free_gb=20)
+        self.assertIn('this build copies 5.0 GB', self.log.getvalue())
 
     @unittest.skipIf(os.name == 'nt', 'symlinks are the other systems')
     def test_other_systems_keep_using_symlinks(self):
