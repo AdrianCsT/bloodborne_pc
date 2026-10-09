@@ -131,6 +131,16 @@ class ShortcutFileTests(unittest.TestCase):
         self.assertEqual([entry['AppName'] for _k, entry in apps], ['Other tool', 'Bloodborne'])
         self.assertEqual(apps[1][1]['LaunchOptions'], '--play')
 
+    def test_a_new_shortcut_takes_the_first_unused_key(self):
+        # entries '0' and '2' (another tool or a deleted entry left a gap): the new one must not reuse '2'
+        games = [(steam.MAP, key, steam.entry(name, rf'D:\{name}\{name}.exe', rf'D:\{name}', 'x'))
+                 for key, name in (('0', 'Celeste'), ('2', 'Doom'))]
+        self.vdf.write_bytes(steam.dump([(steam.MAP, 'shortcuts', games)]) + bytes([steam.END]))
+        self.assertEqual(self.add(), 'added')
+        self.assertEqual([(key, entry['AppName']) for key, entry in read_shortcuts(self.vdf)],
+                         [('0', 'Celeste'), ('2', 'Doom'), ('1', 'Bloodborne')])
+        self.assertEqual(len({key for key, _e in read_shortcuts(self.vdf)}), 3)
+
     def test_the_file_round_trips_byte_for_byte(self):
         data = steam_made_file(('Celeste', r'D:\Celeste\Celeste.exe', 7, ['a', 'b']))
         self.assertEqual(steam.dump(steam.parse(data)[0]) + bytes([steam.END]), data)

@@ -106,7 +106,8 @@ def add_shortcut(vdf_path, name, exe, start_dir, icon, options=''):
             result = 'updated'
             break
     else:
-        shortcuts.append((MAP, str(len(shortcuts)), new))
+        used = {key for _kind, key, _value in shortcuts}  # the keys need not be a run 0..n-1
+        shortcuts.append((MAP, str(next(n for n in range(len(used) + 1) if str(n) not in used)), new))
         result = 'added'
     backup = vdf_path.with_name(vdf_path.name + '.bak')
     if data and not backup.exists():
