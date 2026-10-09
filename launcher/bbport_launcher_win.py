@@ -3049,12 +3049,16 @@ class Launcher:
         self.refresh_fsr4vk()
 
         def progress(done, total):
-            self.ui_calls.put(lambda: self.fsr4vk_progress.set(done / total))
+            if total > 0:  # a server that sends no length has nothing to show
+                self.ui_calls.put(lambda: self.fsr4vk_progress.set(done / total))
 
         def work():
-            error = download_fsr4vk(progress)
-            if not error:
-                self.check_upscalers()
+            try:
+                error = download_fsr4vk(progress)
+                if not error:
+                    self.check_upscalers()
+            except Exception as failure:  # nothing may end this thread before done() is queued
+                error = f'{type(failure).__name__}: {failure}'
 
             def done():
                 self.downloading_fsr4vk = False

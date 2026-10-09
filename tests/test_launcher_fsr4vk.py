@@ -1,9 +1,13 @@
 """The launcher's FSR 4.1.1 (fsr4vk) rules: when the entry can be picked, what the game is told, what happens
 to a saved choice that cannot run any more, and the download (urlopen replaced by a local fake)."""
 import hashlib
+import http.client
 import io
+import queue
 import sys
 import tempfile
+import time
+import types
 import unittest
 import urllib.error
 import zipfile
@@ -218,6 +222,63 @@ class DownloadTests(unittest.TestCase):
             error = launcher.download_fsr4vk()
         self.assertIn('SHA-256', error)
         self.assertFalse(launcher.fsr4vk_present())
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class WorkerTests(unittest.TestCase):
+    """Launcher.start_fsr4vk_download on a stand-in window: whatever goes wrong in the thread, done() is queued."""
+
+    def run_worker(self, download, check=lambda: None):
+        shown, progress = [], []
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=False, ui_calls=queue.Queue(), refresh_fsr4vk=lambda: None,
+            apply_upscaler_support=lambda: shown.append('applied'), check_upscalers=check,
+            fsr4vk_progress=types.SimpleNamespace(set=progress.append),
+            messagebox=types.SimpleNamespace(showerror=lambda *a: shown.append(a[1])))
+        with mock.patch.object(launcher, 'download_fsr4vk', side_effect=download), \
+                mock.patch.object(launcher, 'LANG', 'en'):
+            launcher.Launcher.start_fsr4vk_download(window)
+            self.assertTrue(window.downloading_fsr4vk)
+            end = time.time() + 10
+            while time.time() < end:
+                try:
+                    window.ui_calls.get(timeout=0.05)()
+                except queue.Empty:
+                    if not window.downloading_fsr4vk:
+                        break
+        return window, shown, progress
+
+    def test_an_error_the_fetcher_does_not_wrap_still_ends_the_download_and_is_shown(self):
+        for failure in (http.client.IncompleteRead(b'part', 100), zipfile.BadZipFile('File is not a zip file'),
+                        ValueError('bad header'), RuntimeError('unexpected')):
+            with self.subTest(failure=type(failure).__name__):
+                window, shown, _progress = self.run_worker(failure)
+                self.assertFalse(window.downloading_fsr4vk)  # the button can be used again
+                self.assertIn('applied', shown)
+                message = next(item for item in shown if item != 'applied')
+                self.assertIn('Download failed', message)
+                self.assertIn(type(failure).__name__, message)
+
+    def test_a_capability_check_that_raises_does_not_leave_the_card_downloading(self):
+        def check():
+            raise RuntimeError('tool crashed')
+        window, shown, _progress = self.run_worker(lambda progress=None: '', check)
+        self.assertFalse(window.downloading_fsr4vk)
+        self.assertTrue(any('tool crashed' in str(item) for item in shown), shown)
+
+    def test_a_clean_download_shows_no_error(self):
+        window, shown, _progress = self.run_worker(lambda progress=None: '')
+        self.assertFalse(window.downloading_fsr4vk)
+        self.assertEqual(shown, ['applied'])
+
+    def test_a_total_of_zero_does_not_divide(self):
+        def download(progress):
+            progress(10, 0)  # a server that gave no length
+            progress(50, 100)
+            return ''
+        window, shown, progress = self.run_worker(download)
+        self.assertEqual(progress, [0.5])
+        self.assertEqual(shown, ['applied'])
 
 
 if __name__ == '__main__':
