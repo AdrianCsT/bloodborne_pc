@@ -93,9 +93,26 @@ Upscaling
 - The launcher checks what your PC can run: upscalers it cannot are marked "not available" with the
   reason and cannot be picked. If the saved one cannot run, the launcher switches to DLSS (RTX
   GPUs) or FSR 3.1 and says so once. FSR 4 is allowed on Radeon RX 5000/6000 GPUs but marked "may
-  be slow"; FSR 4.1.1 needs a Vulkan extension (VK_VALVE_shader_mixed_float_dot_product) that
-  no Windows driver is known to offer yet (only Mesa on Linux does), so it shows as "needs a
-  Vulkan extension that no Windows driver is known to support yet".
+  be slow".
+
+FSR 4.1.1 (experimental)
+- The built-in FSR 4.1.1 needs a Vulkan extension (VK_VALVE_shader_mixed_float_dot_product) that
+  no Windows driver offers yet. On Windows the game can instead use fsr4vk
+  (https://github.com/dvj5411/fsr4vk), a separate program that runs the same AMD model. It is
+  experimental: fsr4vk's author tested it on Linux, and here it was checked on one GeForce RTX 4070.
+- It is off until you opt in, and it is not in this zip. To use it:
+  1. Advanced -> Performance -> turn on "Experimental features".
+  2. Graphics -> "FSR 4.1.1 (experimental)" -> "Download FSR 4.1.1" (about 20 MB, once).
+  3. Graphics -> Upscaler -> "FSR 4.1.1 (experimental)".
+- The download comes from the fsr4vk project on GitHub, is checked against a fixed SHA-256, and goes
+  to the fsr4vk folder next to BLauncher.exe. Launcher updates leave that folder alone. fsr4vk is
+  GPL-3.0; its licenses are in fsr4vk\LICENSES after the download. The game loads it as a
+  separate program and does not include its code.
+- Until the files are downloaded and Experimental features is on, the entry is greyed out and says
+  why. If it was your saved upscaler and either goes away, the launcher switches to DLSS (RTX GPUs)
+  or FSR 3.1 and says so once.
+- Cost on a GeForce RTX 4070, 1080p output from 720p: about 2.4 ms per frame, against about 2.0 ms
+  for FSR 4 and 0.55 ms for FSR 3.1. Measured once, not a benchmark.
 
 Frame generation (optional)
 - Graphics -> "Frame generation (FSR 3.1)" (also on the Play page and in the in-game menu, or

@@ -8,8 +8,9 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 
 ### Added
 
+- FSR 4.1.1 on Windows through [fsr4vk](https://github.com/dvj5411/fsr4vk) (experimental). No Windows driver offers the Vulkan extension the built-in FSR 4.1.1 needs, so the game can load fsr4vk's DLL instead. It is opt-in: turn on Experimental features (Advanced), then use "Download FSR 4.1.1" in Graphics (about 20 MB, SHA-256 checked, into `fsr4vk\` in the install, kept by updates), then pick FSR 4.1.1. Nothing from fsr4vk (GPLv3) is in the zip. On an RTX 4070 at 1080p from 720p it costs about 2.4 ms per frame, against 2.0 ms for FSR 4 and 0.55 ms for FSR 3.1. A saved FSR 4.1.1 falls back to DLSS or FSR 3.1 when the switch is off or the files are gone. `BB_FSR4VK_DIR` and `BB_FSR4VK=0` control it from the command line.
 - A "Beta versions" switch (Advanced, Launcher). The launcher offers stable releases by default, and test releases too when the switch is on. It is on by default in a beta build.
-- An "Experimental features" switch (Advanced, Performance), off by default. It makes options marked experimental usable. Today that is object motion vectors on AMD cards.
+- An "Experimental features" switch (Advanced, Performance), off by default. It makes options marked experimental usable. Today that is FSR 4.1.1 and object motion vectors on AMD cards.
 - A monitor picker (Display & FPS, Window) when you have more than one monitor. The game opens on the one you pick. `BB_DISPLAY` does the same from the command line: a number from `bb-gpu-capabilities.exe --displays` or part of the monitor's name. A monitor that is no longer connected falls back to the primary one.
 - "Add to Steam" on the Play page adds `Bloodborne.exe` to your Steam library as a non-Steam game. Close Steam first; your `shortcuts.vdf` is backed up once as `shortcuts.vdf.bak`.
 - The log starts with your GPU model, VRAM and driver, so bug reports carry them.
@@ -22,7 +23,6 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 - An explicit `BB_RENDER_RES` above 1080p now gets the larger direct memory (`BB_DMEM_MB=9152`), in `run.py` and `run.sh`. Tested in code, not yet in the game.
 - Mods on Windows use junctions and hard links, never symlinks (upstream #102). Not yet tested with a loose-file mod in the game.
 - The setup scripts read and write text as UTF-8 and accept a plain ELF `eboot.bin`.
-- The launcher explains FSR 4.1.1 in plain words: it needs a Vulkan extension that no Windows driver is known to support yet.
 - The zip's `licenses` folder now also holds the AMD FidelityFX SDK and FSR-Vulkan licenses.
 
 ### Fixed
