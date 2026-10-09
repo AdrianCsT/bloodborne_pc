@@ -1,0 +1,4 @@
+# Shell scripts run under bash and patches apply with git apply; both reject CRLF line endings,
+# which a Windows checkout with core.autocrlf=true would otherwise produce.
+*.sh text eol=lf
+*.patch text eol=lf
