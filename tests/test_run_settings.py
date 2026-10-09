@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 
+@unittest.skipIf(os.name == 'nt', 'run.sh is the Linux launcher; Windows starts the game through run.py')
 class RestartResolutionTests(unittest.TestCase):
     def run_restarts(self, explicit=False, live=False, ini_extra='', caps=None, bare_path=False):
         with tempfile.TemporaryDirectory() as directory:

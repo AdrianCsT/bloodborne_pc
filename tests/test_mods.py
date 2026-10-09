@@ -138,6 +138,7 @@ class ModTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mods.selected(self.moddir, config)
 
+    @unittest.skipIf(os.name == 'nt', 'run.sh is the Linux launcher; Windows starts the game through run.py')
     def test_run_uses_overlay_propagates_exit_and_cleans_view(self):
         self.mod('A')
         python = self.root / 'python'
