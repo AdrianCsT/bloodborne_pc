@@ -1,7 +1,8 @@
 /* Check whether native-size depth/stencil images can be blitted to reduced
  * renderer targets. The renderer needs both directions for live presets.
  * --gamepads: the connected gamepads, "GUID<tab>name" per line (the launcher's controller list,
- * BB_GAMEPAD). --read-input: one key or button for the launcher's controls (below).
+ * BB_GAMEPAD). --displays: the monitors in the numbering BB_DISPLAY uses (below; issue #69).
+ * --read-input: one key or button for the launcher's controls (below).
  * --upscalers: one "UPSCALER <name> supported|unsupported: <reason>" line per upscaler (below). */
 #include <stdarg.h>
 #include <stdio.h>
@@ -86,6 +87,39 @@ static int list_gamepads(void) {
         SDL_GUIDToString(SDL_GetGamepadGUIDForID(ids[i]), guid, sizeof guid);
         const char *name = SDL_GetGamepadNameForID(ids[i]);
         printf("%s\t%s\n", guid, name ? name : "?");
+    }
+    SDL_free(ids);
+    SDL_Quit();
+    return 0;
+}
+
+/* --displays: one line per monitor, in SDL's order, which is the number BB_DISPLAY takes
+ * (gpu/shim/window.cpp picks the game's window and fullscreen display the same way):
+ *   <number><TAB><name><TAB><width>x<height><TAB><refresh Hz><TAB><primary>
+ * number: 1, 2, ... (the line's position); name: SDL's, tabs and line breaks replaced by spaces;
+ * width x height: the desktop mode in pixels (0x0 when unknown); refresh Hz: whole Hz, rounded,
+ * 0 when unknown; primary: 1 for SDL's primary display, else 0. No monitor: no output, exit 0;
+ * SDL cannot start: a message on stderr, exit 1. */
+static int list_displays(void) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        fprintf(stderr, "displays: %s\n", SDL_GetError());
+        return 1;
+    }
+    const SDL_DisplayID primary = SDL_GetPrimaryDisplay();
+    int count = 0;
+    SDL_DisplayID *ids = SDL_GetDisplays(&count);
+    for (int i = 0; ids && i < count; ++i) {
+        char name[256];
+        const char *sdl_name = SDL_GetDisplayName(ids[i]);
+        snprintf(name, sizeof name, "%s", sdl_name && *sdl_name ? sdl_name : "?");
+        for (char *p = name; *p; ++p) {
+            if (*p == '\t' || *p == '\n' || *p == '\r') {
+                *p = ' ';
+            }
+        }
+        const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(ids[i]);
+        printf("%d\t%s\t%dx%d\t%d\t%d\n", i + 1, name, mode ? mode->w : 0, mode ? mode->h : 0,
+               mode ? (int)(mode->refresh_rate + 0.5f) : 0, ids[i] == primary);
     }
     SDL_free(ids);
     SDL_Quit();
@@ -459,6 +493,9 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && !strcmp(argv[1], "--gamepads")) {
         return list_gamepads();
+    }
+    if (argc > 1 && !strcmp(argv[1], "--displays")) {
+        return list_displays();
     }
     const int live_mode = argc > 1 && !strcmp(argv[1], "--live-resolution");
     const VkApplicationInfo app = {

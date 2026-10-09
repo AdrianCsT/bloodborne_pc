@@ -458,6 +458,11 @@ Most players never need these. Everything here is also reachable from the launch
 | `BB_PRESENT_DUMP_TRIGGER=file`, `BB_PRESENT_DUMP_COUNT=N` | Dump N consecutive presented frames |
 | `BB_ADDCONT=SPEXPANSIONDLC03` | Add-on licenses reported to the game, comma-separated. This one is The Old Hunters, whose areas ship with the v1.09 data. Experimental. |
 | `BB_GAMEPAD=<GUID or part of the name>` | Pick a controller |
+| `BB_PAD_DEADZONE=N`, `BB_PAD_DEADZONE_OUTER=N` | Stick dead zone: inner (5) and outer (127) limit, 0..127 |
+| `BB_PAD_CENTER=lx,ly,rx,ry`, `BB_PAD_CENTER_CAL=0` | Stick neutral of a pad that rests off-centre, in SDL units (-32768..32767); `BB_PAD_CENTER_CAL=0` turns the automatic measurement off |
+| `BB_DISPLAY=<number or part of the name>` | Monitor for the window and fullscreen: its number as `bb-gpu-capabilities --displays` lists it (1, 2, ...) or part of its name, case-insensitive. Empty, or none matches: the primary monitor, with a `Display:` line in the log. |
+| `BB_INDIRECT_GUARD=0`, `BB_INDIRECT_GUARD_MAX=N` | Indirect dispatches with garbage group counts are skipped (on by default); `0` runs them as the game wrote them; `N` is the most groups in all (4194304) |
+| `BB_SAVE_TRACE=1` | Log every operation on save files (`/savedataN`) |
 | `BB_PACKAGE_FSR411=1` | Bundle a local `fsr4_411` into an AppImage |
 | `BB_FSR4CAP_FP8=1` | Record the FP8 emulation variant (`fp8emu/`) |
 | `BB_NVIDIA_LIB_DIR=<path>` | NVIDIA libraries for the AppImage on NixOS |
