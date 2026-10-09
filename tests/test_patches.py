@@ -138,6 +138,27 @@ class FpsListTests(unittest.TestCase):
         self.assertEqual(len(self.writes('uncap')), 329)
 
 
+class NoteTests(unittest.TestCase):
+    """The launcher shows a patch's Note as a tooltip after turning the two characters \\n into a
+    line break. A raw line break inside the attribute is no use: XML turns it into a space."""
+
+    def test_multi_line_notes_keep_their_line_breaks(self):
+        for name in ('30 FPS++', '60 FPS++', '90 FPS++'):
+            with self.subTest(name=name):
+                notes = [m.get('Note') for m in ET.parse(XML).getroot().iter('Metadata')
+                         if m.get('Name') == name and m.get('AppVer') == '01.09']
+                self.assertEqual(len(notes), 1)
+                shown = notes[0].replace('\\n', '\n')  # what bbport_launcher.py does
+                first, second = shown.split('\n')
+                self.assertTrue(first.rstrip().endswith('etc..'), first)
+                self.assertTrue(second.startswith('Will help'), second)
+
+    def test_no_note_spans_source_lines(self):
+        import re
+        text = XML.read_text(encoding='utf-8')
+        self.assertEqual(re.findall(r'Note="[^"]*[\r\n][^"]*"', text), [])
+
+
 class DebugPatchTests(unittest.TestCase):
     def test_camera_patch_is_optional_and_compatible_with_fps_and_debug_menu(self):
         self.assertEqual(effect_patches({'debug_camera': '0', 'debug_menu': '0'}), [])

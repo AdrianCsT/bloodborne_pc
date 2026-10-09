@@ -354,8 +354,7 @@
             <Line Type="bytes32" Address="0x01BF9439" Value="0x3F000000"/>
         </PatchList>
     </Metadata>
-    <Metadata Title="Bloodborne" Name="30 FPS++" Note="Changes some frame settings like the frame skip, vsync, frame tearing, etc.. 
-Will help with better input delay/response times for 30 FPS." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+    <Metadata Title="Bloodborne" Name="30 FPS++" Note="Changes some frame settings like the frame skip, vsync, frame tearing, etc.. \nWill help with better input delay/response times for 30 FPS." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
         <PatchList>
             <Line Type="bytes" Address="0x00fbc40f" Value="eb1d"/>
             <Line Type="bytes32" Address="0x02434806" Value="0x08516348"/>
@@ -662,8 +661,7 @@ Will help with better input delay/response times for 30 FPS." Author="Kyo" Patch
             <Line Type="bytes" Address="0x04D25E94" Value="8988883D"/>
         </PatchList>
     </Metadata>
-    <Metadata Title="Bloodborne" Name="60 FPS++" Note="Changes some frame settings like the frame skip, vsync, frame tearing, etc.. 
-Will help with better input delay/response times for 60 FPS." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+    <Metadata Title="Bloodborne" Name="60 FPS++" Note="Changes some frame settings like the frame skip, vsync, frame tearing, etc.. \nWill help with better input delay/response times for 60 FPS." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
         <PatchList>
             <Line Type="bytes" Address="0x0183A4C3" Value="CDCC4C3D"/>
             <Line Type="bytes" Address="0x0183A8C1" Value="CDCC4C3D"/>
@@ -914,8 +912,7 @@ Will help with better input delay/response times for 60 FPS." Author="Kyo" Patch
             <Line Type="bytes" Address="0x00F383CA" Value="8988083D"/>
         </PatchList>
     </Metadata>
-    <Metadata Title="Bloodborne" Name="90 FPS++" Note="Changes some frame settings like the frame skip, vsync, frame tearing, etc.. 
-Will help with better input delay/response times for 90 FPS. Remember to change Vblank to 90 or higher." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
+    <Metadata Title="Bloodborne" Name="90 FPS++" Note="Changes some frame settings like the frame skip, vsync, frame tearing, etc.. \nWill help with better input delay/response times for 90 FPS. Remember to change Vblank to 90 or higher." Author="Kyo" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="false">
         <PatchList>
             <Line Type="bytes" Address="0x0183A4C3" Value="CDCC4C3D"/>
             <Line Type="bytes" Address="0x0183A8C1" Value="CDCC4C3D"/>
