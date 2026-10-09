@@ -3201,8 +3201,9 @@ class Launcher:
         # The game writes last_run.log itself (start_game), so a crash report survives the launcher
         # being closed and scripts (amd-motion-test) find it in one place; this only follows the file.
         code = -1
-        job.say = self.output.put
         try:
+            if job is not None:  # game_over accepts no job; nothing before the finally may raise
+                job.say = self.output.put
             try:
                 follow_log(log_path, lambda: game_over(process, job), self.output.put)
             except OSError as error:  # the log cannot be read: say so, and still wait for the game to end

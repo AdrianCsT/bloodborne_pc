@@ -193,6 +193,17 @@ class LauncherCloseTests(unittest.TestCase):
         job.close()
         self.assertTrue(launcher.game_over(process, None))
 
+    def test_read_output_without_a_job_object_still_posts_the_exit(self):
+        # game_over accepts job=None, so read_output must too: the exit item is what frees the window
+        process = self.start("say('hello')\n")
+        window = types.SimpleNamespace(output=queue.Queue())
+        launcher.Launcher.read_output(window, process, None, self.log)
+        items = []
+        while not window.output.empty():
+            items.append(window.output.get_nowait())
+        self.assertEqual(items[-1], (0,))
+        self.assertIn('hello', ''.join(item for item in items if isinstance(item, str)))
+
     def test_game_is_up_only_after_the_preparation(self):
         for text in ('Mods: linking 12 files\n', 'Patches: 247 writes, 1250 bytes applied\n',
                      'Output 2560x1440: scene 1920x1080, direct memory 9152 MiB\n'):
