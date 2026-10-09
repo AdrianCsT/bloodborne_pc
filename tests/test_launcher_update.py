@@ -121,7 +121,7 @@ class CheckTests(unittest.TestCase):
             app={'beta_versions': beta}, ui_calls=queue.Queue(), offer_update=lambda *release: offers.append(release),
             messagebox=types.SimpleNamespace(showerror=lambda *a: errors.append(a), showinfo=lambda *a: infos.append(a)))
         with mock.patch.object(launcher, 'VERSION', running), \
-                mock.patch.object(launcher, 'latest_release', side_effect=body if isinstance(body, Exception) else None,
+                mock.patch.object(launcher, 'fetch_update_release', side_effect=body if isinstance(body, Exception) else None,
                                   return_value=None if isinstance(body, Exception) else body):
             launcher.Launcher.check_update(window, manual)
             while not window.ui_calls.empty():
@@ -272,7 +272,7 @@ class FetchTests(unittest.TestCase):
                 return body.encode() if isinstance(body, str) else body
 
         with mock.patch.object(launcher.urllib.request, 'urlopen', return_value=Response()) as urlopen:
-            result = launcher.latest_release(beta)
+            result = launcher.fetch_update_release(beta)
         return result, urlopen
 
     def test_it_asks_the_releases_list_not_the_latest_one(self):
@@ -281,7 +281,7 @@ class FetchTests(unittest.TestCase):
         self.assertIn('/releases?per_page=100', urlopen.call_args[0][0].full_url)
 
     def pages(self, *pages):
-        """launcher.latest_release over a GitHub that serves PAGES in order; returns (result, requested URLs)."""
+        """launcher.fetch_update_release over a GitHub that serves PAGES in order; returns (result, requested URLs)."""
         served, urls = list(pages), []
 
         class Response:
@@ -302,7 +302,7 @@ class FetchTests(unittest.TestCase):
             return Response(served.pop(0) if served else [])
 
         with mock.patch.object(launcher.urllib.request, 'urlopen', side_effect=urlopen):
-            return launcher.latest_release(False), urls
+            return launcher.fetch_update_release(False), urls
 
     def other_tags(self, count):
         return [release(f'v0.{n}-pre', True) for n in range(count)]
