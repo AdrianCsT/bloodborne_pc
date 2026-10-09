@@ -121,6 +121,69 @@ static void case_trunc_close(void) {
     CHECK(!strcmp(get_file(host("trunc.dat")),""));
     CHECK(!count_temps(root));
 }
+/* The game's save sequence: unlink the backup, rename the save to it, write a new save. */
+static void case_game_sequence(void) {
+    put_file(host("userdata0000"),"U1"); put_file(host("backup0000"),"B1");
+    CHECK(path_op("/savedata0/backup0000",2,0)==0);
+    CHECK(do_rename("/savedata0/userdata0000","/savedata0/backup0000")==0);
+    int fd=(int)runtime_file_open("/savedata0/userdata0000",WRONLY|CREAT|TRUNC,0); CHECK(fd>=3);
+    CHECK(write_text(fd,"U2")==2);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("userdata0000")),"U2") && !strcmp(get_file(host("backup0000")),"U1"));
+    CHECK(!count_temps(root));
+}
+/* The written data follows the file: a rename while a descriptor writes moves its pending commit. */
+static void case_rename_open_writer(void) {
+    put_file(host("ren.dat"),"OLD"); put_file(host("ren.bak"),"STALE");
+    int fd=(int)runtime_file_open("/savedata0/ren.dat",WRONLY|TRUNC,0); CHECK(fd>=3);
+    CHECK(write_text(fd,"WRITTEN")==7);
+    CHECK(do_rename("/savedata0/ren.dat","/savedata0/ren.bak")==0);
+    GuestStat st; CHECK(runtime_file_stat("/savedata0/ren.dat",&st)==-ENOENT);
+    CHECK(runtime_file_stat("/savedata0/ren.bak",&st)==0 && st.size==7);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("ren.dat")),"(missing)"));
+    CHECK(!strcmp(get_file(host("ren.bak")),"WRITTEN"));
+    CHECK(!count_temps(root));
+    /* A file that exists only as the writer's copy (created, nothing committed yet). */
+    fd=(int)runtime_file_open("/savedata0/new.dat",WRONLY|CREAT,0); CHECK(fd>=3);
+    CHECK(write_text(fd,"FRESH")==5);
+    CHECK(do_rename("/savedata0/new.dat","/savedata0/new.bak")==0);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("new.dat")),"(missing)") && !strcmp(get_file(host("new.bak")),"FRESH"));
+    /* Renaming another file over the name a writer has open orphans that writer. */
+    put_file(host("over.dat"),"OLD"); put_file(host("over.src"),"SOURCE");
+    fd=(int)runtime_file_open("/savedata0/over.dat",WRONLY|TRUNC,0); CHECK(fd>=3);
+    CHECK(write_text(fd,"ORPHAN")==6);
+    CHECK(do_rename("/savedata0/over.src","/savedata0/over.dat")==0);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("over.dat")),"SOURCE") && !count_temps(root));
+}
+/* Unlinking a file a descriptor still writes: the data goes nowhere, the name stays free. */
+static void case_unlink_open_writer(void) {
+    put_file(host("gone.dat"),"OLD");
+    int fd=(int)runtime_file_open("/savedata0/gone.dat",WRONLY|TRUNC,0); CHECK(fd>=3);
+    CHECK(write_text(fd,"WRITTEN")==7);
+    CHECK(path_op("/savedata0/gone.dat",2,0)==0);
+    GuestStat st; CHECK(runtime_file_stat("/savedata0/gone.dat",&st)==-ENOENT);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("gone.dat")),"(missing)") && !count_temps(root));
+    /* A file that exists only as the writer's copy. */
+    fd=(int)runtime_file_open("/savedata0/gone2.dat",WRONLY|CREAT,0); CHECK(fd>=3);
+    CHECK(write_text(fd,"WRITTEN")==7);
+    CHECK(path_op("/savedata0/gone2.dat",2,0)==0);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("gone2.dat")),"(missing)") && !count_temps(root));
+    /* Re-created under the same name after the unlink: only the new descriptor's data stays. */
+    put_file(host("again.dat"),"OLD");
+    int first=(int)runtime_file_open("/savedata0/again.dat",WRONLY|TRUNC,0); CHECK(first>=3);
+    CHECK(write_text(first,"FIRST")==5);
+    CHECK(path_op("/savedata0/again.dat",2,0)==0);
+    int second=(int)runtime_file_open("/savedata0/again.dat",WRONLY|CREAT|TRUNC,0); CHECK(second>=3);
+    CHECK(write_text(second,"SECOND")==6);
+    CHECK(!runtime_file_close(first));
+    CHECK(!runtime_file_close(second));
+    CHECK(!strcmp(get_file(host("again.dat")),"SECOND") && !count_temps(root));
+}
 
 int main(void) {
     char temp[MAX_PATH];
@@ -269,6 +332,11 @@ int main(void) {
     /* 11. A descriptor that is never written still creates or truncates the file. */
     case_create_close();
     case_trunc_close();
+
+    /* 12. Rename and unlink by path while a descriptor writes the file. */
+    case_game_sequence();
+    case_rename_open_writer();
+    case_unlink_open_writer();
 
     runtime_file_unmount("/savedata0");
     if (failed) { printf("Save files: %d check(s) FAILED\n",failed); return 1; }

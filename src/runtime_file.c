@@ -50,8 +50,9 @@ typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Li
 /* commit: a save file opened for writing is written to a temporary copy (temp), which replaces
  * the file (commit) in one rename when closed: a crash or a kill mid-save leaves the old file.
  * must_commit: the open created or truncated the file, so the close replaces it even when nothing
- * was written. */
-typedef struct { int used, host, dirty, must_commit; Listing *dir; size_t position; char path[512]; char *commit, *temp; } File;
+ * was written. unlinked: the file was removed (or replaced by another) while open, so the close
+ * drops the copy. */
+typedef struct { int used, host, dirty, must_commit, unlinked; Listing *dir; size_t position; char path[512]; char *commit, *temp; } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
@@ -372,8 +373,31 @@ static int copy_contents(int from,int to) {
 static void current_copy(char *path,size_t size,int write) {
     pthread_mutex_lock(&lock);
     for (int i=3;i<MAX_FILES;++i)
-        if (files[i].used && files[i].commit && save_same_path(files[i].commit,path)) { snprintf(path,size,"%s",files[i].temp); files[i].dirty|=write; break; }
+        if (files[i].used && files[i].commit && !files[i].unlinked && save_same_path(files[i].commit,path)) { snprintf(path,size,"%s",files[i].temp); files[i].dirty|=write; break; }
     pthread_mutex_unlock(&lock);
+}
+/* A rename or unlink by path of a save file a descriptor writes: the written data follows the
+ * file, as under POSIX. Moves the pending commit of every writer of `from` to `to` and orphans
+ * the writers of the file `to` replaces; with no `to` (unlink) it orphans the writers of `from`.
+ * `done`: the host operation succeeded (when it failed because `from` is missing, the writers'
+ * copy is the file). Returns the number of writers of `from`. */
+static int writers_follow(const char *from,const char *to,int done) {
+    int found=0;
+    pthread_mutex_lock(&lock);
+    for (int i=3;i<MAX_FILES;++i)
+        if (files[i].used && files[i].commit && !files[i].unlinked && save_same_path(files[i].commit,from)) ++found;
+    if (done || found)
+        for (int i=3;i<MAX_FILES;++i) {
+            File *f=&files[i];
+            if (!f->used || !f->commit || f->unlinked) continue;
+            if (save_same_path(f->commit,from)) {
+                char *moved=to ? strdup(to) : NULL;
+                if (moved) { free(f->commit); f->commit=moved; }
+                else if (!to) f->unlinked=1;
+            } else if (to && save_same_path(f->commit,to)) f->unlinked=1;
+        }
+    pthread_mutex_unlock(&lock);
+    return found;
 }
 /* Returns the descriptor of the copy, or -(errno). */
 static int open_for_commit(const char *path,const char *source,int flags,int mode,char **commit,char **temp,int *must_commit) {
@@ -444,8 +468,8 @@ static void sync_directory(const char *file) {
 static void sync_directory(const char *file) { (void)file; } /* the replace writes through */
 #endif
 static int commit_file(const File *f) {
-    /* opened for writing, not written (and not created or truncated) */
-    if (!f->dirty && !f->must_commit) { close(f->host); save_unlink(f->temp); return 0; }
+    /* opened for writing but not written (and not created or truncated), or its file is gone */
+    if (f->unlinked || (!f->dirty && !f->must_commit)) { close(f->host); save_unlink(f->temp); return 0; }
     int e=fsync(f->host) ? errno : 0;
     close(f->host);
     char detail[128]="";
@@ -545,7 +569,7 @@ static int64_t do_close(int fd) {
     if (closed.temp) result=commit_file(&closed);
     else if (closed.host>=0) close(closed.host);
     if (save_trace() && save_path(closed.path))
-        printf("Save trace: close(fd %d, %s)%s -> %d\n",fd,closed.path,closed.temp ? closed.dirty || closed.must_commit ? " commit" : " unwritten" : "",result);
+        printf("Save trace: close(fd %d, %s)%s -> %d\n",fd,closed.path,closed.temp ? closed.unlinked ? " dropped (file removed)" : closed.dirty || closed.must_commit ? " commit" : " unwritten" : "",result);
     free(closed.commit); free(closed.temp);
     return result;
 }
@@ -696,6 +720,7 @@ static int64_t path_op(const char *guest,int op,int mode) {
     if (e) return -e;
     int r= op==0 ? mkdir(path,mode ? mode : 0755) : op==1 ? rmdir(path) : unlink(path);
     r=r ? -errno : 0;
+    if (op==2 && save_path(guest) && (!r || r==-ENOENT) && writers_follow(path,NULL,!r)) r=0; /* the open writer's copy was the file */
     if (save_trace() && save_path(guest)) printf("Save trace: %s(%s) -> %d\n",op==0 ? "mkdir" : op==1 ? "rmdir" : "unlink",guest,r);
     return r;
 }
@@ -705,17 +730,22 @@ static int64_t do_rename(const char *from,const char *to) {
     int e=translate(from,a,sizeof(a));
     if (!e) e=translate(to,b,sizeof(b));
     if (e) return -e;
-    int r;
+    int r, save=save_path(from) || save_path(to);
+    char detail[128]="";
 #ifdef _WIN32
     /* POSIX rename replaces an existing target; the CRT's fails. Saves go through the replace of
      * their own copies: it retries while another program holds the target. */
-    if (save_path(from) || save_path(to)) {
-        char detail[128];
-        r=-save_replace(a,b,detail,sizeof(detail));
-        if (r) fprintf(stderr,"Runtime: rename(%s, %s) failed (%s%s%s)\n",from,to,strerror(-r),detail[0] ? ", " : "",detail);
-    } else r=MoveFileExA(a,b,MOVEFILE_REPLACE_EXISTING) ? 0 : -compat_errno_from_win32(GetLastError());
+    if (save) r=-save_replace(a,b,detail,sizeof(detail));
+    else r=MoveFileExA(a,b,MOVEFILE_REPLACE_EXISTING) ? 0 : -compat_errno_from_win32(GetLastError());
 #else
     r=rename(a,b) ? -errno : 0;
+#endif
+    /* Open writers of the file follow it to its new name (their copy was the file, if it is missing). */
+    if (save && (!r || r==-ENOENT) && !save_same_path(a,b) && writers_follow(a,b,!r)) r=0;
+#ifdef _WIN32
+    if (save && r) fprintf(stderr,"Runtime: rename(%s, %s) failed (%s%s%s)\n",from,to,strerror(-r),detail[0] ? ", " : "",detail);
+#else
+    (void)detail;
 #endif
     if (save_trace() && (save_path(from) || save_path(to))) printf("Save trace: rename(%s, %s) -> %d\n",from,to,r);
     return r;
