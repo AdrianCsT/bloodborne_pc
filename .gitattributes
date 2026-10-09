@@ -1,4 +1,4 @@
-# Shell scripts run under bash and patches apply with git apply; both reject CRLF line endings,
-# which a Windows checkout with core.autocrlf=true would otherwise produce.
+# Shell scripts run under bash, which rejects CRLF line endings, which a Windows checkout with
+# core.autocrlf=true would otherwise produce. Patches keep the checkout's line endings: build.sh
+# applies them to submodule files that are checked out the same way, so both sides must match.
 *.sh text eol=lf
-*.patch text eol=lf
