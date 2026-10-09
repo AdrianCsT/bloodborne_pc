@@ -85,6 +85,17 @@ def intel_tonemap_fix(env=os.environ, cpuinfo='/proc/cpuinfo'):
 MODEL_LOD={'-2':'Model LOD -2 (Highest)','1':'Model LOD 1 (Lower)','2':'Model LOD 2 (Lowest)'}
 
 
+# The game version the patches are written for: byte writes at that version's addresses.
+APP_VERSION='01.09'
+
+
+def game_is_patched(version, env=os.environ, app_version=APP_VERSION):
+    """Whether the patches apply to a game of this APP_VER: its own, or an unreadable one (None)
+    that the game check reports on its own. BB_FORCE_PATCHES applies them to any version. Shared
+    by main() and run.sh (--print-patched)."""
+    return bool(env.get('BB_FORCE_PATCHES')) or not version or version==app_version
+
+
 def game_app_version(game):
     """APP_VER of the game folder's param.sfo ("01.09"), or None when it cannot be read."""
     try:
@@ -245,7 +256,7 @@ def compile_patches(xml, names, app_version, segments):
 BLOODBORNE_IDS={'CUSA00207','CUSA00208','CUSA00900','CUSA01363','CUSA03173','CUSA03023'}
 
 
-def external_patches(directory, app_version='01.09', exclude=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml'):
+def external_patches(directory, app_version=APP_VERSION, exclude=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml'):
     """[(key, file, metadata)] of eboot patches for this version in directory/*.xml.
     key is "<file name>/<patch name>" (the launcher's selection, patches.json)."""
     found=[]
@@ -303,7 +314,7 @@ def main():
     p.add_argument('--xml',type=Path,default=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml')
     p.add_argument('--fps',choices=sorted(FPS_PRESETS),default='uncap')
     p.add_argument('--extra',default='',help='additional patch names, separated by ";"')
-    p.add_argument('--app-version',default='01.09')
+    p.add_argument('--app-version',default=APP_VERSION)
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
     p.add_argument('--settings',type=Path,default=Path(__file__).resolve().parent.parent/'bbport.ini')
     p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('BB_GAME_DIR','../CUSA03173')))
@@ -312,7 +323,12 @@ def main():
     p.add_argument('--output-res',default='',help='output resolution WxH (the upscaler\'s; the UI stays 1920x1080)')
     p.add_argument('--print-scaled',action='store_true',
                    help='print "RENDER OUTPUT" (WxH) when bbport.ini selects an output other than 1080p')
+    p.add_argument('--print-patched',action='store_true',
+                   help='print "patched" or "unpatched" for the version of --game-dir (run.sh asks this)')
     a=p.parse_args()
+    if a.print_patched:
+        print('patched' if game_is_patched(game_app_version(a.game_dir),os.environ,a.app_version) else 'unpatched')
+        return
     if a.print_scaled:
         sizes=scaled_sizes(read_settings(a.settings))
         if sizes: print(f'{sizes[0][0]}x{sizes[0][1]} {sizes[1][0]}x{sizes[1][1]}')
@@ -329,7 +345,7 @@ def main():
     # The patches are byte writes at the addresses of one game version: on another version they
     # would corrupt code. Such a game runs unpatched (run.sh/run.py then choose 30 FPS).
     version=game_app_version(a.game_dir)
-    if version and version!=a.app_version and not os.environ.get('BB_FORCE_PATCHES'):
+    if not game_is_patched(version,os.environ,a.app_version):
         blob=struct.pack('<8sQQ',b'BBPATCH2',EBOOT_BASE,0)
         (a.out/'patches.bin').write_bytes(blob)
         print(f'Patches: game version {version}, patches are for {a.app_version}: none applied '

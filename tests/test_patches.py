@@ -1,4 +1,5 @@
 from paths import ROOT
+import os
 import struct
 import tempfile
 import unittest
@@ -149,7 +150,7 @@ class FpsListTests(unittest.TestCase):
     def unknown_names(self, presets):
         """(preset, name) of every listed patch the XML does not have for the app version."""
         known = {meta.get('Name') for meta in ET.parse(XML).getroot().iter('Metadata')
-                 if meta.get('AppVer') == '01.09'}
+                 if meta.get('AppVer') == patches.APP_VERSION}
         return [(preset, name) for preset, names in presets.items() for name in names
                 if name not in known]
 
@@ -161,6 +162,41 @@ class FpsListTests(unittest.TestCase):
     def test_a_misspelled_preset_name_is_reported(self):
         presets = {'60': ['60 FPS++'], 'uncap': ['Uncap FPS+', 'Sprint Fix (High FPS)']}
         self.assertEqual(self.unknown_names(presets), [('uncap', 'Uncap FPS+')])
+
+
+class PatchedGameTests(unittest.TestCase):
+    """Patches exist for one game version; run.sh asks patches.py whether a game gets them."""
+
+    def test_only_the_patch_version_or_an_unreadable_one_gets_patches(self):
+        self.assertEqual(patches.APP_VERSION, '01.09')
+        for version, expected in ((None, True), ('', True), ('01.09', True), ('01.00', False), ('01.10', False)):
+            with self.subTest(version=version):
+                self.assertEqual(patches.game_is_patched(version, {}), expected)
+
+    def test_force_patches_wins_but_an_empty_value_does_not(self):
+        self.assertTrue(patches.game_is_patched('01.00', {'BB_FORCE_PATCHES': '1'}))
+        self.assertFalse(patches.game_is_patched('01.00', {'BB_FORCE_PATCHES': ''}))
+
+    def print_patched(self, version):
+        import subprocess
+        import sys
+        from test_game_check import param_sfo
+        with tempfile.TemporaryDirectory() as directory:
+            game = Path(directory)
+            if version:
+                (game / 'sce_sys').mkdir()
+                (game / 'sce_sys/param.sfo').write_bytes(param_sfo({'APP_VER': version}))
+            env = {key: value for key, value in os.environ.items() if key != 'BB_FORCE_PATCHES'}
+            run = subprocess.run([sys.executable, str(ROOT / 'scripts/patches.py'), '--print-patched',
+                                  '--game-dir', str(game)], env=env, capture_output=True, text=True,
+                                 encoding='utf-8')
+        self.assertEqual(run.returncode, 0, run.stderr)
+        return run.stdout.strip()
+
+    def test_the_command_line_answers_for_run_sh(self):
+        self.assertEqual(self.print_patched('01.09'), 'patched')
+        self.assertEqual(self.print_patched('01.00'), 'unpatched')
+        self.assertEqual(self.print_patched(None), 'patched')  # no param.sfo: unreadable
 
 
 class NoteTests(unittest.TestCase):

@@ -35,7 +35,7 @@ class RestartResolutionTests(unittest.TestCase):
             python = data / 'python'
             python.write_text(f'#!{sys.executable}\n' +
                 'import subprocess, sys\n'
-                'if sys.argv[1] in ("scripts/patches.py", "scripts/mods.py"):\n'
+                'if sys.argv[1].endswith(("scripts/patches.py", "scripts/mods.py")):\n'
                 '    sys.exit(subprocess.call([sys.executable, *sys.argv[1:]]))\n')
             python.chmod(0o755)
             probe = data / 'probe'
@@ -107,3 +107,52 @@ class RestartResolutionTests(unittest.TestCase):
         rows = self.run_restarts(explicit=True)
         self.assertEqual([row['BB_RENDER_RES'] for row in rows], ['800x450'] * 3)
         self.assertTrue(all(row['BB_AUTO_RENDER_RES'] is None for row in rows))
+
+
+def posix_bash():
+    """A bash that takes C:/ style paths (Git Bash), not Windows' WSL launcher."""
+    path = shutil.which('bash')
+    return None if path and os.name == 'nt' and 'system32' in path.lower().replace('\\', '/') else path
+
+
+@unittest.skipUnless(posix_bash(), 'needs bash')
+class GamePatchedCheckTests(unittest.TestCase):
+    """run.sh's game_is_patched, lifted out of the script and run from a directory that has no
+    scripts folder: it must find patches.py from the script's own folder, and say when it fails."""
+
+    def ask(self, version, python=None, force=False, cwd=None):
+        import re
+        import shlex
+        from test_game_check import param_sfo
+        text = (ROOT / 'run.sh').read_text(encoding='utf-8')
+        function = re.search(r'^game_is_patched\(\) \{\n.*?^\}\n', text, re.S | re.M).group(0)
+        with tempfile.TemporaryDirectory() as directory:
+            game = Path(directory) / 'game'
+            game.mkdir()
+            if version:
+                (game / 'sce_sys').mkdir()
+                (game / 'sce_sys/param.sfo').write_bytes(param_sfo({'APP_VER': version}))
+            script = (f'here={shlex.quote(ROOT.as_posix())}\n'
+                      f'PYTHON={shlex.quote(python or Path(sys.executable).as_posix())}\n'
+                      f'game={shlex.quote(game.as_posix())}\n{function}\n'
+                      'if game_is_patched; then echo patched; else echo unpatched; fi\n')
+            env = {key: value for key, value in os.environ.items() if key != 'BB_FORCE_PATCHES'}
+            if force:
+                env['BB_FORCE_PATCHES'] = '1'
+            run = subprocess.run([posix_bash(), '-c', script], cwd=cwd or directory, env=env,
+                                 capture_output=True, text=True, encoding='utf-8', timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        return run.stdout.strip(), run.stderr
+
+    def test_the_game_version_decides_from_any_directory(self):
+        for cwd in (None, ROOT):
+            with self.subTest(cwd=cwd):
+                self.assertEqual(self.ask('01.09', cwd=cwd)[0], 'patched')
+                self.assertEqual(self.ask('01.00', cwd=cwd)[0], 'unpatched')
+                self.assertEqual(self.ask('01.00', force=True, cwd=cwd)[0], 'patched')
+                self.assertEqual(self.ask(None, cwd=cwd)[0], 'patched')  # no param.sfo
+
+    def test_a_failure_counts_as_patched_and_says_so(self):
+        answer, log = self.ask('01.00', python=(ROOT / 'no-such-python').as_posix())
+        self.assertEqual(answer, 'patched')
+        self.assertIn('treating the game as patched', log)
