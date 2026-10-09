@@ -95,6 +95,14 @@ class ChannelTests(unittest.TestCase):
         self.assertIsNone(launcher.newest_release([release('windows-v1.7.0-beta.1', True)], beta=False))
         self.assertIsNone(launcher.newest_release([release('windows-v1.7.0', assets=('notes.txt',))], beta=False)[1])
 
+    def test_malformed_assets_are_skipped_not_crashed_on(self):
+        good = {'name': 'Bloodborne-Windows.zip', 'browser_download_url': 'https://example.test/good.zip'}
+        broken = {**release('windows-v1.7.0'), 'assets': [None, 'text', 7, {'name': None}, {'name': 5}, {}, good]}
+        self.assertEqual(launcher.newest_release([broken], beta=False)[1], 'https://example.test/good.zip')
+        for assets in (None, 'zip', {'name': 'a.zip'}, 5):
+            odd = {**release('windows-v1.7.0'), 'assets': assets}
+            self.assertEqual(launcher.newest_release([odd], beta=False)[:2], ('1.7.0', None))
+
     def test_a_release_list_of_the_wrong_shape_is_an_error(self):
         with self.assertRaises(ValueError):
             launcher.newest_release({'message': 'API rate limit exceeded'}, beta=False)
@@ -129,6 +137,11 @@ class CheckTests(unittest.TestCase):
         found = launcher.newest_release(RELEASES, True)
         self.assertEqual(self.check('1.7.0-beta.2', True, found)[0], [])
         self.assertEqual(self.check('1.7.0', True, found)[0], [])
+
+    def test_a_programming_error_is_not_taken_for_a_network_failure(self):
+        for manual in (False, True):
+            with self.assertRaises(AttributeError):
+                self.check('1.6.16', False, AttributeError("'NoneType' object has no attribute 'lower'"), manual=manual)
 
     def test_the_manual_check_says_so_when_up_to_date(self):
         _offers, _errors, infos = self.check('1.6.16', False, launcher.newest_release(RELEASES, False), manual=True)
