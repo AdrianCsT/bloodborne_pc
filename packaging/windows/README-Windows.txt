@@ -47,6 +47,11 @@ Starting
   is still offered the final release when it comes out).
 - Advanced -> "Launcher language": English, Russian, Arabic, Spanish, Portuguese, French,
   German, Italian, Polish, Turkish, Chinese, Japanese, Korean (default: the Windows language).
+- Advanced -> "Experimental features" (off by default) unlocks options that are still being
+  tested; the launcher marks them (experimental). For now that is object motion vectors on AMD
+  graphics cards, which the game keeps off there because they cost frame rate and drew some
+  objects wrong with frame generation. With the switch on and "Object motion vectors" on
+  (Graphics), the launcher starts the game with BB_OBJECT_MOTION_AMD=1.
 - In the game, Insert (or L3+R3 on a gamepad) opens the port's menu (upscaler, resolution,
   effects). Keyboard: WASD move, arrows camera, Space Cross, Left Shift Circle, E Square,
   Q Triangle, 1/3 L1/R1, R/F L2/R2, Z/C L3/R3, I/K/J/L d-pad, Enter Options, Tab touchpad.

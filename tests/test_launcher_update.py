@@ -142,6 +142,36 @@ class CheckTests(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class ExperimentalTests(unittest.TestCase):
+    """The Experimental features switch (kept in this file: launcher settings that reach the game)."""
+
+    def environment(self, experimental, object_motion='1'):
+        settings = {**launcher.APP_DEFAULTS, 'game_dir': 'G', 'experimental': experimental}
+        with mock.patch.dict(launcher.os.environ), \
+                mock.patch.object(launcher, 'load_ini', return_value=({'object_motion': object_motion}, [])):
+            launcher.os.environ.pop('BB_OBJECT_MOTION_AMD', None)
+            return launcher.game_environment(settings)
+
+    def test_it_is_off_by_default(self):
+        self.assertIs(launcher.APP_DEFAULTS['experimental'], False)
+        self.assertNotIn('BB_OBJECT_MOTION_AMD', self.environment(launcher.APP_DEFAULTS['experimental']))
+
+    def test_on_with_object_motion_on_lets_the_game_use_it_on_amd(self):
+        self.assertEqual(self.environment(True)['BB_OBJECT_MOTION_AMD'], '1')
+
+    def test_on_with_object_motion_off_changes_nothing(self):
+        self.assertNotIn('BB_OBJECT_MOTION_AMD', self.environment(True, object_motion='0'))
+
+    def test_the_note_under_the_option_follows_the_switch(self):
+        with mock.patch.object(launcher, 'LANG', 'en'):
+            off, on = launcher.object_motion_hint(False), launcher.object_motion_hint(True)
+        self.assertIn('Off on AMD graphics cards', off)
+        self.assertNotIn('(experimental)', off)
+        self.assertIn('(experimental)', on)
+        self.assertNotIn('Off on AMD graphics cards', on)
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class FetchTests(unittest.TestCase):
     def fetch(self, body, beta):
         class Response:

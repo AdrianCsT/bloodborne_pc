@@ -233,7 +233,8 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'vk_validation': False, 'extra_env': '', 'close_on_play': False,
                 'check_updates': True, 'ui_advanced': False, 'animations': True,
                 'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False,
-                'beta_versions': is_prerelease(VERSION)}  # a beta user keeps getting betas unless they say no
+                'beta_versions': is_prerelease(VERSION),  # a beta user keeps getting betas unless they say no
+                'experimental': False}
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
@@ -448,6 +449,19 @@ def reason_text(reason):
     return _(reason, UPSCALER_REASONS_RU.get(reason))
 
 
+def object_motion_hint(experimental):
+    """The note under 'Object motion vectors'. On AMD graphics cards the game keeps it off, unless
+    Experimental features (Advanced) is on."""
+    note = (_('(experimental) On AMD graphics cards: it cost frame rate and drew some objects wrong with frame '
+              'generation. Switched on by Experimental features.',
+              '(экспериментально) На видеокартах AMD: снижало FPS и неправильно рисовало некоторые объекты с '
+              'генерацией кадров. Включено в «Экспериментальных функциях».') if experimental else
+            _('Off on AMD graphics cards: there it cost frame rate and drew some objects wrong with frame generation.',
+              'На видеокартах AMD выключено: там снижало FPS и неправильно рисовало некоторые объекты с генерацией кадров.'))
+    return _('Less ghosting on characters, cloth and weapons; costs about 10% FPS.',
+             'Меньше гостинга на персонажах и одежде; стоит около 10% FPS.') + ' ' + note
+
+
 def best_upscaler(support):
     """The upscaler a PC falls back to when the saved one cannot run: DLSS on an RTX GPU, else FSR 3.1."""
     return 'dlss' if (support or {}).get('dlss', (False, ''))[0] else 'fsr3'
@@ -593,6 +607,10 @@ def game_environment(s, frame_generation=None):
                       ('vk_validation', 'BB_VK_VALIDATION')):
         if s[key]:
             env[name] = '1'
+    # Experimental features: the game forces object motion vectors off on AMD under Windows unless it
+    # is told otherwise; it reads this only on AMD, so the variable does nothing on other GPUs.
+    if s.get('experimental') and ini.get('object_motion', INI_DEFAULTS['object_motion']) == '1':
+        env['BB_OBJECT_MOTION_AMD'] = '1'
     for item in str(s['extra_env']).split():
         if '=' in item:
             key, value = item.split('=', 1)
@@ -2417,11 +2435,10 @@ class Launcher:
         self.vars['sharpness'].trace_add('write', show)
         show()
         self.row(f, _('Sharpness', 'Сила резкости'), holder)
-        self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
-                   _('Less ghosting on characters, cloth and weapons; costs about 10% FPS.',
-                     'Меньше гостинга на персонажах и одежде; стоит около 10% FPS.') + ' ' +
-                   _('Off on AMD graphics cards: there it cost frame rate and drew some objects wrong with frame generation.',
-                     'На видеокартах AMD выключено: там снижало FPS и неправильно рисовало некоторые объекты с генерацией кадров.'))
+        experimental = self.var('experimental', 'app')
+        motion_note = self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
+                                 object_motion_hint(experimental.get()))[1]
+        experimental.trace_add('write', lambda *_a: motion_note.configure(text=object_motion_hint(experimental.get())))
         self.grey_with_upscaler(*self.check(
             f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
             _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
@@ -2644,6 +2661,11 @@ class Launcher:
                              'Если игра показывает только чёрный экран, обычно это помогает.'), 'small', MUTED).pack(
             side='left', padx=px(12))
         f = self.card(page, _('Performance', 'Производительность'))
+        self.check(f, 'experimental', 'app', _('Experimental features', 'Экспериментальные функции'),
+                   _('Unlocks options that are still being tested and marked (experimental). For now: object motion '
+                     'vectors on AMD graphics cards, which can lower the frame rate or draw some objects wrong.',
+                     'Открывает функции, которые ещё проверяются и помечены (экспериментально). Пока это векторы '
+                     'движения объектов на видеокартах AMD: они могут снижать FPS или неправильно рисовать объекты.'))
         self.row(f, _('Two-stage GPU pipeline', 'Двухстадийный конвейер GPU'), self.choice(f, 'draw_pipe', 'app', DRAW_PIPE),
                  _('20–30% faster; switch it off if the game is unstable.', 'Быстрее на 20–30%; при нестабильности выключите.'))
         self.row(f, _('GPU readbacks', 'Чтение данных GPU'), self.choice(f, 'readbacks', 'app', READBACKS),

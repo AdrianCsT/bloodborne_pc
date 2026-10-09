@@ -204,6 +204,9 @@ KEYS = [
     'Off on AMD graphics cards: there it cost frame rate and drew some objects wrong with frame generation.',
     'Beta versions',
     'Also offer beta releases when checking for updates. They are tested less than stable ones.',
+    'Experimental features',
+    'Unlocks options that are still being tested and marked (experimental). For now: object motion vectors on AMD graphics cards, which can lower the frame rate or draw some objects wrong.',
+    '(experimental) On AMD graphics cards: it cost frame rate and drew some objects wrong with frame generation. Switched on by Experimental features.',
 ]
 
 TRANSLATIONS = {
@@ -389,6 +392,9 @@ TRANSLATIONS = {
         'معطّل على بطاقات AMD الرسومية: كان يخفض معدل الإطارات ويعرض بعض الأجسام بشكل خاطئ مع توليد الإطارات.',
         'إصدارات بيتا',
         'اعرض أيضًا إصدارات بيتا عند البحث عن التحديثات. تم اختبارها أقل من الإصدارات المستقرة.',
+        'ميزات تجريبية',
+        'يفتح الخيارات التي لا تزال قيد الاختبار والمعلَّمة (تجريبي). حاليًا: متجهات حركة الأجسام على بطاقات AMD الرسومية، وقد تخفض معدل الإطارات أو ترسم بعض الأجسام بشكل خاطئ.',
+        '(تجريبي) على بطاقات AMD الرسومية: كان يخفض معدل الإطارات ويرسم بعض الأجسام بشكل خاطئ مع توليد الإطارات. تم تفعيله بواسطة الميزات التجريبية.',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -572,6 +578,9 @@ TRANSLATIONS = {
         'Apagado en tarjetas gráficas AMD: ahí bajaba los FPS y dibujaba mal algunos objetos con la generación de fotogramas.',
         'Versiones beta',
         'Ofrecer también versiones beta al buscar actualizaciones. Están menos probadas que las estables.',
+        'Funciones experimentales',
+        'Desbloquea opciones aún en prueba, marcadas (experimental). Por ahora: los vectores de movimiento de objetos en tarjetas gráficas AMD, que pueden bajar los FPS o dibujar mal algunos objetos.',
+        '(experimental) En tarjetas gráficas AMD: bajaba los FPS y dibujaba mal algunos objetos con la generación de fotogramas. Activado por Funciones experimentales.',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -755,6 +764,9 @@ TRANSLATIONS = {
         'Desligado em placas de vídeo AMD: nelas reduzia os FPS e desenhava alguns objetos errado com a geração de quadros.',
         'Versões beta',
         'Oferecer também versões beta ao verificar atualizações. Elas são menos testadas que as estáveis.',
+        'Recursos experimentais',
+        'Libera opções ainda em teste, marcadas (experimental). Por enquanto: vetores de movimento de objetos em placas de vídeo AMD, que podem reduzir os FPS ou desenhar alguns objetos errado.',
+        '(experimental) Em placas de vídeo AMD: reduzia os FPS e desenhava alguns objetos errado com a geração de quadros. Ativado por Recursos experimentais.',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -938,6 +950,9 @@ TRANSLATIONS = {
         "Désactivé sur les cartes graphiques AMD : il y réduisait les FPS et affichait mal certains objets avec la génération d'images.",
         'Versions bêta',
         'Proposer aussi les versions bêta lors de la recherche de mises à jour. Elles sont moins testées que les versions stables.',
+        'Fonctions expérimentales',
+        "Débloque des options encore en test, marquées (expérimental). Pour l'instant : les vecteurs de mouvement des objets sur les cartes graphiques AMD, qui peuvent baisser les FPS ou mal dessiner certains objets.",
+        "(expérimental) Sur les cartes graphiques AMD : baissait les FPS et dessinait mal certains objets avec la génération d'images. Activé par Fonctions expérimentales.",
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1121,6 +1136,9 @@ TRANSLATIONS = {
         'Auf AMD-Grafikkarten aus: Dort kostete es Bildrate und stellte mit Frame-Generierung einige Objekte falsch dar.',
         'Beta-Versionen',
         'Bei der Update-Suche auch Beta-Versionen anbieten. Sie sind weniger getestet als stabile Versionen.',
+        'Experimentelle Funktionen',
+        'Schaltet Optionen frei, die noch getestet werden und mit (experimentell) gekennzeichnet sind. Derzeit: Objektbewegungsvektoren auf AMD-Grafikkarten, die die Bildrate senken oder einige Objekte falsch darstellen können.',
+        '(experimentell) Auf AMD-Grafikkarten: kostete Bildrate und zeichnete mit Frame-Generierung einige Objekte falsch. Eingeschaltet durch Experimentelle Funktionen.',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1304,6 +1322,9 @@ TRANSLATIONS = {
         'Disattivato sulle schede grafiche AMD: lì riduceva gli FPS e disegnava male alcuni oggetti con la generazione dei fotogrammi.',
         'Versioni beta',
         'Offri anche le versioni beta quando si cercano aggiornamenti. Sono meno testate di quelle stabili.',
+        'Funzioni sperimentali',
+        'Sblocca opzioni ancora in prova, contrassegnate (sperimentale). Per ora: i vettori di movimento degli oggetti sulle schede grafiche AMD, che possono ridurre gli FPS o disegnare male alcuni oggetti.',
+        '(sperimentale) Sulle schede grafiche AMD: riduceva gli FPS e disegnava male alcuni oggetti con la generazione di fotogrammi. Attivato da Funzioni sperimentali.',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1487,6 +1508,9 @@ TRANSLATIONS = {
         'Wyłączone na kartach graficznych AMD: tam obniżało liczbę klatek i źle rysowało niektóre obiekty z generowaniem klatek.',
         'Wersje beta',
         'Oferuj także wersje beta podczas sprawdzania aktualizacji. Są mniej testowane niż stabilne.',
+        'Funkcje eksperymentalne',
+        'Odblokowuje opcje, które są jeszcze testowane i oznaczone (eksperymentalne). Na razie: wektory ruchu obiektów na kartach graficznych AMD, które mogą obniżyć liczbę klatek lub źle rysować niektóre obiekty.',
+        '(eksperymentalne) Na kartach graficznych AMD: obniżało liczbę klatek i źle rysowało niektóre obiekty przy generowaniu klatek. Włączone przez Funkcje eksperymentalne.',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1670,6 +1694,9 @@ TRANSLATIONS = {
         'AMD ekran kartlarında kapalı: orada kare hızını düşürüyor ve kare üretimiyle bazı nesneleri yanlış çiziyordu.',
         'Beta sürümleri',
         'Güncellemeler denetlenirken beta sürümleri de sun. Kararlı sürümlerden daha az test edilmişlerdir.',
+        'Deneysel özellikler',
+        'Hâlâ test edilen ve (deneysel) olarak işaretlenen seçenekleri açar. Şimdilik: AMD ekran kartlarında nesne hareket vektörleri; kare hızını düşürebilir veya bazı nesneleri yanlış çizebilir.',
+        '(deneysel) AMD ekran kartlarında: kare hızını düşürüyor ve kare üretimiyle bazı nesneleri yanlış çiziyordu. Deneysel özellikler tarafından açıldı.',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -1853,6 +1880,9 @@ TRANSLATIONS = {
         '在 AMD 显卡上保持关闭：在这些显卡上它会降低帧率，并在开启帧生成时让部分物体显示错误。',
         '测试版',
         '检查更新时也提供测试版。测试版的测试不如稳定版充分。',
+        '实验性功能',
+        '解锁仍在测试、标有（实验性）的选项。目前包括：AMD 显卡上的物体运动矢量，可能降低帧率或使部分物体绘制错误。',
+        '（实验性）在 AMD 显卡上：曾降低帧率，并在帧生成时使部分物体绘制错误。由实验性功能开启。',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2036,6 +2066,9 @@ TRANSLATIONS = {
         'AMD のグラフィックカードではオフのままです。フレームレートが下がり、フレーム生成で一部のオブジェクトが正しく描画されませんでした。',
         'ベータ版',
         '更新の確認時にベータ版も表示します。安定版よりテストが少ないです。',
+        '試験的機能',
+        'テスト中で（試験的）と表示されるオプションを使えるようにします。現在は AMD グラフィックスカードでのオブジェクトモーションベクトルで、フレームレートが下がったり一部のオブジェクトが正しく描画されなかったりすることがあります。',
+        '（試験的）AMD グラフィックスカードでは、フレームレートが下がり、フレーム生成時に一部のオブジェクトが正しく描画されませんでした。試験的機能により有効です。',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2219,6 +2252,9 @@ TRANSLATIONS = {
         'AMD 그래픽 카드에서는 꺼져 있습니다. 프레임 속도가 떨어지고 프레임 생성 시 일부 물체가 잘못 그려졌습니다.',
         '베타 버전',
         '업데이트 확인 시 베타 버전도 표시합니다. 안정 버전보다 테스트가 적습니다.',
+        '실험적 기능',
+        '아직 테스트 중이며 (실험적)으로 표시된 옵션을 사용할 수 있게 합니다. 현재는 AMD 그래픽 카드의 오브젝트 모션 벡터이며, 프레임 속도가 떨어지거나 일부 오브젝트가 잘못 그려질 수 있습니다.',
+        '(실험적) AMD 그래픽 카드에서: 프레임 속도가 떨어지고 프레임 생성 시 일부 오브젝트가 잘못 그려졌습니다. 실험적 기능으로 켜졌습니다.',
     ],
 }
 
