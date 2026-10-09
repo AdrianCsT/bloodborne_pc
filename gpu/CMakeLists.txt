@@ -258,6 +258,16 @@ target_include_directories(motion-history-test PRIVATE ..)
 add_executable(cache-consistency-test EXCLUDE_FROM_ALL ../tests/test_cache_consistency.cpp)
 target_compile_options(cache-consistency-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(cache-consistency-test PRIVATE shadps4)
+# The same checks plus the blobs on disk (Storage::DataBase), which uses the GPU library's file
+# helpers and log: ninja -C out/gpu cache-storage-test && out/gpu/cache-storage-test.exe
+add_executable(cache-storage-test EXCLUDE_FROM_ALL ../tests/test_cache_consistency.cpp)
+target_compile_definitions(cache-storage-test PRIVATE BB_CACHE_STORAGE_TEST)
+target_compile_options(cache-storage-test PRIVATE -UNDEBUG -fPIC)
+target_include_directories(cache-storage-test PRIVATE shim shadps4 third_party/gcn/include)
+target_link_libraries(cache-storage-test PRIVATE bbgpu)
+if (WIN32)
+    target_link_libraries(cache-storage-test PRIVATE onecore) # CreateFileMapping2, used by the library's memory code
+endif()
 add_executable(pm4-resync-test EXCLUDE_FROM_ALL ../tests/test_pm4_resync.cpp)
 target_compile_options(pm4-resync-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(pm4-resync-test PRIVATE ..)
