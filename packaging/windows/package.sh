@@ -138,6 +138,11 @@ mkdir -p "$dest/licenses"
 cp out/xess/bin/libxess.dll "$dest/bin/"
 cp out/xess/LICENSE.txt "$dest/licenses/Intel-XeSS-LICENSE.txt"
 cp out/xess/third-party-programs.txt "$dest/licenses/Intel-XeSS-third-party-programs.txt"
+# The AMD FidelityFX SDK (MIT) and FireBurn's FSR-Vulkan port of it (MIT) are linked into the game's GPU
+# library, so their licenses ship with it.
+fsr_vulkan=gpu/third_party/fsr-vulkan
+cp "$fsr_vulkan/upstream/ffx-1.1.4/sdk/LICENSE.txt" "$dest/licenses/AMD-FidelityFX-SDK-LICENSE.txt"
+cp "$fsr_vulkan/LICENSE.txt" "$dest/licenses/FireBurn-FSR-Vulkan-LICENSE.txt"
 mkdir -p "$dest/bin/pkgtool" "$dest/licenses"
 cp out/pkgtool/PkgTool.exe out/pkgtool/LibOrbisPkg.dll "$dest/bin/pkgtool/"
 cp out/pkgtool/LICENSE.txt "$dest/licenses/PkgTool-LICENSE.txt"

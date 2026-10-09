@@ -168,4 +168,7 @@ Credits
 - ReShade, which the optional post-processing uses: crosire/reshade 6.8.0, BSD-3-Clause, unmodified,
   in bin\reshade\ (https://reshade.me). Effects by CeeJay.dk (SweetFX, MIT), AMD (FidelityFX CAS, MIT)
   and haasn/JPulowski (Deband, MIT); licenses: licenses\ReShade-*.txt.
+- AMD FidelityFX SDK (FSR 3.1, FSR 4) and FireBurn's FSR-Vulkan port of it, both MIT, built into the
+  game's GPU library; licenses: licenses\AMD-FidelityFX-SDK-LICENSE.txt and
+  licenses\FireBurn-FSR-Vulkan-LICENSE.txt.
 - The full list of projects and patch authors is in README.md (Credits and licenses).
