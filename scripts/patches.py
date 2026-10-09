@@ -69,12 +69,12 @@ def intel_cpu(cpuinfo='/proc/cpuinfo'):
 
 
 # The title's PLAY ONLINE / PLAY OFFLINE dialog: the port has no PSN, the game goes straight to the
-# main menu offline. On by default; BB_SKIP_NETWORK_CHOICE=0 shows it.
+# main menu offline. On by default; BB_SKIP_NETWORK_CHOICE=0 (or false, no, off) shows it.
 SKIP_NETWORK_CHOICE='Skip Online/Offline Choice'
 
 
 def skip_network_choice(env=os.environ):
-    return env.get('BB_SKIP_NETWORK_CHOICE','1')!='0'
+    return env.get('BB_SKIP_NETWORK_CHOICE','1').strip().lower() not in ('0','false','no','off')
 
 
 def intel_tonemap_fix(env=os.environ, cpuinfo='/proc/cpuinfo'):

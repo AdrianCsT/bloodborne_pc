@@ -252,6 +252,16 @@ class SkipNetworkChoiceTests(unittest.TestCase):
         self.assertTrue(patches.skip_network_choice({'BB_SKIP_NETWORK_CHOICE': '1'}))
         self.assertFalse(patches.skip_network_choice({'BB_SKIP_NETWORK_CHOICE': '0'}))
 
+    def test_off_spellings_turn_it_off_in_any_case(self):
+        for value in ('0', 'false', 'False', 'FALSE', 'no', 'No', 'off', 'OFF', ' off '):
+            with self.subTest(value=value):
+                self.assertFalse(patches.skip_network_choice({'BB_SKIP_NETWORK_CHOICE': value}))
+
+    def test_unset_empty_and_other_values_keep_it_on(self):
+        for value in ('', '1', 'true', 'yes', 'on', 'anything'):
+            with self.subTest(value=value):
+                self.assertTrue(patches.skip_network_choice({'BB_SKIP_NETWORK_CHOICE': value}))
+
     def test_patch_is_one_function_body_and_not_enabled_by_the_file(self):
         meta = [m for m in ET.parse(XML).getroot().iter('Metadata')
                 if m.get('Name') == patches.SKIP_NETWORK_CHOICE and m.get('AppVer') == '01.09']
