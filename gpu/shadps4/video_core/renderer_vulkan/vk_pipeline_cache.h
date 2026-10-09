@@ -66,6 +66,9 @@ struct Program {
     /// bbport: `info` as translated, for draw-preparation workers (they must not read `info`,
     /// whose user data the GPU thread rewrites every draw). Guarded by programs_mutex.
     std::unique_ptr<Shader::Info> info_template;
+    /// bbport: XXH3 of the code bytes `info` was translated from, set with info_template. A
+    /// permutation translated from other bytes at the same address does not belong here.
+    u64 code_hash{};
 
     Program() = default;
     Program(Shader::HwStage stage, Shader::SwStage l_stage, Shader::ShaderParams params)
@@ -133,6 +136,9 @@ extern std::atomic<u32> g_bb_worker_compiles;
 extern std::atomic<u64> g_bb_wait_ns;
 extern std::atomic<u32> g_bb_waits;
 extern std::atomic<u32> g_bb_wait_timeouts;
+/// bbport: worker translations thrown away because the guest code they read was not the
+/// program's (see CompilePermutation).
+extern std::atomic<u32> g_bb_spec_discards;
 
 struct PreparedDraw;
 
@@ -235,11 +241,13 @@ private:
     std::optional<std::vector<u32>> GetShaderPatch(u64 hash, Shader::HwStage stage, size_t perm_idx,
                                                    std::string_view ext);
     /// `persist`: also write the SPIR-V to the shader cache (not for a duplicate compile of
-    /// something another thread has under way).
+    /// something another thread has under way). `spv_out`, when not persisting: receives the
+    /// SPIR-V, for a caller that writes it only after checking the translation.
     vk::ShaderModule CompileModule(Shader::Info& info, Shader::RuntimeInfo& runtime_info,
                                    const std::span<const u32>& code, size_t perm_idx,
                                    Shader::Backend::Bindings& binding,
-                                   Shader::Pools& translator_pools, bool persist);
+                                   Shader::Pools& translator_pools, bool persist,
+                                   std::vector<u32>* spv_out = nullptr);
     const Shader::RuntimeInfo& BuildRuntimeInfo(PipelineSelection& sel, Shader::HwStage stage,
                                                 Shader::SwStage l_stage);
 

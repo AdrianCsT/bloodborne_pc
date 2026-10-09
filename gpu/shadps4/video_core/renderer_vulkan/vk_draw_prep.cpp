@@ -503,11 +503,11 @@ void DrawPreparation::Count(bool was_used) {
                 "%llu scanner rebases)\n",
                 static_cast<unsigned long long>(used), static_cast<unsigned long long>(unused),
                 worker_count, static_cast<unsigned long long>(rebases));
-    std::printf("Async compile: worker compiles: %u, %.1f ms; GPU thread waited on %u compiles, "
-                "%.1f ms, %u timeouts\n",
+    std::printf("Async compile: worker compiles: %u, %.1f ms, %u dropped; GPU thread waited on %u "
+                "compiles, %.1f ms, %u timeouts\n",
                 g_bb_worker_compiles.exchange(0), g_bb_worker_compile_ns.exchange(0) / 1e6,
-                g_bb_waits.exchange(0), g_bb_wait_ns.exchange(0) / 1e6,
-                g_bb_wait_timeouts.exchange(0));
+                g_bb_spec_discards.exchange(0), g_bb_waits.exchange(0),
+                g_bb_wait_ns.exchange(0) / 1e6, g_bb_wait_timeouts.exchange(0));
     used = unused = 0;
 }
 

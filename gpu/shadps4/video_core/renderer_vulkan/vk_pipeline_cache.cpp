@@ -654,6 +654,7 @@ std::atomic<u32> g_bb_worker_compiles;
 std::atomic<u64> g_bb_wait_ns;
 std::atomic<u32> g_bb_waits;
 std::atomic<u32> g_bb_wait_timeouts;
+std::atomic<u32> g_bb_spec_discards;
 namespace {
 /// Set while a draw-preparation worker selects a pipeline: what it compiles counts as its own.
 thread_local bool t_speculative = false;
@@ -682,6 +683,42 @@ std::chrono::milliseconds MaxCompileWait() {
         return std::chrono::milliseconds(env ? std::clamp(std::atoi(env), 0, 5000) : 50);
     }();
     return wait;
+}
+
+/// Content hash of a program's code as it is in guest memory now.
+u64 CodeHash(std::span<const u32> code) {
+    return XXH3_64bits(code.data(), code.size_bytes());
+}
+
+/// The pipeline layout and the descriptor updates of a permutation come from the program's
+/// Info, its bindings from its own translation: both must list the same resources.
+bool SameResources(const Shader::Info& a, const Shader::Info& b) {
+    return a.buffers.size() == b.buffers.size() && a.images.size() == b.images.size() &&
+           a.samplers.size() == b.samplers.size() && a.fmasks.size() == b.fmasks.size();
+}
+
+/// A worker's translation that is thrown away: the GPU thread translates it in order.
+void NoteDiscarded(u64 hash, size_t perm_idx, const char* why) {
+    ++g_bb_spec_discards;
+    static std::atomic<int> logged{0};
+    if (logged.fetch_add(1, std::memory_order_relaxed) < 8) {
+        LOG_WARNING(Render_Vulkan, "Shader {:#x} permutation {} translated ahead of the GPU "
+                                   "thread was dropped: {}",
+                    hash, perm_idx, why);
+    }
+}
+
+/// Test hook for the check in CompilePermutation, BB_TEST_TORN_SHADER_CODE=N: every Nth worker
+/// permutation translates its code with the last 40% replaced by s_endpgm, as a worker reading
+/// memory the game has reused would. Each one must be dropped ("Async compile: ... N dropped")
+/// and the validation layer must stay quiet.
+bool TestTornShaderCode() {
+    static const int every = [] {
+        const char* env = std::getenv("BB_TEST_TORN_SHADER_CODE");
+        return env ? std::atoi(env) : 0;
+    }();
+    static std::atomic<int> count{0};
+    return every > 0 && count.fetch_add(1, std::memory_order_relaxed) % every == 0;
 }
 
 /// Waits (bounded) until `done()` holds; false on timeout.
@@ -1247,7 +1284,8 @@ bool PipelineCache::RefreshComputeKey() {
 vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::RuntimeInfo& runtime_info,
                                               const std::span<const u32>& code, size_t perm_idx,
                                               Shader::Backend::Bindings& binding,
-                                              Shader::Pools& translator_pools, bool persist) {
+                                              Shader::Pools& translator_pools, bool persist,
+                                              std::vector<u32>* spv_out) {
     LOG_INFO(Render_Vulkan, "Compiling {} shader {:#x} {}", info.hw_stage, info.pgm_hash,
              perm_idx != 0 ? "(permutation)" : "");
     DumpShader(code, info.pgm_hash, info.hw_stage, perm_idx, "bin");
@@ -1271,6 +1309,8 @@ vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::Runtim
 
     if (persist) {
         RegisterShaderBinary(std::move(spv), info.pgm_hash, perm_idx);
+    } else if (spv_out) {
+        *spv_out = std::move(spv);
     }
 
     const auto name = GetShaderName(info.hw_stage, info.pgm_hash, perm_idx);
@@ -1356,10 +1396,21 @@ std::optional<PipelineCache::Result> PipelineCache::CompileNewProgram(
     const auto start = binding;
     vk::ShaderModule module;
     std::optional<Shader::StageSpecialization> spec;
+    // A worker's SPIR-V goes to the shader cache only once the translation is known good.
+    std::vector<u32> spv;
+    u64 code_before{};
+    bool unchanged = true;
     const auto compile = [&] {
+        code_before = CodeHash(params.code);
         module = CompileModule(new_program->info, runtime_info, params.code, 0, binding,
-                               translator_pools, persist);
+                               translator_pools, persist && !speculative,
+                               speculative && persist ? &spv : nullptr);
         spec.emplace(new_program->info, runtime_info, profile, start);
+        if (speculative) {
+            // The bytes it translated must still be there, under the footer that names it.
+            unchanged = CodeHash(params.code) == code_before &&
+                        AmdGpu::SearchBinaryInfo(params.code.data()).shader_hash == params.hash;
+        }
     };
     bool faulted = false;
     if (speculative) {
@@ -1378,6 +1429,11 @@ std::optional<PipelineCache::Result> PipelineCache::CompileNewProgram(
     } else {
         compile();
     }
+    if (!faulted && !unchanged) {
+        instance.GetDevice().destroyShaderModule(module);
+        NoteDiscarded(params.hash, 0, "its code changed while it was translated");
+        faulted = true;
+    }
     if (faulted) {
         if (claimed) {
             {
@@ -1388,6 +1444,10 @@ std::optional<PipelineCache::Result> PipelineCache::CompileNewProgram(
         }
         return std::nullopt;
     }
+    if (speculative && persist) {
+        RegisterShaderBinary(std::move(spv), params.hash, 0);
+    }
+    new_program->code_hash = code_before;
     const u64 perm_hash = HashCombine(params.hash, 0);
     if (persist) {
         RegisterShaderMeta(new_program->info, spec->fetch_shader_data, *spec, perm_hash, 0);
@@ -1421,6 +1481,7 @@ PipelineCache::Result PipelineCache::GetPermutation(Program& program, HwStage hw
         // Programs loaded by the pipeline cache warm-up get their template on first use.
         std::unique_lock lock{programs_mutex};
         program.info_template = std::make_unique<Shader::Info>(program.info);
+        program.code_hash = CodeHash(params.code);
     }
     auto& info = program.info;
     info.pgm_base = params.Base(); // Needs to be actualized for inline cbuffer address fixup
@@ -1484,10 +1545,25 @@ std::optional<PipelineCache::Result> PipelineCache::CompilePermutation(
     }
     const u64 perm_hash = HashCombine(params.hash, perm_idx);
     vk::ShaderModule module;
+    // A worker's SPIR-V goes to the shader cache only once the translation is known good.
+    std::vector<u32> spv;
+    u64 code_before{};
+    u64 code_after{};
+    bool same_resources = true;
     const auto compile = [&] {
+        std::span<const u32> code = params.code;
+        std::vector<u32> torn;
+        if (speculative && TestTornShaderCode()) {
+            torn.assign(code.begin(), code.end());
+            std::fill(torn.begin() + torn.size() * 6 / 10, torn.end(), 0xBF810000u); // s_endpgm
+            code = torn;
+        }
+        code_before = CodeHash(code);
         auto new_info = Shader::Info(hw_stage, sw_stage, params);
-        module = CompileModule(new_info, runtime_info, params.code, perm_idx, binding,
-                               translator_pools, true);
+        module = CompileModule(new_info, runtime_info, code, perm_idx, binding, translator_pools,
+                               !speculative, speculative ? &spv : nullptr);
+        code_after = CodeHash(code);
+        same_resources = SameResources(new_info, info);
     };
     bool faulted = false;
     if (speculative) {
@@ -1504,6 +1580,37 @@ std::optional<PipelineCache::Result> PipelineCache::CompilePermutation(
     } else {
         compile();
     }
+    // bbport: a worker runs at idle priority and can fall far behind the GPU thread on a busy
+    // CPU, until the game has reused the memory of the draw it is preparing. Its translation
+    // then comes from other bytes than the program's, and lists other resources than the
+    // program's Info, which the pipeline layout is built from: the layout and the module
+    // disagree (VUID-VkGraphicsPipelineCreateInfo-layout-07988/07990). Such a translation is
+    // thrown away; the GPU thread translates the draw in order.
+    const char* dropped = nullptr;
+    if (!faulted && speculative) {
+        if (code_before != program.code_hash) {
+            dropped = "the code at its address is not the program's";
+        } else if (code_after != code_before) {
+            dropped = "its code changed while it was translated";
+        } else if (!same_resources) {
+            dropped = "its resources differ from the program's";
+        }
+    } else if (!faulted && !speculative && (!same_resources || code_before != program.code_hash)) {
+        // In order, the game itself put other code under this hash: nothing to fall back to,
+        // but the log names it.
+        static std::atomic<int> warned{0};
+        if (warned.fetch_add(1, std::memory_order_relaxed) < 8) {
+            LOG_WARNING(Render_Vulkan,
+                        "Shader {:#x} permutation {}: code {:#x} (program {:#x}), resources {}",
+                        params.hash, perm_idx, code_before, program.code_hash,
+                        same_resources ? "the program's" : "not the program's");
+        }
+    }
+    if (dropped) {
+        instance.GetDevice().destroyShaderModule(module);
+        NoteDiscarded(params.hash, perm_idx, dropped);
+        faulted = true;
+    }
     if (faulted) {
         {
             // The slot stays: an invalid specialization never matches.
@@ -1514,6 +1621,9 @@ std::optional<PipelineCache::Result> PipelineCache::CompilePermutation(
         }
         programs_cv.notify_all();
         return std::nullopt;
+    }
+    if (speculative) {
+        RegisterShaderBinary(std::move(spv), params.hash, perm_idx);
     }
     RegisterShaderMeta(info, spec.fetch_shader_data, spec, perm_hash, perm_idx);
     {
