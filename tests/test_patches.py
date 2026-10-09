@@ -89,6 +89,46 @@ class NativeUiTests(unittest.TestCase):
         self.assertIsNone(scaled_sizes({'output_res': '1280x720', 'upscaler': 'taa', 'preset': '3'}))
 
 
+class FpsListTests(unittest.TestCase):
+    """The FPS++ lists follow shadps4-emu/ps4_cheats of 2026-10-02 (timesteps, foliage wind)."""
+
+    def writes(self, preset):
+        return compile_patches(XML, patches.FPS_PRESETS[preset], '01.09', SEGMENTS)
+
+    def test_lists_only_layer_a_float_over_its_own_immediate(self):
+        # A 9-byte "mov dword [rsp+18h], imm32" followed by a 4-byte write of the immediate is the
+        # lists' own layering. Any other overlap is two patches fighting over the same bytes
+        # (upstream's call at 0x02715D71 over the one at 0x02715D75 was one).
+        for preset in ('60', '90', 'uncap'):
+            with self.subTest(preset=preset):
+                spans = sorted((offset, offset + len(data)) for offset, data in self.writes(preset))
+                for (start, end), (next_start, next_end) in zip(spans, spans[1:]):
+                    if next_start < end:
+                        self.assertEqual((end - start, next_start - start, next_end - next_start), (9, 5, 4))
+
+    def test_foliage_wind_goes_to_the_frame_timer_in_every_list(self):
+        for preset in ('60', '90', 'uncap'):
+            with self.subTest(preset=preset):
+                found = {offset + EBOOT_BASE: data for offset, data in self.writes(preset)}
+                self.assertEqual(found[0x02713D91], bytes.fromhex('736B0403'))
+                self.assertIn(0x02418E3D, found)
+                self.assertIn(0x02418E9C, found)
+                self.assertNotIn(0x02715D71, found)
+
+    def test_lists_do_not_write_the_stale_physics_float(self):
+        # 0x011383CA sits inside a NOP of the game: the old lists' write there never did anything.
+        for preset in ('60', '90', 'uncap'):
+            with self.subTest(preset=preset):
+                for offset, data in self.writes(preset):
+                    self.assertFalse(offset <= 0x011383CA - EBOOT_BASE < offset + len(data))
+
+    def test_sprint_fix_stays_with_the_high_frame_rates(self):
+        self.assertNotIn('Sprint Fix (High FPS)', patches.FPS_PRESETS['60'])
+        for preset in ('90', 'uncap'):
+            self.assertIn('Sprint Fix (High FPS)', patches.FPS_PRESETS[preset])
+        self.assertEqual(len(self.writes('uncap')), 329)
+
+
 class DebugPatchTests(unittest.TestCase):
     def test_camera_patch_is_optional_and_compatible_with_fps_and_debug_menu(self):
         self.assertEqual(effect_patches({'debug_camera': '0', 'debug_menu': '0'}), [])
