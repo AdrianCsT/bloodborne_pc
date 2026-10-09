@@ -645,6 +645,7 @@ private:
         return nullptr;
     }
     std::unique_ptr<ConstantRing> constant_ring;
+    std::unique_ptr<class IndirectGuard> indirect_guard; ///< stage B only (lazily)
     /// Submissions (prepared draws) kept alive until stage B reaches the position.
     std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
     std::unique_ptr<DrawPipe> draw_pipe;
