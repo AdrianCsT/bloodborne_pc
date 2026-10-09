@@ -5,8 +5,10 @@ import http.server
 import importlib.util
 import io
 import tempfile
+import os
 import threading
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -61,15 +63,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 class FetchFsr4VkTest(unittest.TestCase):
-    def pin(self, body, members, port):
+    def patch(self, **values):
+        """Patches module pins for this test only; they are restored when it ends."""
+        for name, value in values.items():
+            patcher = mock.patch.object(fetch, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def pin(self, body, members, port, **overrides):
         """Points the module's pins at a local server and a synthetic zip."""
-        fetch.ZIP_URL = f"http://127.0.0.1:{port}/fsr4vk.zip"
-        fetch.ZIP_SIZE = len(body)
-        fetch.ZIP_SHA256 = hashlib.sha256(body).hexdigest()
-        fetch.FILES = tuple(
-            (name, name.split("/", 1)[1] if name.startswith("OptiScaler/") else name, len(data),
-             hashlib.sha256(data).hexdigest())
-            for name, data in members.items())
+        values = dict(
+            ZIP_URL=f"http://127.0.0.1:{port}/fsr4vk.zip",
+            ZIP_SIZE=len(body),
+            ZIP_SHA256=hashlib.sha256(body).hexdigest(),
+            FILES=tuple(
+                (name, name.split("/", 1)[1] if name.startswith("OptiScaler/") else name, len(data),
+                 hashlib.sha256(data).hexdigest())
+                for name, data in members.items()))
+        values.update(overrides)
+        self.patch(**values)
 
     def serve(self, body, cut_after=None):
         server = Server(body, cut_after)
@@ -109,8 +121,7 @@ class FetchFsr4VkTest(unittest.TestCase):
     def test_wrong_zip_is_rejected_and_deleted(self):
         body = make_zip(MEMBERS)
         server = self.serve(body)
-        self.pin(body, MEMBERS, server.server_address[1])
-        fetch.ZIP_SHA256 = "0" * 64
+        self.pin(body, MEMBERS, server.server_address[1], ZIP_SHA256="0" * 64)
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaises(fetch.FetchError):
                 fetch.fetch(Path(folder))
@@ -122,17 +133,38 @@ class FetchFsr4VkTest(unittest.TestCase):
         server = self.serve(body)
         self.pin(body, MEMBERS, server.server_address[1])
         name = "OptiScaler/amd_fidelityfx_upscaler_vk.dll"
-        fetch.FILES = tuple((n, d, size, "f" * 64 if n == name else sha) for n, d, size, sha in fetch.FILES)
+        self.patch(FILES=tuple((n, d, size, "f" * 64 if n == name else sha) for n, d, size, sha in fetch.FILES))
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaises(fetch.FetchError):
                 fetch.fetch(Path(folder))
             self.assertFalse((Path(folder) / "amd_fidelityfx_upscaler_vk.dll").exists())
 
     def test_pins_are_the_published_release(self):
-        spec.loader.exec_module(fetch)  # the real pins again
         self.assertEqual(fetch.ZIP_SHA256, "3dd2fe7a6b14a1d045c23aa51b63cb45a53576d64eba5f96cb0e334e55ce9827")
         self.assertEqual(len(fetch.FILES[0][3]), 64)
         self.assertTrue(fetch.ZIP_URL.startswith("https://github.com/dvj5411/fsr4vk/releases/download/"))
+        self.assertEqual(fetch.ZIP_URL, f"https://github.com/dvj5411/fsr4vk/releases/download/{fetch.RELEASE}/{fetch.ZIP_NAME}")
+        self.assertEqual(fetch.ZIP_NAME, f"fsr4vk-{fetch.RELEASE}.zip")
+
+    def test_changed_pins_do_not_leak_between_tests(self):
+        self.assertEqual(fetch.ZIP_SIZE, 20452070)
+        self.assertEqual(len(fetch.FILES), 4)
+
+    def test_default_folder_is_next_to_the_executable(self):
+        """The runtime (Fsr4Vk::Directory) and bb-gpu-capabilities look in fsr4vk beside bb-probe.exe: bin/
+        in a package, else out/ (run.py's find_executable)."""
+        with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ):
+            os.environ.pop("BB_FSR4VK_DIR", None)
+            port = Path(folder)
+            self.assertEqual(fetch.default_dir(port), port / "out" / "fsr4vk")
+            (port / "out").mkdir()
+            (port / "out" / "bb-probe.exe").write_bytes(b"")
+            self.assertEqual(fetch.default_dir(port), port / "out" / "fsr4vk")
+            (port / "bin").mkdir()
+            (port / "bin" / "bb-probe.exe").write_bytes(b"")
+            self.assertEqual(fetch.default_dir(port), port / "bin" / "fsr4vk")
+            os.environ["BB_FSR4VK_DIR"] = str(port / "elsewhere")
+            self.assertEqual(fetch.default_dir(port), port / "elsewhere")
 
 
 if __name__ == "__main__":

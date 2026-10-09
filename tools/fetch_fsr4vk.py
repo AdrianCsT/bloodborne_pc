@@ -10,7 +10,8 @@ does not ship it: this script fetches the pinned upstream release zip, checks it
 the provider DLL and licenses, and checks the DLL's SHA-256. Resumable (HTTP Range into a .part
 file), stdlib only, so the launcher can import `fetch` or run it as a process.
 
-DIR defaults to BB_FSR4VK_DIR, else the `fsr4vk` folder next to this repository's executables.
+DIR defaults to BB_FSR4VK_DIR, else the `fsr4vk` folder next to bb-probe.exe (bin/ in a package, else out/),
+the folder the game and bb-gpu-capabilities look in.
 Exit status 0: the folder holds the verified files. 1: failed (the reason is the last line on stderr).
 """
 import argparse
@@ -25,8 +26,8 @@ from pathlib import Path
 
 RELEASE = 'v0.4.3'
 SOURCE_URL = 'https://github.com/dvj5411/fsr4vk/tree/7c04e511195bf4420a060d64df84d625a37457e0'
-ZIP_URL = 'https://github.com/dvj5411/fsr4vk/releases/download/v0.4.3/fsr4vk-v0.4.3.zip'
-ZIP_NAME = 'fsr4vk-v0.4.3.zip'
+ZIP_NAME = f'fsr4vk-{RELEASE}.zip'
+ZIP_URL = f'https://github.com/dvj5411/fsr4vk/releases/download/{RELEASE}/{ZIP_NAME}'
 ZIP_SIZE = 20452070
 ZIP_SHA256 = '3dd2fe7a6b14a1d045c23aa51b63cb45a53576d64eba5f96cb0e334e55ce9827'
 
@@ -54,11 +55,18 @@ class FetchError(Exception):
     pass
 
 
-def default_dir() -> Path:
+PORT = Path(__file__).resolve().parent.parent
+DEFAULT_DIR_TEXT = 'BB_FSR4VK_DIR, else the fsr4vk folder next to bb-probe.exe (bin/ in a package, else out/)'
+
+
+def default_dir(port: Path = PORT) -> Path:
+    """Where the game and bb-gpu-capabilities look without BB_FSR4VK_DIR: fsr4vk beside bb-probe.exe, which
+    run.py finds in bin/ (packaged) or else out/ (built with build.sh)."""
     env = os.environ.get('BB_FSR4VK_DIR')
     if env:
         return Path(env)
-    return Path(__file__).resolve().parent.parent / 'fsr4vk'
+    packaged = (port / 'bin' / 'bb-probe.exe').is_file()
+    return port / ('bin' if packaged else 'out') / 'fsr4vk'
 
 
 def sha256_of(path: Path) -> str:
@@ -153,7 +161,7 @@ def fetch(target: Path, progress=None) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    parser.add_argument('--dir', type=Path, default=None, help='target folder (default: BB_FSR4VK_DIR or ./fsr4vk)')
+    parser.add_argument('--dir', type=Path, default=None, help='target folder (default: ' + DEFAULT_DIR_TEXT + ')')
     parser.add_argument('--check', action='store_true', help='only verify the folder; download nothing')
     args = parser.parse_args(argv)
     target = args.dir or default_dir()
