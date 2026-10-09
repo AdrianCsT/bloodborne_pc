@@ -46,7 +46,9 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
 VERSION = '1.6.16'
 # GitHub's /releases list leaves nothing out (pre-releases included); /releases/latest hides them.
-RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases?per_page=20'
+RELEASES_PER_PAGE = 100
+RELEASE_PAGES = 3  # newest first; more than 300 newer entries of other tags would be a repository gone wrong
+RELEASES_API = f'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases?per_page={RELEASES_PER_PAGE}'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
 TAG_PREFIX = 'windows-v'
 
@@ -94,11 +96,18 @@ def newest_release(releases, beta):
 
 
 def latest_release(beta=False):
-    """newest_release() of the releases GitHub lists now (raises OSError or ValueError on a failure)."""
-    request = urllib.request.Request(RELEASES_API, headers={'Accept': 'application/vnd.github+json',
-                                                            'User-Agent': 'bbport-launcher'})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return newest_release(json.load(response), beta)
+    """newest_release() of the releases GitHub lists now (raises OSError or ValueError on a failure).
+    The list holds every tag, newest first: it is read page by page until a page has a release this
+    launcher may offer, so a run of newer entries of other tags cannot hide it."""
+    for page in range(1, RELEASE_PAGES + 1):
+        request = urllib.request.Request(f'{RELEASES_API}&page={page}',
+                                         headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'bbport-launcher'})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            releases = json.load(response)
+        found = newest_release(releases, beta)
+        if found or len(releases) < RELEASES_PER_PAGE:
+            return found
+    return None
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
 # Never copied over an installation by an update (the package does not hold them either).
 USER_FILES = ('user', 'out', 'mods', 'bbport.ini', 'mods.json', 'patches.json', 'last_run.log')
