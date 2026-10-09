@@ -385,6 +385,29 @@ void VideoOutDriver::Flip(const Request& req) {
 
     // bbport: BB_FRAME_STATS=1 prints flip rate and frame time spread every 5 seconds.
     static const bool frame_stats = EmulatorSettingsImpl::Flag("BB_FRAME_STATS", false);
+    // bbport: without it, one short line every 30 seconds, so a player's last_run.log says how the
+    // game ran: game frames per second, the slowest 1% of frames, the worst frame and the
+    // shader/pipeline compiles of the window.
+    if (!frame_stats) {
+        using Clock = std::chrono::steady_clock;
+        static Clock::time_point window_start = Clock::now(), last = window_start;
+        static std::vector<float> intervals;
+        const auto now = Clock::now();
+        intervals.push_back(std::chrono::duration<float, std::milli>(now - last).count());
+        last = now;
+        const double window = std::chrono::duration<double>(now - window_start).count();
+        if (window >= 30.0) {
+            std::sort(intervals.begin(), intervals.end());
+            const size_t n = intervals.size();
+            const double slow_ms = intervals[n - 1 - n / 100];
+            std::printf("Perf: %.1f FPS over %.0f s, 1%% low %.1f FPS, worst frame %.1f ms, %u "
+                        "shader/pipeline compiles\n",
+                        n / window, window, 1000.0 / std::max(slow_ms, 0.001),
+                        static_cast<double>(intervals.back()), Vulkan::g_bb_compiles.exchange(0));
+            intervals.clear();
+            window_start = now;
+        }
+    }
     if (frame_stats) {
         using Clock = std::chrono::steady_clock;
         static Clock::time_point window_start = Clock::now(), last = window_start;
