@@ -2853,41 +2853,30 @@ class Launcher:
             self.show('game' if self.var('ui_advanced', 'app').get() else 'play')
             return
         self.set_log('')
+        log_path = Path(self.app.get('user_dir') or DATA_DIR / 'user') / 'last_run.log'
         try:
-            self.process = subprocess.Popen(run_command(), cwd=PORT_DIR, env=game_environment(self.app),
-                                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                            stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+            self.process = start_game(run_command(), game_environment(self.app), log_path)
         except OSError as error:
             self.append(_('Could not start: {}', 'Не удалось запустить: {}').format(error) + '\n')
             self.status.configure(text=_('Could not start: {}', 'Не удалось запустить: {}').format(error), fg=BAD)
             self.process = None
             return
         self.job = GameJob(self.process)
-        threading.Thread(target=self.read_output, args=(self.process,), daemon=True).start()
+        threading.Thread(target=self.read_output, args=(self.process, self.job, log_path), daemon=True).start()
         self.set_running(True, preparing=True)
         self.status.configure(text=_('Preparing the game; it opens in its own window…',
                                      'Подготовка игры; она откроется в своём окне…'), fg=GOLD)
-        if self.app.get('close_on_play'):
-            self.root.after(5000, self.root.destroy)  # the game keeps running
 
-    def read_output(self, process):
-        # The same file the windowless start writes (play_without_window), so a crash report
-        # survives the launcher being closed and scripts (amd-motion-test) find it in one place.
-        try:
-            log_dir = Path(self.app.get('user_dir') or DATA_DIR / 'user')
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log = open(log_dir / 'last_run.log', 'w', encoding='utf-8', buffering=1)
-        except OSError:
-            log = None
-        for raw in iter(process.stdout.readline, b''):
-            text = raw.decode('utf-8', errors='replace')
-            if log:
-                log.write(text)
-            self.output.put(text)
+    def read_output(self, process, job, log_path):
+        # The game writes last_run.log itself (start_game), so a crash report survives the launcher
+        # being closed and scripts (amd-motion-test) find it in one place; this only follows the file.
+        follow_log(log_path, lambda: game_over(process, job), self.output.put)
         code = process.wait()
-        if log:
-            log.write(f'\n-- the game exited (code {code}) --\n')
-            log.close()
+        try:
+            with open(log_path, 'a', encoding='utf-8') as log:
+                log.write(f'\n-- the game exited (code {code}) --\n')
+        except OSError:
+            pass
         self.output.put((code,))
 
     def drain_output(self):
@@ -2904,9 +2893,11 @@ class Launcher:
                     self.set_running(False)
                     self.refresh_status()
                 else:
-                    if 'Entering original x86-64 code' in item:
+                    if game_is_up(item):  # mods, patches and shaders are prepared; the window exists
                         self.set_running(True)
                         self.status.configure(text=_('The game is running.', 'Игра запущена.'), fg=GOLD)
+                        if self.app.get('close_on_play'):
+                            self.root.after(CLOSE_AFTER_UP_MS, self.root.destroy)  # the game keeps running
                     elif 'restarting through run.py' in item:
                         self.set_running(True, preparing=True)
                         self.status.configure(text=_('Restarting with the new settings…', 'Перезапуск с новыми настройками…'), fg=GOLD)
@@ -3472,6 +3463,62 @@ class Launcher:
         self.root.destroy()
 
 
+# Lines of the game's output that say the window exists and the preparation (mods, patches,
+# shaders) is over. "Close the launcher when the game starts" waits for the first of them.
+GAME_UP_LINES = ('GPU: window and Vulkan presenter ready', 'Entering original x86-64 code')
+CLOSE_AFTER_UP_MS = 1500
+
+
+def game_is_up(text):
+    return any(line in text for line in GAME_UP_LINES)
+
+
+def start_game(command, env, log_path):
+    """Starts the game with its output going straight to LOG_PATH (stdout and stderr). A pipe to the
+    launcher would break when the launcher closes: the preparation fails with Errno 22 on its next
+    message and the game's log is lost. A file keeps filling, in-game restarts included."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, 'wb') as log:
+        return subprocess.Popen(command, cwd=PORT_DIR, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                                stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+
+
+def follow_log(path, finished, emit, interval=0.05):
+    """Calls EMIT(text) for each complete line added to PATH, and for a last unfinished one, until
+    FINISHED() is true and the file is read to its end."""
+    pending = b''
+    with open(path, 'rb') as log:
+        while True:
+            over = finished()  # asked first: what was written before it returned is still read below
+            data = log.read(1 << 16)
+            if data:
+                pending += data
+                cut = pending.rfind(b'\n') + 1
+                if cut:
+                    emit(pending[:cut].decode('utf-8', errors='replace'))
+                    pending = pending[cut:]
+            elif over:
+                if pending:
+                    emit(pending.decode('utf-8', errors='replace'))
+                return
+            else:
+                time.sleep(interval)
+
+
+def game_over(process, job):
+    """True when run.py and everything it started (the in-game restart's launch too) has ended."""
+    alive = job.running() if job else None
+    return process.poll() is not None if alive is None else not alive
+
+
+class JobAccounting(ctypes.Structure):
+    """JOBOBJECT_BASIC_ACCOUNTING_INFORMATION."""
+    _fields_ = [('TotalUserTime', ctypes.c_int64), ('TotalKernelTime', ctypes.c_int64),
+                ('ThisPeriodTotalUserTime', ctypes.c_int64), ('ThisPeriodTotalKernelTime', ctypes.c_int64),
+                ('TotalPageFaultCount', ctypes.c_uint32), ('TotalProcesses', ctypes.c_uint32),
+                ('ActiveProcesses', ctypes.c_uint32), ('TotalTerminatedProcesses', ctypes.c_uint32)]
+
+
 class GameJob:
     """A Windows job holding run.py and everything it starts: bb-probe.exe and the launches made
     by the in-game restart (no longer descendants of the first process)."""
@@ -3480,8 +3527,20 @@ class GameJob:
         kernel32 = ctypes.windll.kernel32
         kernel32.CreateJobObjectW.restype = ctypes.c_void_p
         self.handle = kernel32.CreateJobObjectW(None, None)
+        self.assigned = False
         if self.handle:
-            kernel32.AssignProcessToJobObject(ctypes.c_void_p(self.handle), ctypes.c_void_p(int(process._handle)))
+            self.assigned = bool(kernel32.AssignProcessToJobObject(
+                ctypes.c_void_p(self.handle), ctypes.c_void_p(int(process._handle))))
+
+    def running(self):
+        """Whether a process of the job is alive; None when the job could not be used."""
+        if not (self.handle and self.assigned):
+            return None
+        info = JobAccounting()
+        if not ctypes.windll.kernel32.QueryInformationJobObject(ctypes.c_void_p(self.handle), 1,
+                                                                ctypes.byref(info), ctypes.sizeof(info), None):
+            return None
+        return info.ActiveProcesses > 0
 
     def terminate(self):
         if self.handle:

@@ -20,7 +20,9 @@ Starting
   without opening it. Set things up once in BLauncher.exe, then use Bloodborne.exe (or a
   shortcut to it, or add it to Steam with "Add a Non-Steam Game"). If no game folder is chosen
   yet it opens the launcher. BLauncher.exe --play does the same. The log goes to
-  user\last_run.log.
+  user\last_run.log. Advanced -> "Close the launcher when the game starts" closes the launcher
+  once the game window is up (not while mods are prepared, which can take 30 to 40 seconds with
+  large mods); the game writes user\last_run.log itself, so it keeps filling after that.
 - Installing from .pkg files: "Install from PKG..." (on the Play page, and on "Game & effects")
   opens one window. "Choose PKG files..." takes the game .pkg (about 31 GB), the v1.09 update
   .pkg and the DLC .pkg of Bloodborne; "Scan a folder..." looks for .pkg files in a folder and
