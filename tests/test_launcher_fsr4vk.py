@@ -44,8 +44,8 @@ class GateTests(unittest.TestCase):
         self.assertIn('Experimental features', launcher.FSR4VK_EXPERIMENTAL_REASON)
 
     def test_on_without_the_files_says_they_are_not_downloaded(self):
-        self.assertEqual(self.state(NO_FILES, True, False), ('no', 'FSR 4.1.1 files are not downloaded'))
-        self.assertEqual(self.state(None, True, False), ('no', 'FSR 4.1.1 files are not downloaded'))
+        self.assertEqual(self.state(NO_FILES, True, False), ('no', launcher.FSR4VK_FILES_REASON))
+        self.assertEqual(self.state(None, True, False), ('no', launcher.FSR4VK_FILES_REASON))
 
     def test_on_with_the_files_can_be_picked(self):
         self.assertEqual(self.state(SUPPORTED, True, True), ('ok', ''))
@@ -56,6 +56,13 @@ class GateTests(unittest.TestCase):
         for experimental in (False, True):
             self.assertEqual(self.state(NO_FEATURE, experimental, True),
                              ('no', 'needs the Vulkan feature shaderInt8'))
+
+    def test_the_files_missing_reason_is_the_one_the_capability_tool_prints(self):
+        # fsr411_state tells "files missing" from a GPU that cannot run it by this exact text, which is
+        # written in tools/gpu_capabilities.c: rewording it there must fail here, not hide the entry
+        source = (Path(__file__).resolve().parents[1] / 'tools' / 'gpu_capabilities.c').read_text(encoding='utf-8')
+        self.assertIn(f'return "{launcher.FSR4VK_FILES_REASON}";', source)
+        self.assertEqual(NO_FILES['fsr411'][1], launcher.FSR4VK_FILES_REASON)
 
     def test_the_other_upscalers_are_untouched(self):
         self.assertEqual(launcher.upscaler_state('fsr3', SUPPORTED, False), ('ok', ''))
@@ -74,7 +81,7 @@ class FallbackTests(unittest.TestCase):
 
     def test_a_saved_fsr411_whose_files_are_gone_falls_back(self):
         self.assertEqual(launcher.upscaler_fallback('fsr411', SUPPORTED, True, False),
-                         ('fsr3', 'FSR 4.1.1 files are not downloaded'))
+                         ('fsr3', launcher.FSR4VK_FILES_REASON))
 
     def test_an_rtx_gpu_falls_back_to_dlss(self):
         support = {'fsr411': (True, ''), 'dlss': (True, '')}
