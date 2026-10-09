@@ -50,7 +50,7 @@ PATCH_VERSION = '01.09'
 MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
-VERSION = '1.6.16'
+VERSION = '1.7.0-beta.1'
 # GitHub's /releases list leaves nothing out (pre-releases included); /releases/latest hides them.
 RELEASES_PER_PAGE = 100
 RELEASE_PAGES = 3  # newest first; more than 300 newer entries of other tags would be a repository gone wrong

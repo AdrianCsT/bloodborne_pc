@@ -4,37 +4,40 @@ All notable changes to the Windows fork of the Bloodborne PS4 port. The format f
 
 The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags remain, and this file replaces their notes. Version 1.6.9 is folded into 1.6.10 (see there).
 
-## [Unreleased] - 1.7.0-beta.1
+## [1.7.0-beta.1] - 2026-10-09
 
 ### Added
 
 - FSR 4.1.1 on Windows through [fsr4vk](https://github.com/dvj5411/fsr4vk) (experimental). No Windows driver offers the Vulkan extension the built-in FSR 4.1.1 needs, so the game can load fsr4vk's DLL instead. It is opt-in: turn on Experimental features (Advanced), then use "Download FSR 4.1.1" in Graphics (about 20 MB, SHA-256 checked, into `fsr4vk\` in the install, kept by updates), then pick FSR 4.1.1. Nothing from fsr4vk (GPLv3) is in the zip. On an RTX 4070 at 1080p from 720p it costs about 2.4 ms per frame, against 2.0 ms for FSR 4 and 0.55 ms for FSR 3.1. A saved FSR 4.1.1 falls back to DLSS or FSR 3.1 when the switch is off or the files are gone. `BB_FSR4VK_DIR` and `BB_FSR4VK=0` control it from the command line.
-- A "Beta versions" switch (Advanced, Launcher). The launcher offers stable releases by default, and test releases too when the switch is on. It is on by default in a beta build.
+- The "Beta versions" switch (Advanced, Launcher) that 1.6.17 added is on by default in a beta build, so a beta keeps offering the next one. Turned off, the launcher offers stable releases only.
 - An "Experimental features" switch (Advanced, Performance), off by default. It makes options marked experimental usable. Today that is FSR 4.1.1 and object motion vectors on AMD cards.
 - A monitor picker (Display & FPS, Window) when you have more than one monitor. The game opens on the one you pick. `BB_DISPLAY` does the same from the command line: a number from `bb-gpu-capabilities.exe --displays` or part of the monitor's name. A monitor that is no longer connected falls back to the primary one.
 - "Add to Steam" on the Play page adds `Bloodborne.exe` to your Steam library as a non-Steam game. Close Steam first; your `shortcuts.vdf` is backed up once as `shortcuts.vdf.bak`.
 - The log starts with your GPU model, VRAM and driver, so bug reports carry them.
-- Controllers whose sticks do not rest at the center (clone pads) work: each pad gets its own neutral point and an inner and outer dead zone.
+- Controllers whose sticks do not rest at the center (clone pads) work: each pad gets its own neutral point and an inner and outer dead zone. Connect the pad without touching the sticks; they read centered until its resting point is known.
 - The online/offline screen at the title is skipped. `BB_SKIP_NETWORK_CHOICE=0` shows it again.
 
 ### Changed
 
 - The FPS patch lists follow the ps4_cheats database of 2026-10-02 (ported by yumlevi): messengers and loading-screen pictures no longer replay their animations, and foliage wind stays smooth at high frame rates. A physics write that never did anything is gone. Menus keep the 240 FPS ceiling the older Uncap list had.
 - An explicit `BB_RENDER_RES` above 1080p now gets the larger direct memory (`BB_DMEM_MB=9152`), in `run.py` and `run.sh`. Tested in code, not yet in the game.
-- Mods on Windows use junctions and hard links, never symlinks (upstream #102). Not yet tested with a loose-file mod in the game.
+- Mods on Windows use junctions and hard links, never symlinks (upstream #102). Not yet tested with a loose-file mod in the game. When the folder next to the game cannot be written, mods are prepared in `out` instead, where files are copied rather than linked on every launch. The launcher checks the free space first and says how many GB it copies.
 - The setup scripts read and write text as UTF-8 and accept a plain ELF `eboot.bin`.
 - The zip's `licenses` folder now also holds the AMD FidelityFX SDK and FSR-Vulkan licenses.
 
 ### Fixed
 
 - "Close the launcher when the game starts" closed it after 5 seconds, which could kill the preparation of large mods (upstream #103). It now waits until the game window is up. The game writes `user\last_run.log` itself, so the log stays complete after the launcher closes.
-
 - A crash or kill while the game saves can no longer leave a half-written save. Save files go to a temporary copy and replace the old file in one step. On Windows the game retries while another program holds the file. A leftover partial `.bbtmp` file recovers on the next start.
 - Bad group counts in indirect GPU dispatches are set to zero before the dispatch runs (upstream #34).
 - Old shader cache entries could pair with a different shader and trigger a Vulkan validation error (`VUID-VkGraphicsPipelineCreateInfo-layout-07988`) when the cache loaded. The game now drops each unusable entry instead of the whole cache. Your cache rebuilds once after you update. Whether this also explains the damaged cache entries some AMD players see at start is not confirmed; it needs an AMD log.
 - Shell scripts keep LF line endings when you check out the source on Windows. `run.sh` used to stop at its second line.
 
-<!-- FSR 4.1.1 (experimental, through fsr4vk) is added when it lands -->
+## [1.6.17] - 2026-10-09
+
+### Added
+
+- A "Beta versions" switch (Advanced, Launcher), off by default. With it on, the launcher also offers beta releases. The game files are the same as in 1.6.16; only the launcher changed. This release skipped the beta step: a beta could not reach players whose launcher had no switch yet.
 
 ## [1.6.16] - 2026-10-08
 

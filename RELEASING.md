@@ -7,7 +7,7 @@ How the maintainer ships the Windows fork. Decided 2026-10-09, after the release
 - **Stable**: a normal GitHub release. Everyone gets it.
 - **Beta**: a GitHub pre-release. Testers get it first.
 
-A beta becomes stable after a day or two of play with no regression reported. Do not ship a stable build that never ran as a beta.
+A beta becomes stable after a day or two of play with no regression reported. Do not ship a stable build that never ran as a beta. The one exception so far is 1.6.17: 1.6.16 with only the launcher changed, which brought the "Beta versions" switch to stable players.
 
 A published tag and zip never change. If a beta needs a fix, publish the next beta.
 
@@ -18,7 +18,7 @@ A published tag and zip never change. If a beta needs a fix, publish the next be
 | Stable | `MAJOR.MINOR.PATCH`, for example `1.7.0` | `windows-v1.7.0` |
 | Beta | `MAJOR.MINOR.PATCH-beta.N`, for example `1.7.0-beta.1` | `windows-v1.7.0-beta.1` |
 
-Order, lowest first: `1.6.16 < 1.7.0-beta.1 < 1.7.0-beta.2 < 1.7.0`.
+Order, lowest first: `1.6.17 < 1.7.0-beta.1 < 1.7.0-beta.2 < 1.7.0`.
 
 The constant `VERSION` in `launcher/bbport_launcher_win.py` must match the tag without the `windows-v` prefix. Set it in the commit you tag.
 
@@ -31,50 +31,32 @@ The launcher compares versions, so its comparison must follow the order above, w
 
 ## What the launcher offers
 
-The update check offers stable releases to everyone. It offers pre-releases when the "Beta versions" switch is on, and not otherwise. That switch is on by default in a beta build. (The switch is being built now; this is the intended behavior.)
+The update check offers stable releases to everyone. It offers pre-releases when the "Beta versions" switch is on, and not otherwise. That switch is on by default in a beta build. Stable builds have it from 1.6.17 on. Launchers older than 1.6.17 read only the latest stable release, so they never offer a beta.
 
 ## Release notes template
+
+Release notes cover only what is new in that version. Features, requirements, install steps, long-standing known issues and credits live in `README.md`, and the notes link to it.
 
 Copy this for every release. Keep the section order. Delete a section that has nothing to say, except the SHA-256 line, which is always there.
 
 ```markdown
-<One or two sentences: what the program is, and that the download contains no game files. For a beta, add a line saying it is a beta and what testers should try.>
+<One or two sentences: what the program is, that the download contains no game files, and a link to the README for features, requirements and install steps. For a beta, add that it is a beta and ask testers to copy their `user` folder first.>
 
 ## New in <version>
 
-<What players notice, then the cause or fix in a few words. A short paragraph or a short list. Written for players.>
+<What players notice, then the cause or fix in a few words. A short paragraph or a short list. Written for players. Name the people whose work it is.>
 
-## What this build includes
+## What to test
 
-<Standing features of the build, one line each. Change it when a feature is added or removed.>
-
-## Fixes included
-
-<Fixes carried over from earlier versions that players still ask about, one line each.>
+<Betas only: numbered things for testers to try and report, and which file to send (`user\last_run.log`).>
 
 ## Known issues
 
-<Problems you know about and have not fixed, with the card, driver or step that triggers them and what to send if a player sees them.>
-
-## Requirements
-
-<Windows version, graphics card and driver, memory, and the game version the build expects.>
-
-## Install
-
-<Numbered steps from unzip to PLAY.>
+<Only problems this version brings or touches, with the card, driver or step that triggers them and what to send.>
 
 ## Updating
 
-<How the launcher finds the update, and what stays (saves and settings). For a beta, say how to turn on the "Beta versions" switch.>
-
-## Reporting a problem
-
-<Where to open an issue and which file to attach (`user\last_run.log`).>
-
-## Credits
-
-<Upstream projects and people whose work is in this build, and where the bundled licenses are (`licenses` folder in the zip).>
+<How the launcher finds this version, and what stays (saves and settings). For a beta, how to turn on the "Beta versions" switch.>
 
 SHA-256 of `bbport-windows.zip`: `<hash>`
 ```
@@ -90,7 +72,7 @@ Run these in order. Stop at the first failure and fix it before you go on.
 5. **Package.** Run `packaging/windows/package.sh`. It writes `dist/bbport-windows.zip`.
 6. **Check the zip.**
    - It holds no game files (no `eboot.bin`, no `.pkg`, no dump).
-   - The `licenses` folder is complete: Intel XeSS, NVIDIA DLSS, ReShade, PkgTool, AMD FidelityFX SDK and FireBurn FSR-Vulkan. (The last two are added to `package.sh` for 1.7.0-beta.1.)
+   - The `licenses` folder is complete: Intel XeSS, NVIDIA DLSS, ReShade, PkgTool, AMD FidelityFX SDK and FireBurn FSR-Vulkan.
    - `Bloodborne.exe` and `BLauncher.exe` are there.
 7. **Hash.** Run `sha256sum dist/bbport-windows.zip` and put the value in the notes.
 8. **Tag.** Push `develop`, tag the commit from step 1 as `windows-v<version>`, and push the tag.

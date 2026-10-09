@@ -235,7 +235,7 @@ Use **Advanced > Desktop shortcut**, or point a shortcut or Steam (*Add a Non-St
 <details>
 <summary><b>How do I update?</b></summary>
 
-The launcher shows a new version at the bottom left. **Update** downloads and installs it and opens the launcher again. **Advanced > Check for updates** checks by hand. Saves, settings and mods are kept.
+The launcher shows a new version in a card at the top right. **Update** downloads and installs it and opens the launcher again. **Advanced > Check for updates** checks by hand. Saves, settings and mods are kept. The launcher offers stable releases only, unless **Advanced > Beta versions** is on (from 1.6.17): then it offers betas too, which are tested less. A beta build starts with the switch on.
 
 </details>
 
