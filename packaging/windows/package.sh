@@ -24,7 +24,9 @@ export USERPROFILE=${USERPROFILE:-$(cygpath -w "/c/Users/$(id -un)")}
 if [[ ! -x out/pyenv/Scripts/python.exe ]]; then
     "$python" -m venv out/pyenv
 fi
-out/pyenv/Scripts/python.exe -m pip install -q --disable-pip-version-check pyinstaller pillow
+# Only when missing: pip asks PyPI on every call and hangs for minutes without a connection.
+out/pyenv/Scripts/python.exe -c 'import PyInstaller, PIL' 2>/dev/null ||
+    out/pyenv/Scripts/python.exe -m pip install -q --disable-pip-version-check pyinstaller pillow
 # The scripts run inside BLauncher.exe (--script): the standard modules they import come along.
 hidden=()
 for module in argparse base64 collections hashlib json re shutil struct tempfile xml.etree.ElementTree \
