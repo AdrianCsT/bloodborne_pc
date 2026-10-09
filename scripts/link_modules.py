@@ -236,7 +236,7 @@ def link(game, out, module_names=DEFAULT_MODULES, red_zones=os.name == 'nt'):
 
     red_zone_sites = 0
     if red_zones and RED_ZONE_SITES.is_file():
-        sites = json.loads(RED_ZONE_SITES.read_text())['sites']
+        sites = json.loads(RED_ZONE_SITES.read_text(encoding='utf-8'))['sites']
         code, red_zone_sites = protect_red_zones(image, sites, base, sorted(r[0] for r in relocs))
         if code:
             image.extend(bytes(base - len(image)) + code)
@@ -284,7 +284,7 @@ def link(game, out, module_names=DEFAULT_MODULES, red_zones=os.name == 'nt'):
                   red_zone_sites=red_zone_sites,
                   main_tls=dict(zip(('vaddr', 'filesz', 'memsz', 'align'), main_tls_values)),
                   unresolved_imports=unresolved)
-    (out / 'link.json').write_text(json.dumps(report, indent=2) + '\n')
+    (out / 'link.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     summary = ', '.join(f"{t['file']}@{t['base']:#x}" for t in table)
     print(f'Linked modules: {summary}; {len(bindings)} native bindings, {len(unresolved)} imports left to the host runtime, '
           f'fs->gs patched={fs_patched}, red-zone-safe stores at {red_zone_sites} sites')

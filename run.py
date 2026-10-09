@@ -42,8 +42,11 @@ def run_script(name, *args, capture=False):
     script = ['--script'] if getattr(sys, 'frozen', False) else []
     command = [sys.executable, *script, str(PORT / 'scripts' / name), *map(str, args)]
     if capture:
+        # The script prints UTF-8 and this process reads UTF-8, not the Windows code page (a game
+        # folder or a user name with non-ASCII letters reaches the next step intact).
         result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
-                                creationflags=no_console())
+                                encoding='utf-8', errors='replace', creationflags=no_console(),
+                                env={**os.environ, 'PYTHONIOENCODING': 'utf-8'})
         if result.returncode:
             sys.exit(result.returncode)
         return result.stdout
@@ -138,7 +141,7 @@ def main():
             if live == 'auto':
                 caps = probe.parent / 'bb-gpu-capabilities.exe'
                 result = subprocess.run([str(caps), '--live-resolution'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                        text=True, creationflags=no_console())
+                                        text=True, encoding='utf-8', errors='replace', creationflags=no_console())
                 live = result.stdout.strip() if result.returncode == 0 else '0'
             live = '1' if live == '1' or not patched else '0'
         if live == '1':

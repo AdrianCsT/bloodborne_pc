@@ -77,5 +77,50 @@ class SelfTests(unittest.TestCase):
             parse_self(data)
 
 
+class PlainElfTests(unittest.TestCase):
+    """eboot.bin written as a plain ELF, without the SELF wrapper (#49)."""
+
+    def plain(self):
+        elf, *_ = parse_self(fixture())
+        return bytes(elf)
+
+    def test_plain_elf_gives_the_same_image_as_the_self_it_came_from(self):
+        wrapped = parse_self(fixture())
+        elf, header, ph, segments, missing = parse_self(self.plain())
+        self.assertEqual(elf, wrapped[0])
+        self.assertEqual(header, wrapped[1])
+        self.assertEqual(ph, wrapped[2])
+        self.assertEqual((segments, missing), ([], []))
+        self.assertEqual(elf[0x1000:0x1010], bytes(range(16)))
+
+    def test_game_check_hash_does_not_depend_on_the_wrapper(self):
+        import game_check
+        with tempfile.TemporaryDirectory() as tmp:
+            hashes = []
+            for name, data in (('self', bytes(fixture())), ('elf', self.plain())):
+                folder = Path(tmp) / name
+                folder.mkdir()
+                (folder / 'eboot.bin').write_bytes(data)
+                hashes.append(game_check.image_sha256(folder))
+        self.assertEqual(hashes[0], hashes[1])
+
+    def test_damaged_plain_elf_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'out of bounds'):
+            parse_self(self.plain()[:-1])
+        for offset, value in ((18, 183), (4, 1)):  # e_machine of AArch64, a 32-bit class
+            data = bytearray(self.plain())
+            data[offset:offset + 2] = value.to_bytes(2, 'little')
+            with self.assertRaisesRegex(ValueError, 'x86-64 ELF'):
+                parse_self(bytes(data))
+        data = bytearray(self.plain())
+        data[54:56] = (40).to_bytes(2, 'little')  # e_phentsize
+        with self.assertRaisesRegex(ValueError, 'program headers'):
+            parse_self(bytes(data))
+
+    def test_other_files_are_named_in_the_error(self):
+        with self.assertRaisesRegex(ValueError, 'SELF or ELF'):
+            parse_self(b'\x00' * 64)
+
+
 if __name__ == '__main__':
     unittest.main()
