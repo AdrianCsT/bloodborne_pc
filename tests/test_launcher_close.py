@@ -201,5 +201,39 @@ class LauncherCloseTests(unittest.TestCase):
         self.assertTrue(launcher.game_is_up('Entering original x86-64 code at guest offset 0xa0\n'))
 
 
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class CloseOnPlayTests(unittest.TestCase):
+    """Launcher.drain_output on a stand-in window: when "Close the launcher when the game starts" closes it."""
+
+    PREPARATION = ['Mods: preparing 12 files\n', 'Patches: 247 writes applied\n', 'Shaders: compiling 3000\n']
+    UP = ['GPU: window and Vulkan presenter ready; SDK 0x02000071\n', 'Entering original x86-64 code at guest offset 0xa0\n']
+
+    def drain(self, close_on_play, lines):
+        scheduled = []
+        window = types.SimpleNamespace(
+            ui_calls=queue.Queue(), output=queue.Queue(), app={'close_on_play': close_on_play}, process=object(),
+            job=None, close_scheduled=False, drain_output=lambda: None,
+            root=types.SimpleNamespace(after=lambda ms, fn: scheduled.append((ms, fn)), destroy=lambda: None),
+            status=types.SimpleNamespace(configure=lambda **kwargs: None),
+            set_running=lambda *args, **kwargs: None, append=lambda text: None, refresh_status=lambda: None)
+        for line in lines:
+            window.output.put(line)
+        launcher.Launcher.drain_output(window)
+        return [ms for ms, fn in scheduled if fn is window.root.destroy]
+
+    def test_it_closes_once_when_the_window_is_up(self):
+        self.assertEqual(self.drain(True, self.PREPARATION + self.UP), [launcher.CLOSE_AFTER_UP_MS])
+
+    def test_it_never_closes_during_the_preparation(self):
+        self.assertEqual(self.drain(True, self.PREPARATION), [])
+
+    def test_the_game_closing_the_launcher_needs_the_switch(self):
+        self.assertEqual(self.drain(False, self.PREPARATION + self.UP), [])
+
+    def test_a_game_that_never_says_it_is_up_leaves_the_launcher_open(self):
+        # the old 5 s timer closed it anyway; now the window line decides, and an exit never closes it
+        self.assertEqual(self.drain(True, self.PREPARATION + [(1,)]), [])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1888,6 +1888,7 @@ class Launcher:
         self.reshade_started, self.reshade_refreshers = self.reshade_preset.get(), []
         self.process = self.job = None
         self.downloading = self.downloading_fsr4vk = False
+        self.close_scheduled = False  # "Close the launcher when the game starts" is armed once per run
         self.installing, self.install_proc, self.install_cancel = False, None, threading.Event()
         self.install_card = self.install_hide = self.pkg_dialog = None
         self.output = queue.Queue()
@@ -3192,7 +3193,8 @@ class Launcher:
                     if game_is_up(item):  # mods, patches and shaders are prepared; the window exists
                         self.set_running(True)
                         self.status.configure(text=_('The game is running.', 'Игра запущена.'), fg=GOLD)
-                        if self.app.get('close_on_play'):
+                        if self.app.get('close_on_play') and not self.close_scheduled:  # both GAME_UP_LINES arrive
+                            self.close_scheduled = True
                             self.root.after(CLOSE_AFTER_UP_MS, self.root.destroy)  # the game keeps running
                     elif 'restarting through run.py' in item:
                         self.set_running(True, preparing=True)
@@ -3807,8 +3809,12 @@ class Launcher:
 
 
 # Lines of the game's output that say the window exists and the preparation (mods, patches,
-# shaders) is over. "Close the launcher when the game starts" waits for the first of them.
+# shaders) is over. "Close the launcher when the game starts" waits for the first of them; a game that
+# never prints one (or exits first) leaves the launcher open, which is safer than closing it too early.
 GAME_UP_LINES = ('GPU: window and Vulkan presenter ready', 'Entering original x86-64 code')
+# The window line is printed as the game window is created, not when it is on screen and has the focus.
+# This pause keeps the launcher window from vanishing before the game window has taken over, and gives the
+# reader thread time to pass on the lines written just after it. A margin, not a measured value.
 CLOSE_AFTER_UP_MS = 1500
 
 
