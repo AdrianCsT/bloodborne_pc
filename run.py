@@ -16,6 +16,10 @@ import subprocess
 import sys
 
 PORT = Path(__file__).resolve().parent
+# Direct memory (BB_DMEM_MB, MiB) of a render size above 1080p, where patches.py also enlarges the
+# graphics heap ("Increased Graphics Heap Sizes").
+OUTPUT_PIXELS = 1920 * 1080
+HIGH_RESOLUTION_DMEM_MB = '9152'
 
 
 def fail(message):
@@ -67,6 +71,12 @@ def ini_value(path, key):
     except OSError:
         pass
     return None
+
+
+def render_pixels(size):
+    """Pixels of a "WxH" render size (BB_RENDER_RES, as patches.py reads it), 0 when absent or malformed."""
+    match = re.fullmatch(r'\s*(\d+)\s*[xX]\s*(\d+)\s*', size or '')
+    return int(match.group(1)) * int(match.group(2)) if match else 0
 
 
 def find_executable(name):
@@ -148,9 +158,16 @@ def main():
             print(f'Output {scaled_output}: live resolution changes (live_resolution=0: startup patch)')
         elif scaled_output:
             env.update(BB_RENDER_RES=scaled_render, BB_OUTPUT_RES=scaled_output, BB_AUTO_RENDER_RES='1')
-            env.setdefault('BB_DMEM_MB', '9152')
+            env.setdefault('BB_DMEM_MB', HIGH_RESOLUTION_DMEM_MB)
             print(f'Output {scaled_output}: scene {scaled_render}, direct memory {env["BB_DMEM_MB"]} MiB '
                   '(live_resolution=1: live changes)')
+        # An explicit render size (BB_RENDER_RES: the launcher, a test) skips the scaled path above,
+        # but patches.py still grows the graphics heap above 1080p: the direct memory has to follow,
+        # or the game stops at start (exit 139). A game without the patches keeps its memory.
+        pixels = render_pixels(env.get('BB_RENDER_RES'))
+        if patched and pixels > OUTPUT_PIXELS and not env.get('BB_DMEM_MB'):
+            env['BB_DMEM_MB'] = HIGH_RESOLUTION_DMEM_MB
+            print(f'Render {env["BB_RENDER_RES"]}: direct memory {env["BB_DMEM_MB"]} MiB')
         run_script('patches.py', '--out', out, '--fps', fps, '--extra', env.get('BB_PATCHES', ''),
                    '--settings', config, '--game-dir', game, '--render-res', env.get('BB_RENDER_RES', ''),
                    '--output-res', env.get('BB_OUTPUT_RES', ''),
