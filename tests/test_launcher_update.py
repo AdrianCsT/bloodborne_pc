@@ -265,7 +265,55 @@ class FetchTests(unittest.TestCase):
     def test_it_asks_the_releases_list_not_the_latest_one(self):
         result, urlopen = self.fetch(json.dumps(RELEASES), beta=True)
         self.assertEqual(result[0], '1.7.0-beta.2')
-        self.assertIn('/releases?per_page=20', urlopen.call_args[0][0].full_url)
+        self.assertIn('/releases?per_page=100', urlopen.call_args[0][0].full_url)
+
+    def pages(self, *pages):
+        """launcher.latest_release over a GitHub that serves PAGES in order; returns (result, requested URLs)."""
+        served, urls = list(pages), []
+
+        class Response:
+            def __init__(self_inner, body):
+                self_inner.body = body
+
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *args):
+                return False
+
+            def read(self_inner, size=-1):
+                return json.dumps(self_inner.body).encode()
+
+        def urlopen(request, timeout=None):
+            urls.append(request.full_url)
+            return Response(served.pop(0) if served else [])
+
+        with mock.patch.object(launcher.urllib.request, 'urlopen', side_effect=urlopen):
+            return launcher.latest_release(False), urls
+
+    def other_tags(self, count):
+        return [release(f'v0.{n}-pre', True) for n in range(count)]
+
+    def test_a_release_past_the_first_page_is_still_found(self):
+        # a hundred newer entries of other tags push windows-v1.7.0 onto page 2
+        result, urls = self.pages(self.other_tags(100), [release('windows-v1.7.0')])
+        self.assertEqual(result[0], '1.7.0')
+        self.assertEqual(len(urls), 2)
+        self.assertIn('per_page=100', urls[0])
+        self.assertIn('page=1', urls[0])
+        self.assertIn('page=2', urls[1])
+
+    def test_it_stops_at_the_first_page_that_has_a_release_or_is_the_last(self):
+        result, urls = self.pages([release('windows-v1.6.16')] + self.other_tags(99))
+        self.assertEqual((result[0], len(urls)), ('1.6.16', 1))
+        result, urls = self.pages(self.other_tags(5))  # a short page is the last one
+        self.assertEqual((result, len(urls)), (None, 1))
+
+    def test_it_gives_up_after_a_few_pages(self):
+        result, urls = self.pages(*[self.other_tags(100) for _n in range(10)])
+        self.assertIsNone(result)
+        self.assertEqual(len(urls), launcher.RELEASE_PAGES)
+        self.assertLessEqual(launcher.RELEASE_PAGES, 5)
 
     def test_bad_json_is_a_value_error_the_check_swallows(self):
         with self.assertRaises(ValueError):
