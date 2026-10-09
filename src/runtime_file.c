@@ -48,8 +48,10 @@ _Static_assert(sizeof(GuestStat)==120,"FreeBSD stat layout");
 
 typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Listing;
 /* commit: a save file opened for writing is written to a temporary copy (temp), which replaces
- * the file (commit) in one rename when closed: a crash or a kill mid-save leaves the old file. */
-typedef struct { int used, host, dirty; Listing *dir; size_t position; char path[512]; char *commit, *temp; } File;
+ * the file (commit) in one rename when closed: a crash or a kill mid-save leaves the old file.
+ * must_commit: the open created or truncated the file, so the close replaces it even when nothing
+ * was written. */
+typedef struct { int used, host, dirty, must_commit; Listing *dir; size_t position; char path[512]; char *commit, *temp; } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
@@ -374,7 +376,7 @@ static void current_copy(char *path,size_t size,int write) {
     pthread_mutex_unlock(&lock);
 }
 /* Returns the descriptor of the copy, or -(errno). */
-static int open_for_commit(const char *path,const char *source,int flags,int mode,char **commit,char **temp) {
+static int open_for_commit(const char *path,const char *source,int flags,int mode,char **commit,char **temp,int *must_commit) {
     int hf=host_flags(flags);
 #ifdef _WIN32
     hf&=~O_DIRECTORY;
@@ -408,16 +410,17 @@ static int open_for_commit(const char *path,const char *source,int flags,int mod
         return -e;
     }
     *commit=c; *temp=t;
+    *must_commit=(hf&O_TRUNC) || !exists;
     return host;
 }
 /* The file a /savedata open really opens (the copy, when a writer has one), plus the copy for a
  * write. Returns the descriptor or -1 with errno. */
-static int open_save_file(const char *path,int flags,int mode,char **commit,char **temp) {
+static int open_save_file(const char *path,int flags,int mode,char **commit,char **temp,int *must_commit) {
     char current[1024];
     snprintf(current,sizeof(current),"%s",path);
     current_copy(current,sizeof(current),0);
     if (flags&3) {
-        int host=open_for_commit(path,current,flags,mode,commit,temp);
+        int host=open_for_commit(path,current,flags,mode,commit,temp,must_commit);
         if (host<0) { errno=-host; return -1; }
         return host;
     }
@@ -441,7 +444,8 @@ static void sync_directory(const char *file) {
 static void sync_directory(const char *file) { (void)file; } /* the replace writes through */
 #endif
 static int commit_file(const File *f) {
-    if (!f->dirty) { close(f->host); save_unlink(f->temp); return 0; } /* opened for writing, not written */
+    /* opened for writing, not written (and not created or truncated) */
+    if (!f->dirty && !f->must_commit) { close(f->host); save_unlink(f->temp); return 0; }
     int e=fsync(f->host) ? errno : 0;
     close(f->host);
     char detail[128]="";
@@ -465,7 +469,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     HostStat s;
     Listing *dir=NULL;
     char *commit=NULL, *temp=NULL;
-    int host=-1;
+    int host=-1, must_commit=0;
     int stat_error=host_stat(path,&s) ? errno : 0;
     if (!stat_error && S_ISDIR(s.st_mode)) {
         if (flags&3) return -EISDIR;
@@ -475,7 +479,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
         if (e==ENOENT) { ++missing; printf("Runtime: open(%s) -> not found\n",guest); }
         return -e;
     } else {
-        host=save_path(guest) ? open_save_file(path,flags,mode,&commit,&temp)
+        host=save_path(guest) ? open_save_file(path,flags,mode,&commit,&temp,&must_commit)
                               : open(path,host_flags(flags)&~O_DIRECTORY,_S_IREAD|_S_IWRITE);
         if (save_trace() && save_path(guest))
             printf("Save trace: open(%s, flags 0x%x) -> host %d%s%s\n",guest,flags,host,temp ? ", copy " : "",temp ? temp : "");
@@ -488,7 +492,8 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     }
 #else
     char *commit=NULL, *temp=NULL;
-    int host=save_path(guest) ? open_save_file(path,flags,mode,&commit,&temp) : open(path,host_flags(flags),mode ? mode : 0644);
+    int must_commit=0;
+    int host=save_path(guest) ? open_save_file(path,flags,mode,&commit,&temp,&must_commit) : open(path,host_flags(flags),mode ? mode : 0644);
     if (save_trace() && save_path(guest))
         printf("Save trace: open(%s, flags 0x%x) -> host %d%s%s\n",guest,flags,host,temp ? ", copy " : "",temp ? temp : "");
     if (host<0) {
@@ -508,7 +513,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
         if (temp) save_unlink(temp);
         free(commit); free(temp); return -EMFILE;
     }
-    files[fd]=(File){.used=1,.host=host,.dir=dir,.commit=commit,.temp=temp};
+    files[fd]=(File){.used=1,.host=host,.dir=dir,.commit=commit,.temp=temp,.must_commit=must_commit};
     snprintf(files[fd].path,sizeof(files[fd].path),"%s",guest);
     ++opens;
     pthread_mutex_unlock(&lock);
@@ -540,7 +545,7 @@ static int64_t do_close(int fd) {
     if (closed.temp) result=commit_file(&closed);
     else if (closed.host>=0) close(closed.host);
     if (save_trace() && save_path(closed.path))
-        printf("Save trace: close(fd %d, %s)%s -> %d\n",fd,closed.path,closed.temp ? closed.dirty ? " commit" : " unwritten" : "",result);
+        printf("Save trace: close(fd %d, %s)%s -> %d\n",fd,closed.path,closed.temp ? closed.dirty || closed.must_commit ? " commit" : " unwritten" : "",result);
     free(closed.commit); free(closed.temp);
     return result;
 }

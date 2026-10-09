@@ -101,6 +101,27 @@ static DWORD WINAPI release_later(void *arg) {
     Release *r=arg; Sleep(r->delay_ms); CloseHandle(r->holder); return 0;
 }
 
+/* The cases below report every failed check instead of stopping at the first. */
+static int failed;
+#define CHECK(cond) do { if (!(cond)) { printf("  FAIL line %d: %s\n",__LINE__,#cond); ++failed; } } while (0)
+
+/* open(O_CREAT) of a missing file then close() leaves an empty file. */
+static void case_create_close(void) {
+    int fd=(int)runtime_file_open("/savedata0/created.dat",WRONLY|CREAT,0); CHECK(fd>=3);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("created.dat")),""));
+    GuestStat st; CHECK(runtime_file_stat("/savedata0/created.dat",&st)==0 && st.size==0);
+    CHECK(!count_temps(root));
+}
+/* open(O_TRUNC) of an existing file then close() leaves it empty. */
+static void case_trunc_close(void) {
+    put_file(host("trunc.dat"),"OLDOLD");
+    int fd=(int)runtime_file_open("/savedata0/trunc.dat",WRONLY|TRUNC,0); CHECK(fd>=3);
+    CHECK(!runtime_file_close(fd));
+    CHECK(!strcmp(get_file(host("trunc.dat")),""));
+    CHECK(!count_temps(root));
+}
+
 int main(void) {
     char temp[MAX_PATH];
     DWORD length=GetTempPathA(sizeof(temp),temp);
@@ -245,7 +266,12 @@ int main(void) {
         puts("  non-ASCII save directory: PASS");
     } else puts("  non-ASCII save directory: SKIPPED (no UTF-8 manifest in this build; use ninja save-commit-test)");
 
+    /* 11. A descriptor that is never written still creates or truncates the file. */
+    case_create_close();
+    case_trunc_close();
+
     runtime_file_unmount("/savedata0");
+    if (failed) { printf("Save files: %d check(s) FAILED\n",failed); return 1; }
     puts("Save files: temporary copy and one replace, failed replace keeps the old save, retries, stale copies PASS");
     return 0;
 }
