@@ -95,6 +95,13 @@ class ChannelTests(unittest.TestCase):
         self.assertIsNone(launcher.newest_release([release('windows-v1.7.0-beta.1', True)], beta=False))
         self.assertIsNone(launcher.newest_release([release('windows-v1.7.0', assets=('notes.txt',))], beta=False)[1])
 
+    def test_entries_that_are_not_releases_are_skipped(self):
+        # a list from GitHub with junk in it: newest_release must not raise (check_update lets AttributeError out)
+        listed = [None, 'windows-v9.9.9', 7, ['windows-v9.9.9'], {'tag_name': ['windows-v9.9.9']}, {'tag_name': None},
+                  {}, release('windows-v1.7.0')]
+        self.assertEqual(launcher.newest_release(listed, beta=False)[0], '1.7.0')
+        self.assertIsNone(launcher.newest_release([None, 'x', 3, []], beta=True))
+
     def test_malformed_assets_are_skipped_not_crashed_on(self):
         good = {'name': 'Bloodborne-Windows.zip', 'browser_download_url': 'https://example.test/good.zip'}
         broken = {**release('windows-v1.7.0'), 'assets': [None, 'text', 7, {'name': None}, {'name': 5}, {}, good]}
