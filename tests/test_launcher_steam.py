@@ -1,5 +1,6 @@
 """Add to Steam: shortcuts.vdf writing and the launcher's button, on a scratch Steam folder. Nothing here
 reads or writes the Steam installation of the PC (steam_folder, the registry lookup, is always replaced)."""
+import ctypes
 import struct
 import sys
 import tempfile
@@ -188,6 +189,13 @@ class ShortcutFileTests(unittest.TestCase):
     def test_steam_running_reads_the_process_list(self):
         self.assertIsInstance(steam.steam_running(), bool)
 
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows process list')
+    def test_a_process_list_that_cannot_be_read_is_not_an_answer(self):
+        kernel32 = mock.MagicMock()
+        kernel32.CreateToolhelp32Snapshot.return_value = ctypes.c_void_p(-1).value
+        with mock.patch.object(steam.ctypes, 'windll', types.SimpleNamespace(kernel32=kernel32)):
+            self.assertIsNone(steam.steam_running())
+
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class LauncherButtonTests(unittest.TestCase):
@@ -213,6 +221,13 @@ class LauncherButtonTests(unittest.TestCase):
         shown = self.press(self.steam.root, running=True)
         self.assertEqual(len(shown['error']), 1)
         self.assertIn('Steam is running', shown['error'][0])
+        self.assertEqual(shown['info'], [])
+        self.assertFalse(self.steam.vdf('1001').exists() or self.steam.vdf('2002').exists())
+
+    def test_it_writes_nothing_when_it_cannot_tell_whether_steam_runs(self):
+        shown = self.press(self.steam.root, running=None)
+        self.assertEqual(len(shown['error']), 1)
+        self.assertIn('could not check', shown['error'][0].lower())
         self.assertEqual(shown['info'], [])
         self.assertFalse(self.steam.vdf('1001').exists() or self.steam.vdf('2002').exists())
 

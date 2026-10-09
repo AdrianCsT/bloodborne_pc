@@ -3737,7 +3737,14 @@ class Launcher:
             self.messagebox.showerror('Bloodborne', _('Steam was not found on this PC, or nobody has signed in to it yet.',
                                                       'Steam не найден на этом ПК или в нём ещё никто не входил.'))
             return
-        if bbport_steam.steam_running():
+        running = bbport_steam.steam_running()
+        if running is None:  # not knowing is not a yes: a running Steam would undo what is written
+            self.messagebox.showerror('Bloodborne', _('Could not check whether Steam is running, so nothing was written. '
+                                                      'Close Steam completely and press Add to Steam again.',
+                                                      'Не удалось проверить, запущен ли Steam, поэтому ничего не записано. '
+                                                      'Закройте Steam полностью и нажмите «Добавить в Steam» снова.'))
+            return
+        if running:
             self.messagebox.showerror('Bloodborne', _('Steam is running. Close Steam completely, also from its tray '
                                                       'icon, and press Add to Steam again.',
                                                       'Steam запущен. Закройте Steam полностью, в том числе в области '

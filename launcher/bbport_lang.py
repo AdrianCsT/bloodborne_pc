@@ -222,6 +222,7 @@ KEYS = [
     'Installed in {}.',
     'Not downloaded.',
     'Downloaded from the fsr4vk project on GitHub (GPL-3.0; the licenses are in {}). It needs Experimental features in Advanced.',
+    'Could not check whether Steam is running, so nothing was written. Close Steam completely and press Add to Steam again.',
 ]
 
 TRANSLATIONS = {
@@ -425,6 +426,7 @@ TRANSLATIONS = {
         'مثبّت في {}.',
         'لم يتم التنزيل.',
         'يُنزَّل من مشروع fsr4vk على GitHub (GPL-3.0؛ التراخيص في {}). يحتاج إلى «ميزات تجريبية» في «متقدم».',
+        'تعذّر التحقق من تشغيل Steam، لذلك لم يُكتب شيء. أغلق Steam بالكامل ثم اضغط إضافة إلى Steam مرة أخرى.',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -626,6 +628,7 @@ TRANSLATIONS = {
         'Instalado en {}.',
         'No descargado.',
         'Se descarga del proyecto fsr4vk en GitHub (GPL-3.0; las licencias están en {}). Necesita «Funciones experimentales» en Avanzado.',
+        'No se pudo comprobar si Steam está en ejecución, así que no se escribió nada. Cierra Steam por completo y pulsa Añadir a Steam otra vez.',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -827,6 +830,7 @@ TRANSLATIONS = {
         'Instalado em {}.',
         'Não baixado.',
         'Baixado do projeto fsr4vk no GitHub (GPL-3.0; as licenças estão em {}). Precisa de «Recursos experimentais» em Avançado.',
+        'Não foi possível verificar se o Steam está em execução, então nada foi gravado. Feche o Steam por completo e pressione Adicionar ao Steam de novo.',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -1028,6 +1032,7 @@ TRANSLATIONS = {
         'Installé dans {}.',
         'Non téléchargé.',
         'Téléchargé depuis le projet fsr4vk sur GitHub (GPL-3.0 ; les licences sont dans {}). Nécessite « Fonctions expérimentales » dans Avancé.',
+        "Impossible de vérifier si Steam est en cours d'exécution, donc rien n'a été écrit. Fermez complètement Steam, puis appuyez de nouveau sur Ajouter à Steam.",
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1229,6 +1234,7 @@ TRANSLATIONS = {
         'Installiert in {}.',
         'Nicht heruntergeladen.',
         'Wird vom Projekt fsr4vk auf GitHub geladen (GPL-3.0; die Lizenzen liegen in {}). Dafür müssen die Experimentellen Funktionen unter Erweitert eingeschaltet sein.',
+        'Es konnte nicht geprüft werden, ob Steam läuft, daher wurde nichts geschrieben. Beende Steam vollständig und klicke erneut auf Zu Steam hinzufügen.',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1430,6 +1436,7 @@ TRANSLATIONS = {
         'Installato in {}.',
         'Non scaricato.',
         'Scaricato dal progetto fsr4vk su GitHub (GPL-3.0; le licenze sono in {}). Richiede «Funzioni sperimentali» in Avanzate.',
+        'Impossibile verificare se Steam è in esecuzione, quindi non è stato scritto nulla. Chiudi Steam completamente e premi di nuovo Aggiungi a Steam.',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1631,6 +1638,7 @@ TRANSLATIONS = {
         'Zainstalowano w {}.',
         'Nie pobrano.',
         'Pobierane z projektu fsr4vk na GitHubie (GPL-3.0; licencje są w {}). Wymaga włączenia «Funkcje eksperymentalne» w Zaawansowane.',
+        'Nie udało się sprawdzić, czy Steam jest uruchomiony, więc nic nie zapisano. Zamknij Steam całkowicie i naciśnij Dodaj do Steam ponownie.',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1832,6 +1840,7 @@ TRANSLATIONS = {
         '{} içinde kurulu.',
         'İndirilmedi.',
         'GitHub’daki fsr4vk projesinden indirilir (GPL-3.0; lisanslar {} içindedir). Gelişmiş bölümünde «Deneysel özellikler» açık olmalıdır.',
+        "Steam'in çalışıp çalışmadığı kontrol edilemedi, bu yüzden hiçbir şey yazılmadı. Steam'i tamamen kapatın ve Steam'e ekle düğmesine yeniden basın.",
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -2033,6 +2042,7 @@ TRANSLATIONS = {
         '已安装在 {}。',
         '尚未下载。',
         '从 GitHub 上的 fsr4vk 项目下载（GPL-3.0；许可证在 {}）。需要在“高级”中打开“实验性功能”。',
+        '无法检查 Steam 是否正在运行，因此没有写入任何内容。请完全关闭 Steam，然后再次点击“添加到 Steam”。',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2234,6 +2244,7 @@ TRANSLATIONS = {
         '{} にインストール済み。',
         'ダウンロードされていません。',
         'GitHub の fsr4vk プロジェクトからダウンロードされます（GPL-3.0。ライセンスは {} にあります）。「詳細設定」の「試験的機能」をオンにする必要があります。',
+        'Steam が起動中かどうかを確認できなかったため、何も書き込んでいません。Steam を完全に終了してから、もう一度「Steam に追加」を押してください。',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2435,6 +2446,7 @@ TRANSLATIONS = {
         '{}에 설치됨.',
         '내려받지 않았습니다.',
         'GitHub의 fsr4vk 프로젝트에서 내려받습니다(GPL-3.0, 라이선스는 {}에 있음). 고급에서 실험적 기능을 켜야 합니다.',
+        "Steam이 실행 중인지 확인할 수 없어 아무것도 기록하지 않았습니다. Steam을 완전히 종료한 다음 'Steam에 추가'를 다시 누르세요.",
     ],
 }
 

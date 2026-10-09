@@ -139,7 +139,8 @@ def user_configs(steam):
 
 
 def steam_running():
-    """Whether steam.exe is in the process list (read from a snapshot, no helper program started)."""
+    """Whether steam.exe is in the process list (read from a snapshot, no helper program started):
+    True or False, or None when the list could not be read (then nothing is known)."""
     from ctypes import wintypes
 
     class ProcessEntry(ctypes.Structure):
@@ -156,7 +157,7 @@ def steam_running():
     kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
     snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
     if snapshot in (None, ctypes.c_void_p(-1).value):
-        return False
+        return None
     try:
         found = ProcessEntry()
         found.dwSize = ctypes.sizeof(ProcessEntry)
