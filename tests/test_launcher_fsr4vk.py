@@ -266,6 +266,12 @@ class WorkerTests(unittest.TestCase):
         self.assertFalse(window.downloading_fsr4vk)
         self.assertTrue(any('tool crashed' in str(item) for item in shown), shown)
 
+    def test_the_card_refresh_before_its_page_exists_does_nothing(self):
+        # the Experimental features switch can change before the Graphics page has built the card
+        window = types.SimpleNamespace(downloading_fsr4vk=False,
+                                       var=lambda key, store: types.SimpleNamespace(get=lambda: True))
+        launcher.Launcher.refresh_fsr4vk(window)  # no AttributeError
+
     def test_a_clean_download_shows_no_error(self):
         window, shown, _progress = self.run_worker(lambda progress=None: '')
         self.assertFalse(window.downloading_fsr4vk)

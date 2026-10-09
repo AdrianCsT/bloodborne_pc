@@ -3034,6 +3034,8 @@ class Launcher:
 
     def refresh_fsr4vk(self):
         """The FSR 4.1.1 card: what is downloaded, and the button (only while Experimental features is on)."""
+        if not hasattr(self, 'fsr4vk_button'):  # the Graphics page builds the card; a switch can change before
+            return
         ready = fsr4vk_present()
         self.fsr4vk_label.configure(text=_('Installed in {}.', 'Установлено в {}.').format(fsr4vk_shown()) if ready
                                     else _('Not downloaded.', 'Не скачано.'))
