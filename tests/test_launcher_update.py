@@ -176,8 +176,9 @@ class ExperimentalTests(unittest.TestCase):
         self.assertIs(launcher.APP_DEFAULTS['experimental'], False)
         self.assertNotIn('BB_OBJECT_MOTION_AMD', self.environment(launcher.APP_DEFAULTS['experimental']))
 
-    def test_on_with_object_motion_on_lets_the_game_use_it_on_amd(self):
-        self.assertEqual(self.environment(True)['BB_OBJECT_MOTION_AMD'], '1')
+    def test_on_alone_does_not_let_the_game_use_object_motion_on_amd(self):
+        # it needs the player's own AMD switch too (tests/test_launcher_motion.py)
+        self.assertNotIn('BB_OBJECT_MOTION_AMD', self.environment(True))
 
     def test_on_with_object_motion_off_changes_nothing(self):
         self.assertNotIn('BB_OBJECT_MOTION_AMD', self.environment(True, object_motion='0'))

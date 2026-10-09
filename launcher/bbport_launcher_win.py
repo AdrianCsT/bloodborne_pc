@@ -253,7 +253,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'check_updates': True, 'ui_advanced': False, 'animations': True,
                 'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False,
                 'beta_versions': is_prerelease(VERSION),  # a beta user keeps getting betas unless they say no
-                'experimental': False, 'monitor': ''}  # monitor: a name from --displays; '' is the primary
+                'experimental': False, 'object_motion_amd': False, 'monitor': ''}  # monitor: a name from --displays; '' is the primary
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
@@ -583,11 +583,11 @@ def reason_text(reason):
 
 def object_motion_hint(experimental):
     """The note under 'Object motion vectors'. On AMD graphics cards the game keeps it off, unless
-    Experimental features (Advanced) is on."""
-    note = (_('(experimental) On AMD graphics cards: it cost frame rate and drew some objects wrong with frame '
-              'generation. Switched on by Experimental features.',
-              '(экспериментально) На видеокартах AMD: снижало FPS и неправильно рисовало некоторые объекты с '
-              'генерацией кадров. Включено в «Экспериментальных функциях».') if experimental else
+    Experimental features (Advanced) is on and the player turns on the AMD switch below it."""
+    note = (_('(experimental) On AMD graphics cards it cost frame rate and drew some objects wrong with frame '
+              'generation, so it stays off there unless you turn on the switch below.',
+              '(экспериментально) На видеокартах AMD это снижало FPS и неправильно рисовало некоторые объекты с '
+              'генерацией кадров, поэтому там оно выключено, пока вы не включите переключатель ниже.') if experimental else
             _('Off on AMD graphics cards: there it cost frame rate and drew some objects wrong with frame generation.',
               'На видеокартах AMD выключено: там снижало FPS и неправильно рисовало некоторые объекты с генерацией кадров.'))
     return _('Less ghosting on characters, cloth and weapons; costs about 10% FPS.',
@@ -752,9 +752,12 @@ def game_environment(s, frame_generation=None):
                       ('vk_validation', 'BB_VK_VALIDATION')):
         if s[key]:
             env[name] = '1'
-    # Experimental features: the game forces object motion vectors off on AMD under Windows unless it
-    # is told otherwise; it reads this only on AMD, so the variable does nothing on other GPUs.
-    if s.get('experimental') and ini.get('object_motion', INI_DEFAULTS['object_motion']) == '1':
+    # The game forces object motion vectors off on AMD under Windows (they cost FPS and broke objects with
+    # frame generation) unless it is told otherwise; it reads this only on AMD, so the variable does nothing
+    # on other GPUs. The player asks for it with its own switch, which needs Experimental features: the
+    # Experimental switch alone, or a saved object_motion=1, never turns it on.
+    if s.get('experimental') and s.get('object_motion_amd') \
+            and ini.get('object_motion', INI_DEFAULTS['object_motion']) == '1':
         env['BB_OBJECT_MOTION_AMD'] = '1'
     # FSR 4.1.1 (fsr4vk) is experimental: its DLL sits in the install's fsr4vk folder and is loaded only
     # while the switch is on.
@@ -2598,6 +2601,17 @@ class Launcher:
         motion_note = self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
                                  object_motion_hint(experimental.get()))[1]
         experimental.trace_add('write', lambda *_a: motion_note.configure(text=object_motion_hint(experimental.get())))
+        # On AMD cards object motion is its own choice, usable only with Experimental features on.
+        amd_motion = self.check(f, 'object_motion_amd', 'app',
+                                _('Object motion vectors on AMD cards (experimental)',
+                                  'Векторы движения объектов на видеокартах AMD (экспериментально)'))[0]
+
+        def grey_amd_motion(*_args):
+            on = bool(experimental.get())
+            amd_motion.knob.set_enabled(on)
+            amd_motion.caption.configure(fg=TEXT if on else DIM)
+        experimental.trace_add('write', grey_amd_motion)
+        grey_amd_motion()
         experimental.trace_add('write', lambda *_a: (self.apply_upscaler_support(), self.refresh_fsr4vk()))  # FSR 4.1.1 needs it
         self.grey_with_upscaler(*self.check(
             f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
