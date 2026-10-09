@@ -423,6 +423,7 @@ def fsr4_missing():
 # FSR 4.1.1 on Windows (experimental): the game loads fsr4vk's DLL at run time (tools/fetch_fsr4vk.py
 # downloads it). It is not in the package; it lives in a folder of the install that updates keep.
 FSR4VK_FILES_REASON = 'FSR 4.1.1 files are not downloaded'  # also what bb-gpu-capabilities --upscalers says
+FSR4VK_OFF_REASON = 'switched off (BB_FSR4VK=0)'  # likewise: the tool obeys BB_FSR4VK, which says nothing of the PC
 FSR4VK_EXPERIMENTAL_REASON = 'turn on Experimental features in Advanced'
 
 
@@ -484,6 +485,7 @@ def gpu_tool():
         exe = PORT_DIR / 'out' / 'bb-gpu-capabilities.exe'
     env = dict(os.environ)
     env['BB_FSR4VK_DIR'] = str(fsr4vk_dir())  # where the check looks for the experimental FSR 4.1.1 files
+    env.pop('BB_FSR4VK', None)  # the check asks what the PC can run; the launcher's own switch decides the rest
     if not (exe.parent / 'SDL3.dll').is_file():
         clang64 = Path(os.environ.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
         env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
@@ -532,9 +534,11 @@ def connected_displays():
 
 def fsr411_state(support, experimental, files_present):
     """('ok' | 'no', reason) of the experimental FSR 4.1.1: a GPU that cannot run it keeps its own reason,
-    then it needs Experimental features, then the downloaded files (also when the check ran before them)."""
+    then it needs Experimental features, then the downloaded files (also when the check ran before them).
+    A verdict that only says the files are missing, or that BB_FSR4VK=0 switched it off, describes the
+    moment and environment of that check and not the GPU, so it is not held against it."""
     verdict = (support or {}).get('fsr411')
-    if verdict and not verdict[0] and verdict[1] != FSR4VK_FILES_REASON:
+    if verdict and not verdict[0] and verdict[1] not in (FSR4VK_FILES_REASON, FSR4VK_OFF_REASON):
         return 'no', verdict[1]
     if not experimental:
         return 'no', FSR4VK_EXPERIMENTAL_REASON
@@ -764,6 +768,8 @@ def game_environment(s, frame_generation=None):
     env['BB_FSR4VK_DIR'] = str(fsr4vk_dir())
     if not s.get('experimental'):
         env['BB_FSR4VK'] = '0'
+    else:
+        env.pop('BB_FSR4VK', None)  # the switch decides: an inherited 0 would leave the dropdown on and the game off
     for item in str(s['extra_env']).split():
         if '=' in item:
             key, value = item.split('=', 1)
@@ -1911,7 +1917,7 @@ class Launcher:
         self.reshade_preset = tk.StringVar(value=get_reshade_preset() if reshade_ready() else '')
         self.reshade_started, self.reshade_refreshers = self.reshade_preset.get(), []
         self.process = self.job = None
-        self.downloading = self.downloading_fsr4vk = False
+        self.downloading = self.downloading_fsr4vk = self.rechecking = False
         self.close_scheduled = False  # "Close the launcher when the game starts" is armed once per run
         self.installing, self.install_proc, self.install_cancel = False, None, threading.Event()
         self.install_card = self.install_hide = self.pkg_dialog = None
@@ -2612,7 +2618,7 @@ class Launcher:
             amd_motion.caption.configure(fg=TEXT if on else DIM)
         experimental.trace_add('write', grey_amd_motion)
         grey_amd_motion()
-        experimental.trace_add('write', lambda *_a: (self.apply_upscaler_support(), self.refresh_fsr4vk()))  # FSR 4.1.1 needs it
+        experimental.trace_add('write', lambda *_a: self.experimental_changed())  # FSR 4.1.1 needs it
         self.grey_with_upscaler(*self.check(
             f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
             _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
@@ -3057,6 +3063,25 @@ class Launcher:
                 if error:
                     self.messagebox.showerror('FSR 4', _('Download failed: {}', 'Не удалось скачать: {}').format(error))
             self.ui_calls.put(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def experimental_changed(self):
+        """The Experimental features switch moved: the dropdown and the FSR 4.1.1 card follow at once. When
+        it went on and the last GPU check said FSR 4.1.1 cannot run, that check is asked again in the
+        background (a verdict from another moment must not keep the entry gray until a restart)."""
+        self.apply_upscaler_support()
+        self.refresh_fsr4vk()
+        verdict = (self.upscaler_support or {}).get('fsr411')
+        if not (self.var('experimental', 'app').get() and verdict and not verdict[0]) or self.rechecking:
+            return
+        self.rechecking = True
+
+        def work():
+            try:
+                self.check_upscalers()
+            finally:
+                self.rechecking = False
+                self.ui_calls.put(self.apply_upscaler_support)
         threading.Thread(target=work, daemon=True).start()
 
     def refresh_fsr4vk(self):

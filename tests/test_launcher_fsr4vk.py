@@ -58,6 +58,18 @@ class GateTests(unittest.TestCase):
             self.assertEqual(self.state(NO_FEATURE, experimental, True),
                              ('no', 'needs the Vulkan feature shaderInt8'))
 
+    def test_a_verdict_made_under_bb_fsr4vk_0_is_not_a_gpu_verdict(self):
+        # the gray entry: a check that ran with BB_FSR4VK=0 in its environment answered "switched off", which
+        # says nothing about this PC; the launcher has its own switch, so it must not stay gray on that
+        switched_off = {'fsr411': (False, 'switched off (BB_FSR4VK=0)')}
+        self.assertEqual(self.state(switched_off, True, True), ('ok', ''))
+        self.assertEqual(self.state(switched_off, True, False), ('no', launcher.FSR4VK_FILES_REASON))
+        self.assertEqual(self.state(switched_off, False, True), ('no', launcher.FSR4VK_EXPERIMENTAL_REASON))
+
+    def test_the_tool_prints_the_switched_off_reason_the_launcher_ignores(self):
+        source = (Path(__file__).resolve().parents[1] / 'tools' / 'gpu_capabilities.c').read_text(encoding='utf-8')
+        self.assertIn(f'return "{launcher.FSR4VK_OFF_REASON}";', source)
+
     def test_the_files_missing_reason_is_the_one_the_capability_tool_prints(self):
         # fsr411_state tells "files missing" from a GPU that cannot run it by this exact text, which is
         # written in tools/gpu_capabilities.c: rewording it there must fail here, not hide the entry
@@ -127,6 +139,22 @@ class EnvironmentTests(unittest.TestCase):
         with mock.patch.dict(launcher.os.environ):
             launcher.os.environ['BB_FSR4VK_DIR'] = 'somewhere else'
             self.assertEqual(launcher.gpu_tool()[1]['BB_FSR4VK_DIR'], str(launcher.fsr4vk_dir()))
+
+    def test_the_capability_check_ignores_a_bb_fsr4vk_of_the_launchers_own_environment(self):
+        # the check asks what this PC can run; the Experimental features switch is the launcher's, not BB_FSR4VK's
+        with mock.patch.dict(launcher.os.environ):
+            launcher.os.environ['BB_FSR4VK'] = '0'
+            self.assertNotIn('BB_FSR4VK', launcher.gpu_tool()[1])
+
+    def test_experimental_on_is_not_undone_by_a_bb_fsr4vk_of_the_launchers_own_environment(self):
+        # the dropdown and the game must agree: with the switch on the game gets to load fsr4vk
+        with mock.patch.dict(launcher.os.environ):
+            launcher.os.environ['BB_FSR4VK'] = '0'
+            settings = {**launcher.APP_DEFAULTS, 'game_dir': 'G', 'experimental': True}
+            with mock.patch.object(launcher, 'load_ini', return_value=({}, [])):
+                self.assertNotIn('BB_FSR4VK', launcher.game_environment(settings))
+                settings['experimental'] = False
+                self.assertEqual(launcher.game_environment(settings)['BB_FSR4VK'], '0')
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
@@ -267,6 +295,47 @@ class MissingHelperTests(unittest.TestCase):
         self.assertEqual(shown['button'], 'disabled')
         self.assertIn('not available', shown['label'])
         self.assertIn(self.hidden.fsr4vk_download_problem(), shown['label'])
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class SwitchTests(unittest.TestCase):
+    """Launcher.experimental_changed on a stand-in window: the dropdown follows the switch, and a stale
+    'cannot run' verdict is asked again when the switch goes on."""
+
+    def window(self, support, on=True):
+        calls = []
+        window = types.SimpleNamespace(
+            upscaler_support=support, ui_calls=queue.Queue(), rechecking=False,
+            apply_upscaler_support=lambda: calls.append('apply'), refresh_fsr4vk=lambda: calls.append('refresh'),
+            var=lambda key, store: types.SimpleNamespace(get=lambda: on))
+        window.check_upscalers = lambda tool=None: (calls.append('check'),
+                                                    setattr(window, 'upscaler_support', {'fsr411': (True, '')}))
+        window.calls = calls
+        return window
+
+    def settle(self, window):
+        end = time.time() + 5
+        while time.time() < end and (window.rechecking or not window.ui_calls.empty()):
+            try:
+                window.ui_calls.get(timeout=0.05)()
+            except queue.Empty:
+                pass
+
+    def test_the_switch_going_on_asks_again_when_the_verdict_says_it_cannot_run(self):
+        window = self.window({'fsr411': (False, 'needs the Vulkan feature shaderInt8')})
+        launcher.Launcher.experimental_changed(window)
+        self.assertEqual(window.calls[:2], ['apply', 'refresh'])  # the dropdown follows at once
+        self.settle(window)
+        self.assertEqual(window.calls, ['apply', 'refresh', 'check', 'apply'])
+        self.assertEqual(window.upscaler_support['fsr411'], (True, ''))
+        self.assertFalse(window.rechecking)
+
+    def test_a_good_verdict_or_the_switch_going_off_is_not_asked_again(self):
+        for support, on in (({'fsr411': (True, '')}, True), ({'fsr411': (False, 'x')}, False), (None, True)):
+            window = self.window(support, on)
+            launcher.Launcher.experimental_changed(window)
+            self.settle(window)
+            self.assertEqual(window.calls, ['apply', 'refresh'])
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
