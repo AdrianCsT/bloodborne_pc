@@ -253,6 +253,41 @@ class WindowsLinkTests(unittest.TestCase):
         self.assertFalse((self.root / 'copy').is_symlink())
         mods.LINKED.pop(str(self.root / 'copy'))
 
+    def build_with_game_on_another_drive(self, writable_parent):
+        """build_overlay as for a game on another drive than out; returns (overlay, stderr)."""
+        import contextlib
+        import io
+        real = tempfile.mkdtemp
+
+        def mkdtemp(*args, dir=None, **kwargs):
+            if Path(dir).resolve() == self.game.parent.resolve() and not writable_parent:
+                raise PermissionError(13, 'Access is denied', str(dir))
+            return real(*args, dir=dir, **kwargs)
+        log = io.StringIO()
+        with mock.patch.object(mods, 'beside_game', return_value=True), \
+                mock.patch.object(mods.tempfile, 'mkdtemp', mkdtemp), contextlib.redirect_stderr(log):
+            overlay = mods.build_overlay(self.game, self.root / 'out', self.layers)
+        self.addCleanup(shutil.rmtree, overlay, True)
+        return overlay, log.getvalue()
+
+    def test_game_on_another_drive_gets_its_overlay_beside_it(self):
+        overlay, log = self.build_with_game_on_another_drive(writable_parent=True)
+        self.assertEqual(overlay.parent, self.game.parent.resolve())
+        self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
+
+    def test_unwritable_game_folder_falls_back_to_out_and_says_so(self):
+        overlay, log = self.build_with_game_on_another_drive(writable_parent=False)
+        out = (self.root / 'out').resolve()
+        self.assertEqual(overlay.parent, out)
+        self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
+        self.assertEqual((overlay / 'dvdroot_ps4/chr/new.dcx').read_bytes(), b'new')
+        self.assertEqual((overlay / 'dvdroot_ps4/map/a.dcx').read_bytes(), b'original map')
+        self.assertEqual((overlay / 'eboot.bin').read_bytes(), b'original executable')
+        notes = [line for line in log.splitlines() if str(out) in line]
+        self.assertEqual(len(notes), 1, log)
+        self.assertTrue(notes[0].startswith('Mods: '), notes[0])
+        self.assertFalse([p for p in [overlay, *overlay.rglob('*')] if p.is_symlink() and os.name == 'nt'])
+
     @unittest.skipIf(os.name == 'nt', 'symlinks are the other systems')
     def test_other_systems_keep_using_symlinks(self):
         overlay, calls = self.build_with_symlinks_recorded()

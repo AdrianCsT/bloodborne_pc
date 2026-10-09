@@ -156,6 +156,12 @@ def expand(directory):
         directory.mkdir(exist_ok=True)
 
 
+def beside_game(game, out):
+    """Hard links only reach files on the same volume: with the game on another drive than out,
+    the overlay goes beside the game."""
+    return os.name == 'nt' and out.drive.casefold() != game.drive.casefold()
+
+
 def build_overlay(game, out, mods):
     game = Path(game).resolve(strict=True)
     replacements = []
@@ -174,10 +180,17 @@ def build_overlay(game, out, mods):
         return game
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    if os.name == 'nt' and out.drive.casefold() != game.drive.casefold():
-        # Hard links only reach files on the same volume: the overlay goes beside the game.
-        out = game.parent
-    overlay = Path(tempfile.mkdtemp(prefix='mod-game-', dir=out))
+    overlay = None
+    if beside_game(game, out):
+        try:
+            overlay = Path(tempfile.mkdtemp(prefix='mod-game-', dir=game.parent))
+        except OSError as error:
+            # A read-only or access-restricted library: build on out's volume instead. Files that
+            # cannot be hard-linked across volumes are copied (never symlinked, upstream #102).
+            print(f'Mods: cannot write to {game.parent} ({error.strerror or error}); '
+                  f'building the overlay in {out}, copying files that cannot be linked', file=sys.stderr)
+    if overlay is None:
+        overlay = Path(tempfile.mkdtemp(prefix='mod-game-', dir=out))
     try:
         for entry in game.iterdir():
             make_link(overlay / entry.name, entry)
