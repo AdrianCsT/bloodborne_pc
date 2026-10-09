@@ -37,6 +37,8 @@ import zipfile
 FROZEN = getattr(sys, 'frozen', False)
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
+sys.path.insert(0, str(PORT_DIR / 'tools'))  # fetch_fsr4vk.py in a source tree; the frozen launcher bundles it
+import fetch_fsr4vk  # noqa: E402
 DATA_DIR = Path(os.environ.get('BB_DATA_DIR', PORT_DIR))
 CONFIG_DIR = Path(os.environ.get('APPDATA', Path.home())) / 'bbport-launcher'
 CONFIG_FILE = CONFIG_DIR / 'settings.json'
@@ -100,8 +102,9 @@ def latest_release(beta=False):
     with urllib.request.urlopen(request, timeout=15) as response:
         return newest_release(json.load(response), beta)
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
-# Never copied over an installation by an update (the package does not hold them either).
-USER_FILES = ('user', 'out', 'mods', 'bbport.ini', 'mods.json', 'patches.json', 'last_run.log')
+# Never copied over an installation by an update (the package does not hold them either). fsr4vk is the
+# experimental FSR 4.1.1 download (fsr4vk_dir()).
+USER_FILES = ('user', 'out', 'mods', 'bbport.ini', 'mods.json', 'patches.json', 'last_run.log', 'fsr4vk')
 # ReShade (packaging/windows/package.sh): turned on per game run through the Vulkan loader's layer
 # variables, see game_environment().
 RESHADE_DIR = PORT_DIR / 'bin' / 'reshade'
@@ -240,7 +243,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
              ('fsr4', ('FSR 4 (best quality)', 'FSR 4 (лучшее качество)')),
-             ('fsr411', ('FSR 4.1.1 (needs fsr4_411 assets)', 'FSR 4.1.1 (нужны ассеты fsr4_411)')),
+             ('fsr411', ('FSR 4.1.1 (experimental)', 'FSR 4.1.1 (экспериментально)')),
              ('fsr3', ('FSR 3.1 (every GPU)', 'FSR 3.1 (любая видеокарта)')),
              ('taa', ('TAA (native resolution anti-aliasing)', 'TAA (нативное сглаживание)')),
              ('off', ('Off', 'Выключен'))]
@@ -402,6 +405,32 @@ def fsr4_missing():
     return [name for name in fsr4_files() if not (folder / name).is_file() or not (folder / name).stat().st_size]
 
 
+# FSR 4.1.1 on Windows (experimental): the game loads fsr4vk's DLL at run time (tools/fetch_fsr4vk.py
+# downloads it). It is not in the package; it lives in a folder of the install that updates keep.
+FSR4VK_FILES_REASON = 'FSR 4.1.1 files are not downloaded'  # also what bb-gpu-capabilities --upscalers says
+FSR4VK_EXPERIMENTAL_REASON = 'turn on Experimental features in Advanced'
+
+
+def fsr4vk_dir():
+    return PORT_DIR / 'fsr4vk'
+
+
+def fsr4vk_present():
+    """True when the provider DLL is in fsr4vk_dir(); the game and bb-gpu-capabilities check no more
+    than that (the download itself is verified by SHA-256)."""
+    return (fsr4vk_dir() / 'amd_fidelityfx_upscaler_vk.dll').is_file()
+
+
+def download_fsr4vk(progress=None):
+    """Downloads the pinned fsr4vk release into fsr4vk_dir(); progress(done, total) is optional. Returns
+    '' or the reason it failed. Run it off the window's thread."""
+    try:
+        fetch_fsr4vk.fetch(fsr4vk_dir(), progress)
+    except (fetch_fsr4vk.FetchError, OSError) as error:
+        return str(error)
+    return ''
+
+
 UPSCALER_LINE = re.compile(r'^UPSCALER (\w+) (supported|unsupported)(?:: (.*))?$')
 
 
@@ -422,6 +451,7 @@ def gpu_tool():
     if not exe.is_file():
         exe = PORT_DIR / 'out' / 'bb-gpu-capabilities.exe'
     env = dict(os.environ)
+    env['BB_FSR4VK_DIR'] = str(fsr4vk_dir())  # where the check looks for the experimental FSR 4.1.1 files
     if not (exe.parent / 'SDL3.dll').is_file():
         clang64 = Path(os.environ.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
         env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
@@ -468,9 +498,24 @@ def connected_displays():
     return _displays
 
 
-def upscaler_state(name, support, assets_missing):
+def fsr411_state(support, experimental, files_present):
+    """('ok' | 'no', reason) of the experimental FSR 4.1.1: a GPU that cannot run it keeps its own reason,
+    then it needs Experimental features, then the downloaded files (also when the check ran before them)."""
+    verdict = (support or {}).get('fsr411')
+    if verdict and not verdict[0] and verdict[1] != FSR4VK_FILES_REASON:
+        return 'no', verdict[1]
+    if not experimental:
+        return 'no', FSR4VK_EXPERIMENTAL_REASON
+    if not files_present:
+        return 'no', FSR4VK_FILES_REASON
+    return 'ok', ''
+
+
+def upscaler_state(name, support, assets_missing, experimental=False, fsr4vk_files=False):
     """('ok' | 'slow' | 'no', reason) of one upscaler. support is None until the GPU check has run (and
     when it could not): then only the missing FSR 4 assets are known."""
+    if name == 'fsr411':
+        return fsr411_state(support, experimental, fsr4vk_files)
     verdict = (support or {}).get(name)
     if verdict and not verdict[0]:
         return 'no', verdict[1]
@@ -482,6 +527,8 @@ def upscaler_state(name, support, assets_missing):
 
 
 UPSCALER_REASONS_RU = {
+    FSR4VK_FILES_REASON: 'файлы FSR 4.1.1 не скачаны',
+    FSR4VK_EXPERIMENTAL_REASON: 'включите «Экспериментальные функции» в «Дополнительно»',
     'download the FSR 4 assets in Graphics': 'скачайте ассеты FSR 4 на вкладке «Графика»',
     'may be slow on this GPU': 'на этой видеокарте может быть медленно',
     'the GPU or driver lacks the INT8 features FSR 4 needs': 'видеокарте или драйверу не хватает INT8, нужного FSR 4',
@@ -518,6 +565,17 @@ def object_motion_hint(experimental):
 def best_upscaler(support):
     """The upscaler a PC falls back to when the saved one cannot run: DLSS on an RTX GPU, else FSR 3.1."""
     return 'dlss' if (support or {}).get('dlss', (False, ''))[0] else 'fsr3'
+
+
+def upscaler_fallback(current, support, experimental, fsr4vk_files):
+    """(better, reason) when the saved upscaler cannot run on this PC, else None. Only what the GPU
+    check or the FSR 4.1.1 rules rule out counts: a missing FSR 4 download is left to the game."""
+    if current == 'fsr411':
+        state, reason = fsr411_state(support, experimental, fsr4vk_files)
+    else:
+        verdict = (support or {}).get(current)
+        state, reason = ('no', verdict[1]) if verdict and not verdict[0] else ('ok', '')
+    return (best_upscaler(support), reason) if state == 'no' else None
 
 
 def load_json(path, default):
@@ -666,6 +724,11 @@ def game_environment(s, frame_generation=None):
     # is told otherwise; it reads this only on AMD, so the variable does nothing on other GPUs.
     if s.get('experimental') and ini.get('object_motion', INI_DEFAULTS['object_motion']) == '1':
         env['BB_OBJECT_MOTION_AMD'] = '1'
+    # FSR 4.1.1 (fsr4vk) is experimental: its DLL sits in the install's fsr4vk folder and is loaded only
+    # while the switch is on.
+    env['BB_FSR4VK_DIR'] = str(fsr4vk_dir())
+    if not s.get('experimental'):
+        env['BB_FSR4VK'] = '0'
     for item in str(s['extra_env']).split():
         if '=' in item:
             key, value = item.split('=', 1)
@@ -1963,9 +2026,11 @@ class Launcher:
         return box
 
     def upscaler_states(self):
-        """{upscaler: (state, reason)} for the dropdown, from the GPU check and the FSR 4 assets."""
-        missing = bool(fsr4_missing())
-        return {value: upscaler_state(value, self.upscaler_support, missing) for value, _t in UPSCALERS}
+        """{upscaler: (state, reason)} for the dropdown, from the GPU check, the FSR 4 assets and, for
+        the experimental FSR 4.1.1, the Experimental features switch and its downloaded files."""
+        missing, experimental, files = bool(fsr4_missing()), bool(self.var('experimental', 'app').get()), fsr4vk_present()
+        return {value: upscaler_state(value, self.upscaler_support, missing, experimental, files)
+                for value, _t in UPSCALERS}
 
     def upscaler_choice(self, parent, width=None):
         """The Upscaler dropdown. What this PC cannot run reads 'FSR 4.1.1 (not available: reason)', is
@@ -2021,16 +2086,18 @@ class Launcher:
         return box
 
     def apply_upscaler_support(self):
-        """After the GPU check or the FSR 4 download: re-mark the dropdowns; a saved upscaler the GPU
-        cannot run becomes the best one that works (DLSS on an RTX GPU, else FSR 3.1), said once."""
+        """After the GPU check, the FSR 4 download, or a change of Experimental features: re-mark the
+        dropdowns; a saved upscaler this PC cannot run (the GPU, or FSR 4.1.1 without Experimental features
+        or its files) becomes the best one that works (DLSS on an RTX GPU, else FSR 3.1), said once."""
         current = self.var('upscaler', 'ini').get()
-        verdict = (self.upscaler_support or {}).get(current)
-        if verdict and not verdict[0]:
-            better = best_upscaler(self.upscaler_support)
+        fallback = upscaler_fallback(current, self.upscaler_support, bool(self.var('experimental', 'app').get()),
+                                     fsr4vk_present())
+        if fallback:
+            better, reason = fallback
             name = lambda value: _(*dict(UPSCALERS)[value]).split(' (')[0]
             self.upscaler_notice = _('⚠ {} is not available on this PC ({}). The upscaler is now {}.',
                                      '⚠ {} недоступен на этом ПК ({}). Теперь выбран {}.').format(
-                name(current), reason_text(verdict[1]), name(better))
+                name(current), reason_text(reason), name(better))
             self.var('upscaler', 'ini').set(better)
         for box in self.upscaler_boxes:
             box.refresh()
@@ -2497,6 +2564,7 @@ class Launcher:
         motion_note = self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
                                  object_motion_hint(experimental.get()))[1]
         experimental.trace_add('write', lambda *_a: motion_note.configure(text=object_motion_hint(experimental.get())))
+        experimental.trace_add('write', lambda *_a: self.apply_upscaler_support())  # FSR 4.1.1 needs the switch
         self.grey_with_upscaler(*self.check(
             f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
             _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
@@ -2721,10 +2789,10 @@ class Launcher:
             side='left', padx=px(12))
         f = self.card(page, _('Performance', 'Производительность'))
         self.check(f, 'experimental', 'app', _('Experimental features', 'Экспериментальные функции'),
-                   _('Unlocks options that are still being tested and marked (experimental). For now: object motion '
-                     'vectors on AMD graphics cards, which can lower the frame rate or draw some objects wrong.',
-                     'Открывает функции, которые ещё проверяются и помечены (экспериментально). Пока это векторы '
-                     'движения объектов на видеокартах AMD: они могут снижать FPS или неправильно рисовать объекты.'))
+                   _('Unlocks options that are still being tested and marked (experimental). For now: FSR 4.1.1, and '
+                     'object motion vectors on AMD graphics cards, which can lower the frame rate or draw some objects wrong.',
+                     'Открывает функции, которые ещё проверяются и помечены (экспериментально). Пока это FSR 4.1.1 и '
+                     'векторы движения объектов на видеокартах AMD: они могут снижать FPS или неправильно рисовать объекты.'))
         self.row(f, _('Two-stage GPU pipeline', 'Двухстадийный конвейер GPU'), self.choice(f, 'draw_pipe', 'app', DRAW_PIPE),
                  _('20–30% faster; switch it off if the game is unstable.', 'Быстрее на 20–30%; при нестабильности выключите.'))
         self.row(f, _('GPU readbacks', 'Чтение данных GPU'), self.choice(f, 'readbacks', 'app', READBACKS),
