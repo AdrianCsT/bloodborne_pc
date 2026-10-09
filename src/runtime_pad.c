@@ -15,9 +15,11 @@
  *
  * Travel: such a clone also uses only part of SDL's -32768..32767 span (its neutral sits in the
  * middle of one half), so reading the axis as -128..127 would reach only half deflection and a
- * full push would never run. Each axis is instead scaled by its own travel: a biased axis starts
- * from its neutral's magnitude and is refined by the largest push seen per direction, so both
- * directions reach full deflection even when the two travels differ by a few percent (that
+ * full push would never run. Each axis is instead scaled by its own travel: each side of a biased
+ * axis' neutral starts from the neutral's magnitude, or the room SDL's range leaves on that side
+ * when that is less (a neutral near +20000 has about 12767 toward +32767), and is refined by the
+ * largest push seen per direction, so both directions reach full deflection even when the two
+ * travels differ by a few percent (that
  * difference is what makes one direction run and the other only walk). A genuine pad keeps the
  * plain -32768..32767 -> -128..127 read. The stick is then converted as shadPS4 does, with an
  * inner/outer dead zone (BB_PAD_DEADZONE, default 5; BB_PAD_DEADZONE_OUTER, default 127) mapping
@@ -90,7 +92,7 @@ static uint8_t connected_count;
 static int cal_enabled=-1, pad_deadzone=-1, pad_deadzone_outer=-1, cal_manual;
 static int cal_have_center, cal_started, cal_quiet_count;
 static int cal_center[4], cal_prev[4], cal_manual_center[4];
-static int cal_base[4];                /* 0: normal pad; else |neutral| of a biased axis */
+static int cal_base[4][2];             /* travel toward -/+ of a biased axis; 0: normal pad */
 static int cal_max[4][2];              /* largest push seen per direction on a biased axis */
 static uint64_t cal_since;
 
@@ -118,22 +120,31 @@ static void cal_load(void) {
 static void cal_set_base(void) {
     int biased=0;
     for (int i=0;i<4;++i) {
-        const int a=abs(cal_center[i]);
-        cal_base[i]=a>=PAD_CAL_BIAS ? a : 0;   /* a biased axis spans one half of the int16 range */
+        const int c=cal_center[i], a=abs(c);
+        /* A biased axis spans |neutral| to each side, as far as SDL's range reaches: a neutral
+         * near an end of the range leaves little travel on that side. */
+        const int toward_minus=32768+c, toward_plus=32767-c;
+        const int on=a>=PAD_CAL_BIAS;
+        cal_base[i][0]=on ? (a<toward_minus ? a : toward_minus) : 0;
+        cal_base[i][1]=on ? (a<toward_plus ? a : toward_plus) : 0;
+        for (int dir=0;dir<2;++dir) if (on && cal_base[i][dir]<1) cal_base[i][dir]=1;
         cal_max[i][0]=cal_max[i][1]=0;
-        biased|=cal_base[i]!=0;
+        biased|=on;
     }
     if (biased)
-        printf("Runtime: pad travel (biased neutral, per-axis scaling): lx=%d ly=%d rx=%d ry=%d\n",
-               cal_base[0]?cal_base[0]:32768,cal_base[1]?cal_base[1]:32768,
-               cal_base[2]?cal_base[2]:32768,cal_base[3]?cal_base[3]:32768);
+        printf("Runtime: pad travel (biased neutral, per-side scaling, toward -/+): lx=%d/%d ly=%d/%d rx=%d/%d ry=%d/%d\n",
+               cal_base[0][0]?cal_base[0][0]:32768,cal_base[0][1]?cal_base[0][1]:32767,
+               cal_base[1][0]?cal_base[1][0]:32768,cal_base[1][1]?cal_base[1][1]:32767,
+               cal_base[2][0]?cal_base[2][0]:32768,cal_base[2][1]?cal_base[2][1]:32767,
+               cal_base[3][0]?cal_base[3][0]:32768,cal_base[3][1]?cal_base[3][1]:32767);
 }
-/* Full-scale travel of one direction. A biased axis starts from its neutral's magnitude and is
- * refined by the largest push seen (once that push is close to the base travel), so a direction
- * whose physical travel is a few percent shorter still reaches full deflection. */
+/* Full-scale travel of one direction. A biased axis starts from the room its neutral leaves on
+ * that side and is refined by the largest push seen (once that push is close to the base travel),
+ * so a direction whose physical travel is a few percent shorter still reaches full deflection. */
 static int cal_travel(int axis,int dir) {
-    const int base=cal_base[axis] ? cal_base[axis] : 32768;
-    return cal_base[axis] && cal_max[axis][dir]*100>=base*PAD_CAL_REFINE ? cal_max[axis][dir] : base;
+    const int base=cal_base[axis][dir];
+    if (!base) return 32768;
+    return cal_max[axis][dir]*100>=base*PAD_CAL_REFINE ? cal_max[axis][dir] : base;
 }
 static void cal_reset(void) {
     cal_load();
@@ -148,7 +159,7 @@ static void cal_reset(void) {
 static void cal_sample(const int16_t raw[4]) {
     if (cal_have_center) {
         for (int i=0;i<4;++i) {
-            if (!cal_base[i]) continue;
+            if (!cal_base[i][0]) continue;
             const int d=raw[i]-cal_center[i], dir=d>=0, travel=dir ? d : -d;
             if (travel>cal_max[i][dir]) cal_max[i][dir]=travel;
         }

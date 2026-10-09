@@ -74,6 +74,13 @@ static int sticks_are(const PadData *d,int lx,int ly,int rx,int ry) {
     if (!sticks_are(&(d),lx,ly,rx,ry)) { \
         printf("line %d: sticks %d %d %d %d, expected %d %d %d %d\n",__LINE__,(d).left_x,(d).left_y,(d).right_x,(d).right_y,lx,ly,rx,ry); \
         abort(); } } while (0)
+/* The cases that report every failed check instead of stopping at the first. */
+static int failed;
+#define CHECK(cond) do { if (!(cond)) { printf("  FAIL line %d: %s\n",__LINE__,#cond); ++failed; } } while (0)
+#define SOFT_STICKS(d,lx,ly,rx,ry) do { \
+    if (!sticks_are(&(d),lx,ly,rx,ry)) { \
+        printf("  FAIL line %d: sticks %d %d %d %d, expected %d %d %d %d\n",__LINE__,(d).left_x,(d).left_y,(d).right_x,(d).right_y,lx,ly,rx,ry); \
+        ++failed; } } while (0)
 
 int main(void) {
     setvbuf(stdout,NULL,_IONBF,0); /* a failed check aborts: keep what was printed before it */
@@ -152,7 +159,28 @@ int main(void) {
         assert(cal_have_center && !cal_center[2]);
         detach(v);
     }
-    /* 6. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
+    /* 6. A neutral near either end of the range leaves little travel on one side: each side of the
+     * neutral is scaled by its own travel, so both directions still reach full deflection. */
+    {
+        const int16_t rest[4]={20000,-20000,20000,-20000};
+        Virtual v=attach(rest);
+        PadData d=settle(20);
+        SOFT_STICKS(d,128,128,128,128);
+        CHECK(cal_center[0]==20000 && cal_center[1]==-20000 && cal_center[2]==20000 && cal_center[3]==-20000);
+        move(v,SDL_GAMEPAD_AXIS_LEFTX,32767); d=read_once(); CHECK(d.left_x==255);   /* 12767 of travel */
+        move(v,SDL_GAMEPAD_AXIS_LEFTX,0); d=read_once(); CHECK(d.left_x==0);         /* 20000 of travel */
+        move(v,SDL_GAMEPAD_AXIS_LEFTX,26383); d=read_once(); CHECK(d.left_x>=185 && d.left_x<=195); /* half of 12767 */
+        move(v,SDL_GAMEPAD_AXIS_LEFTX,20000);
+        move(v,SDL_GAMEPAD_AXIS_LEFTY,-32768); d=read_once(); CHECK(d.left_y==0);    /* 12768 of travel */
+        move(v,SDL_GAMEPAD_AXIS_LEFTY,0); d=read_once(); CHECK(d.left_y==255);       /* 20000 of travel */
+        move(v,SDL_GAMEPAD_AXIS_LEFTY,-26384); d=read_once(); CHECK(d.left_y>=61 && d.left_y<=71);
+        move(v,SDL_GAMEPAD_AXIS_LEFTY,-20000);
+        move(v,SDL_GAMEPAD_AXIS_RIGHTX,32767); d=read_once(); CHECK(d.right_x==255);
+        move(v,SDL_GAMEPAD_AXIS_RIGHTX,20000);
+        move(v,SDL_GAMEPAD_AXIS_RIGHTY,-32768); d=read_once(); CHECK(d.right_y==0);
+        detach(v);
+    }
+    /* 7. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
      * and the pad shows again once the recording ends. */
     {
         const int16_t rest[4]={-16380,16380,-16380,16380};
@@ -182,6 +210,7 @@ int main(void) {
     SDL_Quit();
     remove("bbport-pad-calibration-pad.txt");
     remove("bbport-pad-calibration-replay.txt");
-    puts("PASS: stick neutral of a genuine and a biased pad, held sticks at connect, replay route unchanged");
+    if (failed) { printf("FAIL: %d check(s) failed\n",failed); return 1; }
+    puts("PASS: stick neutral of a genuine and a biased pad, per-side travel, held sticks at connect, replay route unchanged");
     return 0;
 }
