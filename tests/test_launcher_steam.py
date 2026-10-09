@@ -115,6 +115,22 @@ class ShortcutFileTests(unittest.TestCase):
         self.assertEqual([tag for _t, _k, tag in tags], ['favorite'])
         self.assertEqual(self.vdf.with_name('shortcuts.vdf.bak').read_bytes(), before)  # the original, not the first add
 
+    def test_a_python_shortcut_of_the_player_is_not_overwritten(self):
+        # From a source tree the exe is python(w).exe: another shortcut may start the same interpreter.
+        python = r'C:\Python\pythonw.exe'
+        other = steam.entry('Other tool', python, r'C:\tools', python, '"C:\\tools\\tool.py"')
+        self.vdf.write_bytes(steam.dump([(steam.MAP, 'shortcuts', [(steam.MAP, '0', other)])]) + bytes([steam.END]))
+        self.assertEqual(steam.add_shortcut(self.vdf, 'Bloodborne', python, START, python, '"C:\\bb\\launcher.py" --play'),
+                         'added')
+        apps = read_shortcuts(self.vdf)
+        self.assertEqual([entry['AppName'] for _k, entry in apps], ['Other tool', 'Bloodborne'])
+        self.assertEqual(apps[0][1]['LaunchOptions'], '"C:\\tools\\tool.py"')
+        # the same exe and name again is the same shortcut (Steam's id is made of both): updated in place
+        self.assertEqual(steam.add_shortcut(self.vdf, 'Bloodborne', python, START, python, '--play'), 'updated')
+        apps = read_shortcuts(self.vdf)
+        self.assertEqual([entry['AppName'] for _k, entry in apps], ['Other tool', 'Bloodborne'])
+        self.assertEqual(apps[1][1]['LaunchOptions'], '--play')
+
     def test_the_file_round_trips_byte_for_byte(self):
         data = steam_made_file(('Celeste', r'D:\Celeste\Celeste.exe', 7, ['a', 'b']))
         self.assertEqual(steam.dump(steam.parse(data)[0]) + bytes([steam.END]), data)
