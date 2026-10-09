@@ -426,6 +426,16 @@ def fsr4vk_dir():
     return PORT_DIR / 'fsr4vk'
 
 
+def fsr4vk_shown(*more):
+    """fsr4vk_dir() (and what is below it) as the FSR 4.1.1 card shows it: 'fsr4vk\\LICENSES', relative to
+    the install; short_path() when the folder is elsewhere."""
+    path = fsr4vk_dir().joinpath(*more)
+    try:
+        return str(path.relative_to(PORT_DIR))
+    except ValueError:
+        return short_path(path)
+
+
 def fsr4vk_present():
     """True when the provider DLL is in fsr4vk_dir(); the game and bb-gpu-capabilities check no more
     than that (the download itself is verified by SHA-256)."""
@@ -2610,7 +2620,7 @@ class Launcher:
         self.note(f, _('Downloaded from the fsr4vk project on GitHub (GPL-3.0; the licenses are in {}). '
                        'It needs Experimental features in Advanced.',
                        'Скачивается из проекта fsr4vk на GitHub (GPL-3.0; лицензии лежат в {}). '
-                       'Нужны «Экспериментальные функции» в «Дополнительно».').format(fsr4vk_dir() / 'LICENSES'), top=10)
+                       'Нужны «Экспериментальные функции» в «Дополнительно».').format(fsr4vk_shown('LICENSES')), top=10)
         self.refresh_fsr4vk()
         f = self.card(page, _('Detail', 'Детализация'))
         self.row(f, _('Model detail (LOD)', 'Детализация моделей'), self.choice(f, 'model_lod', 'ini', LODS),
@@ -3025,7 +3035,7 @@ class Launcher:
     def refresh_fsr4vk(self):
         """The FSR 4.1.1 card: what is downloaded, and the button (only while Experimental features is on)."""
         ready = fsr4vk_present()
-        self.fsr4vk_label.configure(text=_('Installed in {}.', 'Установлено в {}.').format(fsr4vk_dir()) if ready
+        self.fsr4vk_label.configure(text=_('Installed in {}.', 'Установлено в {}.').format(fsr4vk_shown()) if ready
                                     else _('Not downloaded.', 'Не скачано.'))
         if not self.downloading_fsr4vk:
             self.fsr4vk_progress.set(1.0 if ready else 0.0)

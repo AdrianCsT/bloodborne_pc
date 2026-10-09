@@ -118,6 +118,23 @@ class EnvironmentTests(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class ShownPathTests(unittest.TestCase):
+    """The FSR 4.1.1 card names its folder short (it used to print the full path, over two lines)."""
+
+    def test_the_folder_and_its_licenses_are_shown_relative_to_the_install(self):
+        self.assertEqual(launcher.fsr4vk_shown(), 'fsr4vk')
+        self.assertEqual(launcher.fsr4vk_shown('LICENSES'), 'fsr4vk\\LICENSES')
+
+    def test_a_folder_elsewhere_is_shortened_like_the_other_paths(self):
+        far = Path('D:/some/very/long/path/of/a/player/who/keeps/games/deep/in/folders/fsr4vk')
+        with mock.patch.object(launcher, 'fsr4vk_dir', return_value=far):
+            shown = launcher.fsr4vk_shown('LICENSES')
+        self.assertTrue(shown.endswith('LICENSES'), shown)
+        self.assertLessEqual(len(shown), 50)
+        self.assertIn('…', shown)
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class UpdateTests(unittest.TestCase):
     def test_an_update_keeps_the_downloaded_folder(self):
         self.assertIn('fsr4vk', launcher.USER_FILES)
