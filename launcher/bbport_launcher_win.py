@@ -1876,7 +1876,7 @@ class Launcher:
         self.reshade_preset = tk.StringVar(value=get_reshade_preset() if reshade_ready() else '')
         self.reshade_started, self.reshade_refreshers = self.reshade_preset.get(), []
         self.process = self.job = None
-        self.downloading = False
+        self.downloading = self.downloading_fsr4vk = False
         self.installing, self.install_proc, self.install_cancel = False, None, threading.Event()
         self.install_card = self.install_hide = self.pkg_dialog = None
         self.output = queue.Queue()
@@ -2377,6 +2377,7 @@ class Launcher:
             self.refresh_lists()
         elif name == 'graphics':
             self.refresh_fsr4()
+            self.refresh_fsr4vk()
             self.refresh_reshade()
         elif name == 'play':
             self.refresh_status()
@@ -2564,7 +2565,7 @@ class Launcher:
         motion_note = self.check(f, 'object_motion', 'ini', _('Object motion vectors', 'Векторы движения объектов'),
                                  object_motion_hint(experimental.get()))[1]
         experimental.trace_add('write', lambda *_a: motion_note.configure(text=object_motion_hint(experimental.get())))
-        experimental.trace_add('write', lambda *_a: self.apply_upscaler_support())  # FSR 4.1.1 needs the switch
+        experimental.trace_add('write', lambda *_a: (self.apply_upscaler_support(), self.refresh_fsr4vk()))  # FSR 4.1.1 needs it
         self.grey_with_upscaler(*self.check(
             f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
             _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
@@ -2584,6 +2585,21 @@ class Launcher:
                        'about 30 MB, into the fsr4_shaders folder of the port.',
                        'С GitHub FireBurn/Q2RTX (собраны из MIT-исходников AMD FidelityFX), около 30 МБ, '
                        'в папку fsr4_shaders порта.'), top=10)
+        f = self.card(page, _('FSR 4.1.1 (experimental)', 'FSR 4.1.1 (экспериментально)'))
+        self.fsr4vk_label = self.label(f, '', wraplength=px(640), justify='left')
+        self.fsr4vk_label.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(10), 0))
+        holder = self.tk.Frame(f, bg=CARD)
+        holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(12), 0))
+        self.fsr4vk_button = self.button(holder, _('Download FSR 4.1.1 (about 20 MB)', 'Скачать FSR 4.1.1 (около 20 МБ)'),
+                                         self.start_fsr4vk_download, 'primary')
+        self.fsr4vk_button.pack(side='left')
+        self.fsr4vk_progress = Bar(self, holder, 280)
+        self.fsr4vk_progress.pack(side='left', padx=px(16))
+        self.note(f, _('Downloaded from the fsr4vk project on GitHub (GPL-3.0; the licenses are in {}). '
+                       'It needs Experimental features in Advanced.',
+                       'Скачивается из проекта fsr4vk на GitHub (GPL-3.0; лицензии лежат в {}). '
+                       'Нужны «Экспериментальные функции» в «Дополнительно».').format(fsr4vk_dir() / 'LICENSES'), top=10)
+        self.refresh_fsr4vk()
         f = self.card(page, _('Detail', 'Детализация'))
         self.row(f, _('Model detail (LOD)', 'Детализация моделей'), self.choice(f, 'model_lod', 'ini', LODS),
                  _('A game patch (game version 1.09).', 'Патч игры (версия 1.09).'))
@@ -2894,16 +2910,21 @@ class Launcher:
         output = self.var('output_res', 'ini').get().replace('x', ' × ')
         return f'{_(*fps)}   ·   {upscaler}   ·   {output}'
 
-    def detect_gpu(self):
+    def check_upscalers(self):
+        """What each upscaler needs of this PC (bb-gpu-capabilities --upscalers); unknown (every upscaler
+        offered) when this fails. Run it off the window's thread."""
         exe, env = gpu_tool()
-        text = _('• Graphics card: not checked', '• Видеокарта: не проверена')
         try:
-            # What each upscaler needs of this PC; unknown (every upscaler offered) when this fails.
             check = subprocess.run([str(exe), '--upscalers'], capture_output=True, text=True, timeout=30,
                                    env=env, creationflags=NO_WINDOW)
             self.upscaler_support = parse_upscaler_support(check.stdout) or None
         except (OSError, subprocess.TimeoutExpired):
             pass
+
+    def detect_gpu(self):
+        exe, env = gpu_tool()
+        text = _('• Graphics card: not checked', '• Видеокарта: не проверена')
+        self.check_upscalers()
         try:
             result = subprocess.run([str(exe), '--live-resolution'], capture_output=True, text=True, timeout=30,
                                     env=env, creationflags=NO_WINDOW)
@@ -2975,6 +2996,39 @@ class Launcher:
                 self.refresh_status()
                 if error:
                     self.messagebox.showerror('FSR 4', _('Download failed: {}', 'Не удалось скачать: {}').format(error))
+            self.ui_calls.put(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def refresh_fsr4vk(self):
+        """The FSR 4.1.1 card: what is downloaded, and the button (only while Experimental features is on)."""
+        ready = fsr4vk_present()
+        self.fsr4vk_label.configure(text=_('Installed in {}.', 'Установлено в {}.').format(fsr4vk_dir()) if ready
+                                    else _('Not downloaded.', 'Не скачано.'))
+        if not self.downloading_fsr4vk:
+            self.fsr4vk_progress.set(1.0 if ready else 0.0)
+        usable = not ready and not self.downloading_fsr4vk and bool(self.var('experimental', 'app').get())
+        self.fsr4vk_button.configure(state='normal' if usable else 'disabled')
+
+    def start_fsr4vk_download(self):
+        """Downloads the fsr4vk files in the background, then re-runs the capability check so the
+        dropdown entry can be picked."""
+        self.downloading_fsr4vk = True
+        self.refresh_fsr4vk()
+
+        def progress(done, total):
+            self.ui_calls.put(lambda: self.fsr4vk_progress.set(done / total))
+
+        def work():
+            error = download_fsr4vk(progress)
+            if not error:
+                self.check_upscalers()
+
+            def done():
+                self.downloading_fsr4vk = False
+                self.refresh_fsr4vk()
+                self.apply_upscaler_support()
+                if error:
+                    self.messagebox.showerror('FSR 4.1.1', _('Download failed: {}', 'Не удалось скачать: {}').format(error))
             self.ui_calls.put(done)
         threading.Thread(target=work, daemon=True).start()
 

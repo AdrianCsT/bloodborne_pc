@@ -33,7 +33,8 @@ for module in argparse base64 collections hashlib json re shutil struct tempfile
 done
 out/pyenv/Scripts/python.exe -m PyInstaller --noconfirm --clean --log-level WARN --windowed \
     --name BLauncher --icon "$(cygpath -w "$PWD/launcher/bloodborne.ico")" --distpath out/pyi-dist \
-    --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" "${hidden[@]}" \
+    --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" \
+    --paths "$(cygpath -w "$PWD/tools")" --hidden-import fetch_fsr4vk "${hidden[@]}" \
     "$(cygpath -w "$PWD/launcher/bbport_launcher_win.py")"
 
 # PkgTool (maxton/LibOrbisPkg v0.2, LGPL-3.0, shipped unmodified) extracts the game from the .pkg files the
@@ -157,6 +158,11 @@ echo 'Texture files (.png) that effects load go here.' > "$dest/bin/reshade/text
 echo 'ReShade saves its screenshots here (the key is Print Screen).' > "$dest/bin/reshade/screenshots/README.txt"
 cp "$reshade_src"/licenses/*.txt "$dest/licenses/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
+# fsr4vk (GPLv3; experimental FSR 4.1.1) is downloaded by the launcher into <install>\fsr4vk: none of it ships here.
+if [[ -n $(find "$dest" \( -type d -iname fsr4vk -o -iname 'amd_fidelityfx_upscaler_vk*' \)) ]]; then
+    echo 'an fsr4vk file ended up in the package; it must be downloaded by the launcher' >&2
+    exit 1
+fi
 mkdir -p dist
 rm -f dist/bbport-windows.zip
 (cd out/stage && powershell -NoProfile -Command \

@@ -218,6 +218,10 @@ KEYS = [
     'Bloodborne is in your Steam library: {} added, {} updated (one shortcut per Steam account on this PC). It starts with the settings saved in this launcher. An existing shortcuts.vdf is kept as shortcuts.vdf.bak.',
     'turn on Experimental features in Advanced',
     'FSR 4.1.1 files are not downloaded',
+    'Download FSR 4.1.1 (about 20 MB)',
+    'Installed in {}.',
+    'Not downloaded.',
+    'Downloaded from the fsr4vk project on GitHub (GPL-3.0; the licenses are in {}). It needs Experimental features in Advanced.',
 ]
 
 TRANSLATIONS = {
@@ -417,6 +421,10 @@ TRANSLATIONS = {
         'Bloodborne في مكتبة Steam لديك: تمت إضافة {}، وتحديث {} (اختصار واحد لكل حساب Steam على هذا الكمبيوتر). تعمل اللعبة بالإعدادات المحفوظة في هذا المشغّل. يُحفظ ملف shortcuts.vdf الموجود باسم shortcuts.vdf.bak.',
         'فعّل «ميزات تجريبية» في «متقدم»',
         'ملفات FSR 4.1.1 لم يتم تنزيلها',
+        'تنزيل FSR 4.1.1 (حوالي 20 ميغابايت)',
+        'مثبّت في {}.',
+        'لم يتم التنزيل.',
+        'يُنزَّل من مشروع fsr4vk على GitHub (GPL-3.0؛ التراخيص في {}). يحتاج إلى «ميزات تجريبية» في «متقدم».',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -614,6 +622,10 @@ TRANSLATIONS = {
         'Bloodborne está en tu biblioteca de Steam: {} añadidos, {} actualizados (un acceso directo por cuenta de Steam de este PC). Se inicia con los ajustes guardados en este launcher. El shortcuts.vdf existente se conserva como shortcuts.vdf.bak.',
         'activa «Funciones experimentales» en Avanzado',
         'los archivos de FSR 4.1.1 no están descargados',
+        'Descargar FSR 4.1.1 (unos 20 MB)',
+        'Instalado en {}.',
+        'No descargado.',
+        'Se descarga del proyecto fsr4vk en GitHub (GPL-3.0; las licencias están en {}). Necesita «Funciones experimentales» en Avanzado.',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -811,6 +823,10 @@ TRANSLATIONS = {
         'Bloodborne está na sua biblioteca do Steam: {} adicionados, {} atualizados (um atalho por conta Steam neste PC). Ele inicia com as configurações salvas neste launcher. O shortcuts.vdf existente é mantido como shortcuts.vdf.bak.',
         'ative «Recursos experimentais» em Avançado',
         'os arquivos do FSR 4.1.1 não foram baixados',
+        'Baixar o FSR 4.1.1 (cerca de 20 MB)',
+        'Instalado em {}.',
+        'Não baixado.',
+        'Baixado do projeto fsr4vk no GitHub (GPL-3.0; as licenças estão em {}). Precisa de «Recursos experimentais» em Avançado.',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -1008,6 +1024,10 @@ TRANSLATIONS = {
         'Bloodborne est dans votre bibliothèque Steam : {} ajouté(s), {} mis à jour (un raccourci par compte Steam sur ce PC). Il démarre avec les réglages enregistrés dans ce lanceur. Un shortcuts.vdf existant est conservé sous le nom shortcuts.vdf.bak.',
         'activez « Fonctions expérimentales » dans Avancé',
         'les fichiers FSR 4.1.1 ne sont pas téléchargés',
+        'Télécharger FSR 4.1.1 (environ 20 Mo)',
+        'Installé dans {}.',
+        'Non téléchargé.',
+        'Téléchargé depuis le projet fsr4vk sur GitHub (GPL-3.0 ; les licences sont dans {}). Nécessite « Fonctions expérimentales » dans Avancé.',
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1205,6 +1225,10 @@ TRANSLATIONS = {
         'Bloodborne ist in deiner Steam-Bibliothek: {} hinzugefügt, {} aktualisiert (eine Verknüpfung pro Steam-Konto auf diesem PC). Es startet mit den in diesem Launcher gespeicherten Einstellungen. Eine vorhandene shortcuts.vdf bleibt als shortcuts.vdf.bak erhalten.',
         'Experimentelle Funktionen unter Erweitert einschalten',
         'die FSR-4.1.1-Dateien sind nicht heruntergeladen',
+        'FSR 4.1.1 herunterladen (etwa 20 MB)',
+        'Installiert in {}.',
+        'Nicht heruntergeladen.',
+        'Wird vom Projekt fsr4vk auf GitHub geladen (GPL-3.0; die Lizenzen liegen in {}). Dafür müssen die Experimentellen Funktionen unter Erweitert eingeschaltet sein.',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1402,6 +1426,10 @@ TRANSLATIONS = {
         'Bloodborne è nella tua libreria Steam: {} aggiunti, {} aggiornati (un collegamento per account Steam su questo PC). Si avvia con le impostazioni salvate in questo launcher. Un shortcuts.vdf esistente viene conservato come shortcuts.vdf.bak.',
         'attiva «Funzioni sperimentali» in Avanzate',
         'i file di FSR 4.1.1 non sono stati scaricati',
+        'Scarica FSR 4.1.1 (circa 20 MB)',
+        'Installato in {}.',
+        'Non scaricato.',
+        'Scaricato dal progetto fsr4vk su GitHub (GPL-3.0; le licenze sono in {}). Richiede «Funzioni sperimentali» in Avanzate.',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1599,6 +1627,10 @@ TRANSLATIONS = {
         'Bloodborne jest w Twojej bibliotece Steam: dodano {}, zaktualizowano {} (jeden skrót na konto Steam na tym komputerze). Gra startuje z ustawieniami zapisanymi w tym launcherze. Istniejący plik shortcuts.vdf zostaje jako shortcuts.vdf.bak.',
         'włącz «Funkcje eksperymentalne» w Zaawansowane',
         'pliki FSR 4.1.1 nie zostały pobrane',
+        'Pobierz FSR 4.1.1 (około 20 MB)',
+        'Zainstalowano w {}.',
+        'Nie pobrano.',
+        'Pobierane z projektu fsr4vk na GitHubie (GPL-3.0; licencje są w {}). Wymaga włączenia «Funkcje eksperymentalne» w Zaawansowane.',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1796,6 +1828,10 @@ TRANSLATIONS = {
         'Bloodborne Steam kitaplığınızda: {} eklendi, {} güncellendi (bu bilgisayardaki her Steam hesabı için bir kısayol). Bu başlatıcıda kayıtlı ayarlarla açılır. Mevcut shortcuts.vdf, shortcuts.vdf.bak olarak saklanır.',
         'Gelişmiş bölümünde «Deneysel özellikler» seçeneğini açın',
         'FSR 4.1.1 dosyaları indirilmemiş',
+        'FSR 4.1.1 indir (yaklaşık 20 MB)',
+        '{} içinde kurulu.',
+        'İndirilmedi.',
+        'GitHub’daki fsr4vk projesinden indirilir (GPL-3.0; lisanslar {} içindedir). Gelişmiş bölümünde «Deneysel özellikler» açık olmalıdır.',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -1993,6 +2029,10 @@ TRANSLATIONS = {
         'Bloodborne 已在你的 Steam 库中：新增 {} 个，更新 {} 个（此电脑上每个 Steam 账户一个快捷方式）。游戏将使用此启动器中保存的设置启动。原有的 shortcuts.vdf 会保留为 shortcuts.vdf.bak。',
         '请在“高级”中打开“实验性功能”',
         'FSR 4.1.1 文件尚未下载',
+        '下载 FSR 4.1.1（约 20 MB）',
+        '已安装在 {}。',
+        '尚未下载。',
+        '从 GitHub 上的 fsr4vk 项目下载（GPL-3.0；许可证在 {}）。需要在“高级”中打开“实验性功能”。',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2190,6 +2230,10 @@ TRANSLATIONS = {
         'Bloodborne を Steam ライブラリに追加しました（追加 {} 件、更新 {} 件。この PC の Steam アカウントごとに 1 つのショートカット）。このランチャーで保存した設定で起動します。既存の shortcuts.vdf は shortcuts.vdf.bak として残されます。',
         '「詳細設定」で「試験的機能」をオンにしてください',
         'FSR 4.1.1 のファイルがダウンロードされていません',
+        'FSR 4.1.1 をダウンロード（約 20 MB）',
+        '{} にインストール済み。',
+        'ダウンロードされていません。',
+        'GitHub の fsr4vk プロジェクトからダウンロードされます（GPL-3.0。ライセンスは {} にあります）。「詳細設定」の「試験的機能」をオンにする必要があります。',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2387,6 +2431,10 @@ TRANSLATIONS = {
         'Bloodborne이 Steam 라이브러리에 있습니다: {}개 추가, {}개 업데이트 (이 PC의 Steam 계정마다 바로 가기 하나). 이 런처에 저장된 설정으로 시작합니다. 기존 shortcuts.vdf는 shortcuts.vdf.bak으로 보관됩니다.',
         '고급에서 실험적 기능을 켜세요',
         'FSR 4.1.1 파일을 내려받지 않았습니다',
+        'FSR 4.1.1 다운로드 (약 20 MB)',
+        '{}에 설치됨.',
+        '내려받지 않았습니다.',
+        'GitHub의 fsr4vk 프로젝트에서 내려받습니다(GPL-3.0, 라이선스는 {}에 있음). 고급에서 실험적 기능을 켜야 합니다.',
     ],
 }
 
