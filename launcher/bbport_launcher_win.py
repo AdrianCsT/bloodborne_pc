@@ -97,7 +97,7 @@ def newest_release(releases, beta):
     return best
 
 
-def latest_release(beta=False):
+def fetch_update_release(beta=False):
     """newest_release() of the releases GitHub lists now (raises OSError or ValueError on a failure).
     The list holds every tag, newest first: it is read page by page until a page has a release this
     launcher may offer, so a run of newer entries of other tags cannot hide it."""
@@ -3408,7 +3408,7 @@ class Launcher:
         """Helper thread: asks GitHub for the newest release (a pre-release only with the Beta versions
         switch on; BETA is its value, read on the window's thread) and offers it when it is newer."""
         try:
-            release = latest_release(self.app.get('beta_versions', False) if beta is None else beta)
+            release = fetch_update_release(self.app.get('beta_versions', False) if beta is None else beta)
         except (OSError, ValueError, KeyError) as failure:
             if manual:
                 self.ui_calls.put(lambda error=failure: self.messagebox.showerror(
