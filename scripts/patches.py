@@ -68,6 +68,15 @@ def intel_cpu(cpuinfo='/proc/cpuinfo'):
         return False
 
 
+# The title's PLAY ONLINE / PLAY OFFLINE dialog: the port has no PSN, the game goes straight to the
+# main menu offline. On by default; BB_SKIP_NETWORK_CHOICE=0 shows it.
+SKIP_NETWORK_CHOICE='Skip Online/Offline Choice'
+
+
+def skip_network_choice(env=os.environ):
+    return env.get('BB_SKIP_NETWORK_CHOICE','1')!='0'
+
+
 def intel_tonemap_fix(env=os.environ, cpuinfo='/proc/cpuinfo'):
     forced=env.get('BB_INTEL_TONEMAP_FIX')
     return forced=='1' if forced in ('0','1') else intel_cpu(cpuinfo)
@@ -329,6 +338,8 @@ def main():
     names+=[n for n in effect_patches(read_settings(a.settings)) if n not in names]
     if intel_tonemap_fix() and INTEL_TONEMAP not in names:
         names.append(INTEL_TONEMAP)
+    if skip_network_choice() and SKIP_NETWORK_CHOICE not in names:
+        names.append(SKIP_NETWORK_CHOICE)
     validate_patch_requirements(names,a.game_dir)
     segments=eboot_segments((a.out/'eboot.elf').read_bytes())
     writes=compile_patches(a.xml,names,a.app_version,segments)

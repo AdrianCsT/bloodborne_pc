@@ -204,6 +204,63 @@ class ExternalPatchTests(unittest.TestCase):
         self.assertEqual(external_patches(XML.parent), [])
 
 
+class SkipNetworkChoiceTests(unittest.TestCase):
+    """The title's PLAY ONLINE / PLAY OFFLINE dialog is skipped by default."""
+    ADDRESS = 0x01F39030
+
+    def test_on_unless_the_environment_turns_it_off(self):
+        self.assertTrue(patches.skip_network_choice({}))
+        self.assertTrue(patches.skip_network_choice({'BB_SKIP_NETWORK_CHOICE': '1'}))
+        self.assertFalse(patches.skip_network_choice({'BB_SKIP_NETWORK_CHOICE': '0'}))
+
+    def test_patch_is_one_function_body_and_not_enabled_by_the_file(self):
+        meta = [m for m in ET.parse(XML).getroot().iter('Metadata')
+                if m.get('Name') == patches.SKIP_NETWORK_CHOICE and m.get('AppVer') == '01.09']
+        self.assertEqual(len(meta), 1)
+        self.assertEqual(meta[0].get('isEnabled'), 'false')  # only patches.py's switch turns it on
+        writes = compile_patches(XML, [patches.SKIP_NETWORK_CHOICE], '01.09', SEGMENTS)
+        self.assertEqual([(offset + EBOOT_BASE, len(data)) for offset, data in writes],
+                         [(self.ADDRESS, 46)])
+        self.assertEqual(writes[0][1][:4].hex(), '554889e5')  # push rbp; mov rbp, rsp
+        self.assertEqual(writes[0][1][-1:], b'\xc3')  # ret
+
+    def compile(self, env):
+        """patches.py as run.py runs it, on an ELF with one segment; returns (log, writes)."""
+        import os
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            header = bytearray(64)
+            header[0:7] = b'\x7fELF\x02\x01\x01'
+            struct.pack_into('<Q', header, 0x20, 64)
+            struct.pack_into('<HH', header, 0x36, 56, 1)
+            (out / 'eboot.elf').write_bytes(bytes(header) + struct.pack('<IIQQQQQQ', 1, 5, 0, 0, 0, 0x6000000, 0x6000000, 0x1000))
+            settings = {key: value for key, value in os.environ.items() if key != 'BB_SKIP_NETWORK_CHOICE'}
+            settings.update(env)
+            run = subprocess.run([sys.executable, str(ROOT / 'scripts/patches.py'), '--out', str(out),
+                                  '--fps', '60', '--settings', str(out / 'none.ini'),
+                                  '--game-dir', str(out), '--xml', str(XML)],
+                                 env=settings, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(run.returncode, 0, run.stderr)
+            blob = (out / 'patches.bin').read_bytes()
+        count, = struct.unpack_from('<Q', blob, 16)
+        position, writes = 24, {}
+        for _ in range(count):
+            offset, length = struct.unpack_from('<QQ', blob, position)
+            writes[offset] = blob[position + 16:position + 16 + length]
+            position += 16 + length
+        return run.stdout, writes
+
+    def test_main_applies_it_by_default_and_not_with_the_switch_off(self):
+        log, writes = self.compile({})
+        self.assertIn(patches.SKIP_NETWORK_CHOICE, log)
+        self.assertEqual(len(writes[self.ADDRESS - EBOOT_BASE]), 46)
+        log, writes = self.compile({'BB_SKIP_NETWORK_CHOICE': '0'})
+        self.assertNotIn(patches.SKIP_NETWORK_CHOICE, log)
+        self.assertNotIn(self.ADDRESS - EBOOT_BASE, writes)
+
+
 class IntelTonemapTests(unittest.TestCase):
     def cpuinfo(self, vendor):
         path = Path(tempfile.mkdtemp()) / 'cpuinfo'
