@@ -83,7 +83,7 @@ This fork brings together the work of several people and adds a few things of it
 | **DLSS** | NVIDIA GeForce RTX 20 series and newer | Needs a current driver. Greyed out on other GPUs. |
 | **FSR 3.1** | Every Vulkan 1.3 GPU | The fallback for everything else. |
 | **FSR 4** (INT8, model v07) | GPUs with the required Vulkan shader features, RDNA2 and RDNA3 included | The assets are in the Windows package. GPUs without the features fall back to FSR 3.1 by themselves. |
-| **FSR 4.1.1** | INT8 on any GPU with the required shader features, FP8 on AMD RDNA4 (RX 9000) | Documented for the Linux build only. Built from your own AMD DLL. See [FSR 4.1.1](#fsr-411-from-your-own-dll). |
+| **FSR 4.1.1** | INT8 on any GPU with the required shader features, FP8 on AMD RDNA4 (RX 9000) | Linux: built from your own AMD DLL. See [FSR 4.1.1](#fsr-411-from-your-own-dll). Windows (experimental): through the fsr4vk provider, see [below](#fsr-411-on-windows-experimental). |
 | **TAA** | Every GPU | Native-resolution temporal AA. Works without an FSR model. |
 
 | GPU | What to know |
@@ -389,6 +389,10 @@ bash tools/fetch_fsr4_assets.sh      # FSR 4 v07 (MIT, built from AMD's source b
 bash tools/fsr4cap/build_assets.sh <amd_fidelityfx_upscaler_dx12.dll>
 ```
 
+<a id="fsr-411-on-windows-experimental"></a>
+
+**FSR 4.1.1 on Windows (experimental).** No Windows driver offers `VK_VALVE_shader_mixed_float_dot_product`, which the replay above needs. The port can instead load [fsr4vk](https://github.com/dvj5411/fsr4vk) (GPLv3, one author, about a month old), a Vulkan FFX provider that runs AMD's INT8 4.1.1 model with standard Vulkan features. The port does not include or link it: `tools/fetch_fsr4vk.py` downloads the pinned fsr4vk v0.4.3 release (about 20 MB, SHA-256 checked) and puts `amd_fidelityfx_upscaler_vk.dll` into `fsr4vk\` next to the executable (or `BB_FSR4VK_DIR`). With the DLL present, the *FSR 4.1.1* choice (`BB_UPSCALER=fsr411`) works on a GPU that has mutable descriptor types, descriptor buffers and the usual FSR 4 INT8 features; the extra device features are requested only then. Any failure falls back to FSR 3.1 with one log line, and `bb-gpu-capabilities --upscalers` says why fsr411 is unavailable. fsr4vk's author tested Linux/Proton only; it has no RCAS (the port's own sharpening pass covers it), and at an odd output size it leaves the last row or column unwritten. Checked here on one RTX 4070 (driver 616.56) at 1920x1080 from 1280x720 (Quality), in the Hunter's Dream: the upscaler pass costs about 2.4 ms of GPU time per frame, against 2.0 ms for FSR 4 (v07) and 0.55 ms for FSR 3.1, and frame generation ran for five minutes at 60 FPS base without a device loss. Measured once, not a benchmark.
+
 <a id="fsr-411-from-your-own-dll"></a>
 
 **FSR 4.1.1 from your own DLL.** The easiest way is the launcher: *Upscaler > FSR 4.1.1 from your own AMD DLL > Choose DLL...*, then pick `amd_fidelityfx_upscaler_dx12.dll` version 4.1.x, from OptiScaler's `FSR4_LATEST` folder or from a game with FSR 4.1. That one file is enough: AMD's DLL exports the FidelityFX API itself, so no loader is needed. Only a DLL without these exports would be recorded through `amd_fidelityfx_loader_dx12.dll`, and the launcher would ask for it.
@@ -450,6 +454,8 @@ Most players never need these. Everything here is also reachable from the launch
 | `BB_FSR4_PROFILE=1` | GPU time per FSR 4 pass |
 | `BB_UPSCALER=taa\|fsr3\|fsr4\|fsr411\|off\|none` | Choose the upscaler |
 | `BB_FSR411_VARIANT=int8\|fp8\|fp8emu` | FSR 4.1.1 variant. By default FP8 where the GPU has FP8 matrices. |
+| `BB_FSR4VK_DIR=<folder>` | Windows: the folder holding fsr4vk's `amd_fidelityfx_upscaler_vk.dll` (default: `fsr4vk` next to the executable) |
+| `BB_FSR4VK=0` | Windows: do not use fsr4vk even when its DLL is installed |
 | `BB_FRAMES_AHEAD=N` | How many frames the GPU command thread may run ahead of the GPU. 1 by default, 0 = unbounded. |
 | `BB_PRESENT_THREAD=0` | Present on the vblank thread, as before |
 | `BB_LIVE_RES=1` | Live resolution changes instead of the startup patch for outputs other than 1080p |
