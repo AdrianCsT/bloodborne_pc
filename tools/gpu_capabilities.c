@@ -521,7 +521,7 @@ static int upscalers_mode(void) {
                                              &mutable_type, &descriptor_buffer);
         if (problem) fail(&fsr411, "%s", problem);
 #else
-        fail(&fsr411, "needs a Vulkan extension that no Windows driver is known to support yet");
+        fail(&fsr411, "needs VK_VALVE_shader_mixed_float_dot_product, which this driver does not expose");
 #endif
     }
 #ifdef _WIN32
