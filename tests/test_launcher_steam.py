@@ -153,6 +153,22 @@ class ShortcutFileTests(unittest.TestCase):
         self.assertEqual(self.vdf.read_bytes(), broken)
         self.assertFalse(self.vdf.with_name('shortcuts.vdf.bak').exists())
 
+    def test_a_file_cut_inside_a_number_is_a_value_error_and_does_not_stop_the_other_accounts(self):
+        for cut in (b'\x00shortcuts\x00\x00' + b'0\x00' + b'\x02appid\x00\x01\x02',  # inside an INT32
+                    b'\x00shortcuts\x00\x00' + b'0\x00' + b'\x07id\x00\x01\x02\x03\x04'):  # inside a UINT64
+            with self.assertRaises(ValueError):
+                steam.parse(cut)
+            self.vdf.write_bytes(cut)
+            with self.assertRaises(ValueError):
+                self.add()
+            self.assertEqual(self.vdf.read_bytes(), cut)
+        scratch = FakeSteam(accounts=('1001', '2002'))
+        self.addCleanup(scratch.cleanup)
+        scratch.vdf('1001').write_bytes(cut)
+        done, failed = steam.add_to_accounts(scratch.root, 'Bloodborne', EXE, START, EXE)
+        self.assertEqual([path.parent.parent.name for path, _r in done], ['2002'])
+        self.assertEqual([path.parent.parent.name for path, _e in failed], ['1001'])
+
     def test_accounts_are_the_numeric_folders_but_not_zero(self):
         scratch = FakeSteam(accounts=('1001', '2002'))
         self.addCleanup(scratch.cleanup)

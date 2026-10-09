@@ -36,10 +36,11 @@ def parse(data, at=0):
             value, at = parse(data, at)
         elif kind == STRING:
             value, at = _cstring(data, at)
-        elif kind == INT32:
-            value, at = struct.unpack_from('<i', data, at)[0], at + 4
-        elif kind == UINT64:
-            value, at = struct.unpack_from('<Q', data, at)[0], at + 8
+        elif kind in (INT32, UINT64):
+            fmt, size = ('<i', 4) if kind == INT32 else ('<Q', 8)
+            if at + size > len(data):
+                raise ValueError('shortcuts.vdf ends inside a number')
+            value, at = struct.unpack_from(fmt, data, at)[0], at + size
         else:
             raise ValueError(f'unknown field type {kind} in shortcuts.vdf')
         items.append((kind, key, value))
