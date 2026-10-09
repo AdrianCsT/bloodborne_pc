@@ -89,8 +89,10 @@ def newest_release(releases, beta):
         if (release.get('prerelease') or is_prerelease(version)) and not beta:
             continue
         if best is None or version_tuple(version) > version_tuple(best[0]):
-            url = next((asset.get('browser_download_url') for asset in release.get('assets') or []
-                        if asset.get('name', '').lower().endswith('.zip')), None)
+            assets = release.get('assets')
+            url = next((asset.get('browser_download_url') for asset in assets if isinstance(asset, dict)
+                        and isinstance(asset.get('name'), str) and asset['name'].lower().endswith('.zip')), None) \
+                if isinstance(assets, list) else None
             best = (version, url, release.get('html_url') or RELEASES_PAGE)
     return best
 
@@ -3407,7 +3409,7 @@ class Launcher:
         switch on; BETA is its value, read on the window's thread) and offers it when it is newer."""
         try:
             release = latest_release(self.app.get('beta_versions', False) if beta is None else beta)
-        except (OSError, ValueError, KeyError, AttributeError) as failure:
+        except (OSError, ValueError, KeyError) as failure:
             if manual:
                 self.ui_calls.put(lambda error=failure: self.messagebox.showerror(
                     'Bloodborne', _('Could not check for updates: {}', 'Не удалось проверить обновления: {}').format(error)))
