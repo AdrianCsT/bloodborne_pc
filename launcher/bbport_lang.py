@@ -224,6 +224,7 @@ KEYS = [
     'Downloaded from the fsr4vk project on GitHub (GPL-3.0; the licenses are in {}). It needs Experimental features in Advanced.',
     'Could not check whether Steam is running, so nothing was written. Close Steam completely and press Add to Steam again.',
     'It was added or updated in: {}. An earlier shortcuts.vdf is kept as shortcuts.vdf.bak.',
+    '— could not follow the game log: {} —',
 ]
 
 TRANSLATIONS = {
@@ -429,6 +430,7 @@ TRANSLATIONS = {
         'يُنزَّل من مشروع fsr4vk على GitHub (GPL-3.0؛ التراخيص في {}). يحتاج إلى «ميزات تجريبية» في «متقدم».',
         'تعذّر التحقق من تشغيل Steam، لذلك لم يُكتب شيء. أغلق Steam بالكامل ثم اضغط إضافة إلى Steam مرة أخرى.',
         'تمت الإضافة أو التحديث في: {}. يُحفظ shortcuts.vdf السابق باسم shortcuts.vdf.bak.',
+        '— تعذّرت متابعة سجل اللعبة: {} —',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -632,6 +634,7 @@ TRANSLATIONS = {
         'Se descarga del proyecto fsr4vk en GitHub (GPL-3.0; las licencias están en {}). Necesita «Funciones experimentales» en Avanzado.',
         'No se pudo comprobar si Steam está en ejecución, así que no se escribió nada. Cierra Steam por completo y pulsa Añadir a Steam otra vez.',
         'Se añadió o actualizó en: {}. Un shortcuts.vdf anterior se conserva como shortcuts.vdf.bak.',
+        '— no se pudo seguir el registro del juego: {} —',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -835,6 +838,7 @@ TRANSLATIONS = {
         'Baixado do projeto fsr4vk no GitHub (GPL-3.0; as licenças estão em {}). Precisa de «Recursos experimentais» em Avançado.',
         'Não foi possível verificar se o Steam está em execução, então nada foi gravado. Feche o Steam por completo e pressione Adicionar ao Steam de novo.',
         'Foi adicionado ou atualizado em: {}. Um shortcuts.vdf anterior é mantido como shortcuts.vdf.bak.',
+        '— não foi possível acompanhar o registro do jogo: {} —',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -1038,6 +1042,7 @@ TRANSLATIONS = {
         'Téléchargé depuis le projet fsr4vk sur GitHub (GPL-3.0 ; les licences sont dans {}). Nécessite « Fonctions expérimentales » dans Avancé.',
         "Impossible de vérifier si Steam est en cours d'exécution, donc rien n'a été écrit. Fermez complètement Steam, puis appuyez de nouveau sur Ajouter à Steam.",
         'Ajouté ou mis à jour dans : {}. Un shortcuts.vdf précédent est conservé sous le nom shortcuts.vdf.bak.',
+        '— impossible de suivre le journal du jeu : {} —',
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1241,6 +1246,7 @@ TRANSLATIONS = {
         'Wird vom Projekt fsr4vk auf GitHub geladen (GPL-3.0; die Lizenzen liegen in {}). Dafür müssen die Experimentellen Funktionen unter Erweitert eingeschaltet sein.',
         'Es konnte nicht geprüft werden, ob Steam läuft, daher wurde nichts geschrieben. Beende Steam vollständig und klicke erneut auf Zu Steam hinzufügen.',
         'Hinzugefügt oder aktualisiert in: {}. Eine frühere shortcuts.vdf bleibt als shortcuts.vdf.bak erhalten.',
+        '— das Spielprotokoll konnte nicht verfolgt werden: {} —',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1444,6 +1450,7 @@ TRANSLATIONS = {
         'Scaricato dal progetto fsr4vk su GitHub (GPL-3.0; le licenze sono in {}). Richiede «Funzioni sperimentali» in Avanzate.',
         'Impossibile verificare se Steam è in esecuzione, quindi non è stato scritto nulla. Chiudi Steam completamente e premi di nuovo Aggiungi a Steam.',
         'Aggiunto o aggiornato in: {}. Un shortcuts.vdf precedente viene conservato come shortcuts.vdf.bak.',
+        '— impossibile seguire il registro del gioco: {} —',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1647,6 +1654,7 @@ TRANSLATIONS = {
         'Pobierane z projektu fsr4vk na GitHubie (GPL-3.0; licencje są w {}). Wymaga włączenia «Funkcje eksperymentalne» w Zaawansowane.',
         'Nie udało się sprawdzić, czy Steam jest uruchomiony, więc nic nie zapisano. Zamknij Steam całkowicie i naciśnij Dodaj do Steam ponownie.',
         'Dodano lub zaktualizowano w: {}. Wcześniejszy shortcuts.vdf zachowano jako shortcuts.vdf.bak.',
+        '— nie udało się śledzić dziennika gry: {} —',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1850,6 +1858,7 @@ TRANSLATIONS = {
         'GitHub’daki fsr4vk projesinden indirilir (GPL-3.0; lisanslar {} içindedir). Gelişmiş bölümünde «Deneysel özellikler» açık olmalıdır.',
         "Steam'in çalışıp çalışmadığı kontrol edilemedi, bu yüzden hiçbir şey yazılmadı. Steam'i tamamen kapatın ve Steam'e ekle düğmesine yeniden basın.",
         'Şurada eklendi veya güncellendi: {}. Önceki shortcuts.vdf, shortcuts.vdf.bak olarak saklanır.',
+        '— oyun günlüğü izlenemedi: {} —',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -2053,6 +2062,7 @@ TRANSLATIONS = {
         '从 GitHub 上的 fsr4vk 项目下载（GPL-3.0；许可证在 {}）。需要在“高级”中打开“实验性功能”。',
         '无法检查 Steam 是否正在运行，因此没有写入任何内容。请完全关闭 Steam，然后再次点击“添加到 Steam”。',
         '已添加或更新于：{}。原有的 shortcuts.vdf 保留为 shortcuts.vdf.bak。',
+        '— 无法跟踪游戏日志：{} —',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2256,6 +2266,7 @@ TRANSLATIONS = {
         'GitHub の fsr4vk プロジェクトからダウンロードされます（GPL-3.0。ライセンスは {} にあります）。「詳細設定」の「試験的機能」をオンにする必要があります。',
         'Steam が起動中かどうかを確認できなかったため、何も書き込んでいません。Steam を完全に終了してから、もう一度「Steam に追加」を押してください。',
         '追加または更新した場所: {}。以前の shortcuts.vdf は shortcuts.vdf.bak として残してあります。',
+        '— ゲームのログを追跡できませんでした: {} —',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2459,6 +2470,7 @@ TRANSLATIONS = {
         'GitHub의 fsr4vk 프로젝트에서 내려받습니다(GPL-3.0, 라이선스는 {}에 있음). 고급에서 실험적 기능을 켜야 합니다.',
         "Steam이 실행 중인지 확인할 수 없어 아무것도 기록하지 않았습니다. Steam을 완전히 종료한 다음 'Steam에 추가'를 다시 누르세요.",
         '추가 또는 업데이트한 위치: {}. 이전 shortcuts.vdf는 shortcuts.vdf.bak으로 보관됩니다.',
+        '— 게임 로그를 따라갈 수 없습니다: {} —',
     ],
 }
 

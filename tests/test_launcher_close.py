@@ -2,11 +2,16 @@
 last_run.log itself, so closing the launcher cannot break its output, and the launcher closes only
 once the window exists, never during mod preparation."""
 import os
+import queue
 import sys
 import tempfile
 import textwrap
+import threading
+import time
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'launcher'))
 
@@ -91,6 +96,66 @@ class LauncherCloseTests(unittest.TestCase):
         self.assertFalse(job.running())
         job.close()
         self.assertEqual(''.join(got).splitlines(), ['restarting through run.py', 'restarted'])
+
+    def test_a_log_that_is_locked_for_a_moment_is_followed_once_it_opens(self):
+        # antivirus holds the new file, or it is created a little late: the first opens fail
+        def create_late():
+            time.sleep(0.3)
+            self.log.parent.mkdir(parents=True, exist_ok=True)
+            self.log.write_bytes(b'first\nsecond\n')
+            done.set()
+        done = threading.Event()
+        threading.Thread(target=create_late, daemon=True).start()
+        got = []
+        launcher.follow_log(self.log, done.is_set, got.append, interval=0.02)
+        self.assertEqual(''.join(got).splitlines(), ['first', 'second'])
+
+    def test_a_read_error_resumes_where_it_stopped_without_repeating_lines(self):
+        self.log.parent.mkdir(parents=True)
+        self.log.write_bytes(b'one\ntwo\nthree\n')
+        real_open, failures = open, [1]
+
+        class Flaky:
+            def __init__(self, stream):
+                self.stream, self.reads = stream, 0
+
+            def read(self, size):
+                self.reads += 1
+                if self.reads == 2 and failures[0]:  # the second read of the file: the file is locked
+                    failures[0] -= 1
+                    self.reads -= 1
+                    raise PermissionError(32, 'in use by another process')
+                return self.stream.read(size)
+
+            def __getattr__(self, name):
+                return getattr(self.stream, name)
+
+        got = []
+        with mock.patch.object(launcher, 'open', create=True, side_effect=lambda *a, **k: Flaky(real_open(*a, **k))):
+            launcher.follow_log(self.log, lambda: True, got.append, interval=0.01)
+        self.assertEqual(failures, [0])
+        self.assertEqual(''.join(got).splitlines(), ['one', 'two', 'three'])
+
+    def test_a_log_that_stays_unreadable_ends_with_an_error_not_a_hang(self):
+        with self.assertRaises(OSError):
+            launcher.follow_log(self.dir / 'never-created' / 'last_run.log', lambda: False, lambda text: None,
+                                interval=0.01, retries=3)
+
+    def test_the_exit_is_reported_even_when_the_log_cannot_be_followed(self):
+        process = self.start("say('hello'); time.sleep(0.5)\n")
+        job = launcher.GameJob(process)
+        window = types.SimpleNamespace(output=queue.Queue())
+        unreadable = self.dir / 'a-folder'
+        unreadable.mkdir()  # opening a folder as a file fails
+        real_sleep = time.sleep
+        with mock.patch.object(launcher.time, 'sleep', side_effect=lambda seconds: real_sleep(min(seconds, 0.02))):
+            launcher.Launcher.read_output(window, process, job, unreadable)
+        job.close()
+        items = []
+        while not window.output.empty():
+            items.append(window.output.get_nowait())
+        self.assertEqual(items[-1], (0,))  # the exit code always arrives
+        self.assertTrue(any(isinstance(item, str) and 'could not follow' in item for item in items), items)
 
     def test_game_is_up_only_after_the_preparation(self):
         for text in ('Mods: linking 12 files\n', 'Patches: 247 writes, 1250 bytes applied\n',

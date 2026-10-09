@@ -3156,14 +3156,23 @@ class Launcher:
     def read_output(self, process, job, log_path):
         # The game writes last_run.log itself (start_game), so a crash report survives the launcher
         # being closed and scripts (amd-motion-test) find it in one place; this only follows the file.
-        follow_log(log_path, lambda: game_over(process, job), self.output.put)
-        code = process.wait()
+        code = -1
         try:
-            with open(log_path, 'a', encoding='utf-8') as log:
-                log.write(f'\n-- the game exited (code {code}) --\n')
-        except OSError:
-            pass
-        self.output.put((code,))
+            try:
+                follow_log(log_path, lambda: game_over(process, job), self.output.put)
+            except OSError as error:  # the log cannot be read: say so, and still wait for the game to end
+                self.output.put('\n' + _('— could not follow the game log: {} —', '— не удалось читать журнал игры: {} —'
+                                         ).format(error) + '\n')
+                while not game_over(process, job):
+                    time.sleep(0.2)
+            code = process.wait()
+            try:
+                with open(log_path, 'a', encoding='utf-8') as log:
+                    log.write(f'\n-- the game exited (code {code}) --\n')
+            except OSError:
+                pass
+        finally:
+            self.output.put((code,))  # the window learns the game ended whatever went wrong above
 
     def drain_output(self):
         while not self.ui_calls.empty():
@@ -3816,14 +3825,31 @@ def start_game(command, env, log_path):
                                 stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
 
 
-def follow_log(path, finished, emit, interval=0.05):
+def follow_log(path, finished, emit, interval=0.05, retries=5):
     """Calls EMIT(text) for each complete line added to PATH, and for a last unfinished one, until
-    FINISHED() is true and the file is read to its end."""
-    pending = b''
-    with open(path, 'rb') as log:
+    FINISHED() is true and the file is read to its end. A file that cannot be opened or read (antivirus
+    holding it, not created yet, removed) is retried with a growing pause, from where it stopped; after
+    RETRIES failures in a row the OSError is raised."""
+    pending, position, failures, log = b'', 0, 0, None
+    try:
         while True:
             over = finished()  # asked first: what was written before it returned is still read below
-            data = log.read(1 << 16)
+            try:
+                if log is None:
+                    log = open(path, 'rb')
+                    log.seek(position)
+                data = log.read(1 << 16)
+                failures = 0
+            except OSError:
+                if log is not None:
+                    log.close()
+                    log = None
+                failures += 1
+                if failures > retries:
+                    raise
+                time.sleep(interval * 2 ** failures)
+                continue
+            position += len(data)
             if data:
                 pending += data
                 cut = pending.rfind(b'\n') + 1
@@ -3836,6 +3862,9 @@ def follow_log(path, finished, emit, interval=0.05):
                 return
             else:
                 time.sleep(interval)
+    finally:
+        if log is not None:
+            log.close()
 
 
 def game_over(process, job):
