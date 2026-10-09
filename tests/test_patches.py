@@ -135,7 +135,16 @@ class FpsListTests(unittest.TestCase):
         self.assertNotIn('Sprint Fix (High FPS)', patches.FPS_PRESETS['60'])
         for preset in ('90', 'uncap'):
             self.assertIn('Sprint Fix (High FPS)', patches.FPS_PRESETS[preset])
-        self.assertEqual(len(self.writes('uncap')), 329)
+
+    def test_every_line_of_the_uncap_lists_becomes_one_write(self):
+        # The expected count comes from the XML: one write per <Line> of each listed 01.09 patch.
+        # A list edit that changes the count is fine as long as this still holds.
+        names = patches.FPS_PRESETS['uncap']
+        lines = sum(len(meta.findall('./PatchList/Line'))
+                    for meta in ET.parse(XML).getroot().iter('Metadata')
+                    if meta.get('Name') in names and meta.get('AppVer') == '01.09')
+        self.assertGreater(lines, 0)
+        self.assertEqual(len(self.writes('uncap')), lines)
 
 
 class NoteTests(unittest.TestCase):
