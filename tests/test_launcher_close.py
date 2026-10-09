@@ -157,6 +157,42 @@ class LauncherCloseTests(unittest.TestCase):
         self.assertEqual(items[-1], (0,))  # the exit code always arrives
         self.assertTrue(any(isinstance(item, str) and 'could not follow' in item for item in items), items)
 
+    def test_without_a_job_object_the_log_is_followed_for_a_while_after_run_py_ends(self):
+        # The job object could not be used, so only run.py is watched; the in-game restart ends it while
+        # the new launch (not its child) is still running and writing: the launcher must not say "over" yet.
+        process = self.start("""
+            import subprocess
+            subprocess.Popen([sys.executable, '-c',
+                              'import time; time.sleep(1.0); print("restarted", flush=True)'],
+                             stdout=sys.stdout, stderr=subprocess.STDOUT)
+            say('restarting through run.py')
+            """)
+        job = launcher.GameJob(process)
+        job.assigned = False
+        notes = []
+        job.say = notes.append
+        process.wait(timeout=30)
+        with mock.patch.object(launcher, 'FALLBACK_GRACE_S', 3.0):
+            self.assertFalse(launcher.game_over(process, job))  # run.py has ended, the grace has not
+            got = []
+            launcher.follow_log(self.log, lambda: launcher.game_over(process, job), got.append, interval=0.02)
+        job.close()
+        self.assertEqual(''.join(got).splitlines(), ['restarting through run.py', 'restarted'])
+        self.assertEqual(len(notes), 1)  # said once, not on every poll
+        self.assertIn('restart', notes[0])
+
+    def test_the_grace_ends_and_a_missing_job_means_no_grace(self):
+        process = self.start("say('done')\n")
+        process.wait(timeout=30)
+        job = launcher.GameJob(process)
+        job.assigned = False
+        with mock.patch.object(launcher, 'FALLBACK_GRACE_S', 0.2):
+            self.assertFalse(launcher.game_over(process, job))
+            time.sleep(0.3)
+            self.assertTrue(launcher.game_over(process, job))
+        job.close()
+        self.assertTrue(launcher.game_over(process, None))
+
     def test_game_is_up_only_after_the_preparation(self):
         for text in ('Mods: linking 12 files\n', 'Patches: 247 writes, 1250 bytes applied\n',
                      'Output 2560x1440: scene 1920x1080, direct memory 9152 MiB\n'):

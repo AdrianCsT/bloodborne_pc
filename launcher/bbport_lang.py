@@ -225,6 +225,7 @@ KEYS = [
     'Could not check whether Steam is running, so nothing was written. Close Steam completely and press Add to Steam again.',
     'It was added or updated in: {}. An earlier shortcuts.vdf is kept as shortcuts.vdf.bak.',
     '— could not follow the game log: {} —',
+    '— the launcher could not watch the game processes; after an in-game restart it may notice the end up to {} s late —',
 ]
 
 TRANSLATIONS = {
@@ -431,6 +432,7 @@ TRANSLATIONS = {
         'تعذّر التحقق من تشغيل Steam، لذلك لم يُكتب شيء. أغلق Steam بالكامل ثم اضغط إضافة إلى Steam مرة أخرى.',
         'تمت الإضافة أو التحديث في: {}. يُحفظ shortcuts.vdf السابق باسم shortcuts.vdf.bak.',
         '— تعذّرت متابعة سجل اللعبة: {} —',
+        '— تعذّر على المشغّل مراقبة عمليات اللعبة؛ بعد إعادة التشغيل من داخل اللعبة قد يلاحظ النهاية بتأخير يصل إلى {} ثانية —',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -635,6 +637,7 @@ TRANSLATIONS = {
         'No se pudo comprobar si Steam está en ejecución, así que no se escribió nada. Cierra Steam por completo y pulsa Añadir a Steam otra vez.',
         'Se añadió o actualizó en: {}. Un shortcuts.vdf anterior se conserva como shortcuts.vdf.bak.',
         '— no se pudo seguir el registro del juego: {} —',
+        '— el lanzador no pudo vigilar los procesos del juego; tras un reinicio desde el juego puede notar el final hasta {} s tarde —',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -839,6 +842,7 @@ TRANSLATIONS = {
         'Não foi possível verificar se o Steam está em execução, então nada foi gravado. Feche o Steam por completo e pressione Adicionar ao Steam de novo.',
         'Foi adicionado ou atualizado em: {}. Um shortcuts.vdf anterior é mantido como shortcuts.vdf.bak.',
         '— não foi possível acompanhar o registro do jogo: {} —',
+        '— o launcher não conseguiu monitorar os processos do jogo; após um reinício feito no jogo, pode perceber o fim com até {} s de atraso —',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -1043,6 +1047,7 @@ TRANSLATIONS = {
         "Impossible de vérifier si Steam est en cours d'exécution, donc rien n'a été écrit. Fermez complètement Steam, puis appuyez de nouveau sur Ajouter à Steam.",
         'Ajouté ou mis à jour dans : {}. Un shortcuts.vdf précédent est conservé sous le nom shortcuts.vdf.bak.',
         '— impossible de suivre le journal du jeu : {} —',
+        "— le lanceur n'a pas pu surveiller les processus du jeu ; après un redémarrage depuis le jeu, il peut remarquer la fin jusqu'à {} s trop tard —",
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1247,6 +1252,7 @@ TRANSLATIONS = {
         'Es konnte nicht geprüft werden, ob Steam läuft, daher wurde nichts geschrieben. Beende Steam vollständig und klicke erneut auf Zu Steam hinzufügen.',
         'Hinzugefügt oder aktualisiert in: {}. Eine frühere shortcuts.vdf bleibt als shortcuts.vdf.bak erhalten.',
         '— das Spielprotokoll konnte nicht verfolgt werden: {} —',
+        '— der Launcher konnte die Spielprozesse nicht überwachen; nach einem Neustart aus dem Spiel bemerkt er das Ende bis zu {} s zu spät —',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1451,6 +1457,7 @@ TRANSLATIONS = {
         'Impossibile verificare se Steam è in esecuzione, quindi non è stato scritto nulla. Chiudi Steam completamente e premi di nuovo Aggiungi a Steam.',
         'Aggiunto o aggiornato in: {}. Un shortcuts.vdf precedente viene conservato come shortcuts.vdf.bak.',
         '— impossibile seguire il registro del gioco: {} —',
+        '— il launcher non è riuscito a controllare i processi del gioco; dopo un riavvio dal gioco può accorgersi della fine fino a {} s in ritardo —',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1655,6 +1662,7 @@ TRANSLATIONS = {
         'Nie udało się sprawdzić, czy Steam jest uruchomiony, więc nic nie zapisano. Zamknij Steam całkowicie i naciśnij Dodaj do Steam ponownie.',
         'Dodano lub zaktualizowano w: {}. Wcześniejszy shortcuts.vdf zachowano jako shortcuts.vdf.bak.',
         '— nie udało się śledzić dziennika gry: {} —',
+        '— launcher nie mógł obserwować procesów gry; po restarcie z poziomu gry może zauważyć koniec nawet {} s później —',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1859,6 +1867,7 @@ TRANSLATIONS = {
         "Steam'in çalışıp çalışmadığı kontrol edilemedi, bu yüzden hiçbir şey yazılmadı. Steam'i tamamen kapatın ve Steam'e ekle düğmesine yeniden basın.",
         'Şurada eklendi veya güncellendi: {}. Önceki shortcuts.vdf, shortcuts.vdf.bak olarak saklanır.',
         '— oyun günlüğü izlenemedi: {} —',
+        '— başlatıcı oyun işlemlerini izleyemedi; oyun içi yeniden başlatmadan sonra bitişi {} sn kadar geç fark edebilir —',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -2063,6 +2072,7 @@ TRANSLATIONS = {
         '无法检查 Steam 是否正在运行，因此没有写入任何内容。请完全关闭 Steam，然后再次点击“添加到 Steam”。',
         '已添加或更新于：{}。原有的 shortcuts.vdf 保留为 shortcuts.vdf.bak。',
         '— 无法跟踪游戏日志：{} —',
+        '— 启动器无法监视游戏进程；游戏内重启后，它可能最多延迟 {} 秒才发现游戏已结束 —',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2267,6 +2277,7 @@ TRANSLATIONS = {
         'Steam が起動中かどうかを確認できなかったため、何も書き込んでいません。Steam を完全に終了してから、もう一度「Steam に追加」を押してください。',
         '追加または更新した場所: {}。以前の shortcuts.vdf は shortcuts.vdf.bak として残してあります。',
         '— ゲームのログを追跡できませんでした: {} —',
+        '— ランチャーはゲームのプロセスを監視できませんでした。ゲーム内で再起動した後、終了に気付くのが最大 {} 秒遅れることがあります —',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2471,6 +2482,7 @@ TRANSLATIONS = {
         "Steam이 실행 중인지 확인할 수 없어 아무것도 기록하지 않았습니다. Steam을 완전히 종료한 다음 'Steam에 추가'를 다시 누르세요.",
         '추가 또는 업데이트한 위치: {}. 이전 shortcuts.vdf는 shortcuts.vdf.bak으로 보관됩니다.',
         '— 게임 로그를 따라갈 수 없습니다: {} —',
+        '— 런처가 게임 프로세스를 감시할 수 없습니다. 게임 내 재시작 후에는 종료를 최대 {}초 늦게 알아챌 수 있습니다 —',
     ],
 }
 

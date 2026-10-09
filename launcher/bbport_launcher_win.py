@@ -3157,6 +3157,7 @@ class Launcher:
         # The game writes last_run.log itself (start_game), so a crash report survives the launcher
         # being closed and scripts (amd-motion-test) find it in one place; this only follows the file.
         code = -1
+        job.say = self.output.put
         try:
             try:
                 follow_log(log_path, lambda: game_over(process, job), self.output.put)
@@ -3867,10 +3868,31 @@ def follow_log(path, finished, emit, interval=0.05, retries=5):
             log.close()
 
 
+FALLBACK_GRACE_S = 10  # how long the log is still followed after run.py ends, when no job object tells more
+
+
 def game_over(process, job):
-    """True when run.py and everything it started (the in-game restart's launch too) has ended."""
+    """True when run.py and everything it started (the in-game restart's launch too) has ended.
+    Without a usable job object only run.py is known, and the in-game restart ends it while the new
+    launch goes on writing the log: then the end is reported FALLBACK_GRACE_S seconds after run.py's,
+    and job.say (when set) is told once that this fallback is in use."""
     alive = job.running() if job else None
-    return process.poll() is not None if alive is None else not alive
+    if alive is not None:
+        return not alive
+    if job is not None and not job.fallback_said:
+        job.fallback_said = True
+        if job.say:
+            job.say('\n' + _('— the launcher could not watch the game processes; after an in-game restart it may '
+                             'notice the end up to {} s late —',
+                             '— лаунчер не смог отслеживать процессы игры; после перезапуска из игры он может '
+                             'заметить завершение с задержкой до {} с —').format(FALLBACK_GRACE_S) + '\n')
+    if process.poll() is None:
+        return False
+    if job is None:
+        return True
+    if job.ended_at is None:
+        job.ended_at = time.monotonic()
+    return time.monotonic() - job.ended_at >= FALLBACK_GRACE_S
 
 
 class JobAccounting(ctypes.Structure):
@@ -3890,6 +3912,8 @@ class GameJob:
         kernel32.CreateJobObjectW.restype = ctypes.c_void_p
         self.handle = kernel32.CreateJobObjectW(None, None)
         self.assigned = False
+        self.say = None  # called with a line for the log when game_over has to do without the job
+        self.fallback_said, self.ended_at = False, None
         if self.handle:
             self.assigned = bool(kernel32.AssignProcessToJobObject(
                 ctypes.c_void_p(self.handle), ctypes.c_void_p(int(process._handle))))
