@@ -453,10 +453,11 @@ static int upscalers_mode(void) {
         if (amd && (!matrix_ok || old_name))
             snprintf(fsr4.reason, sizeof fsr4.reason, "may be slow on this GPU");
     }
-    /* IsFsr411Supported: FSR 4 INT8 plus the Valve extension (Linux Mesa in practice). */
+    /* IsFsr411Supported: FSR 4 INT8 plus VK_VALVE_shader_mixed_float_dot_product, which only Mesa
+     * exposes today. The reason stays plain: the launcher shows it, and no Windows driver reports it. */
     pass(&fsr411);
     if (!fsr4.ok) fail(&fsr411, "%s", fsr4.reason);
-    else if (!mixed_ok) fail(&fsr411, "needs VK_VALVE_shader_mixed_float_dot_product (Linux driver)");
+    else if (!mixed_ok) fail(&fsr411, "needs a Vulkan extension that no Windows driver is known to support yet");
 #ifdef _WIN32
     verdict_dlss(&dlls, &props, instance, device, instance_ok, &dlss);
     verdict_xess(&dlls, instance, device, instance_ok, &xess);

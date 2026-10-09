@@ -76,7 +76,8 @@ Upscaling
   reason and cannot be picked. If the saved one cannot run, the launcher switches to DLSS (RTX
   GPUs) or FSR 3.1 and says so once. FSR 4 is allowed on Radeon RX 5000/6000 GPUs but marked "may
   be slow"; FSR 4.1.1 needs a Vulkan extension (VK_VALVE_shader_mixed_float_dot_product) that
-  only Linux (Mesa) drivers offer, so it shows as not available on Windows drivers without it.
+  no Windows driver is known to offer yet (only Mesa on Linux does), so it shows as "needs a
+  Vulkan extension that no Windows driver is known to support yet".
 
 Frame generation (optional)
 - Graphics -> "Frame generation (FSR 3.1)" (also on the Play page and in the in-game menu, or

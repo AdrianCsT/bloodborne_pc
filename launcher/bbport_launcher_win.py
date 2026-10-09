@@ -378,8 +378,8 @@ UPSCALER_REASONS_RU = {
     'download the FSR 4 assets in Graphics': 'скачайте ассеты FSR 4 на вкладке «Графика»',
     'may be slow on this GPU': 'на этой видеокарте может быть медленно',
     'the GPU or driver lacks the INT8 features FSR 4 needs': 'видеокарте или драйверу не хватает INT8, нужного FSR 4',
-    'needs VK_VALVE_shader_mixed_float_dot_product (Linux driver)':
-        'нужно VK_VALVE_shader_mixed_float_dot_product (драйвер Linux)',
+    'needs a Vulkan extension that no Windows driver is known to support yet':
+        'нужно расширение Vulkan, которое пока не поддерживает ни один известный драйвер Windows',
     'not an NVIDIA RTX GPU': 'не видеокарта NVIDIA RTX',
     'bbport_dlss.dll and nvngx_dlss.dll are not installed': 'bbport_dlss.dll и nvngx_dlss.dll не установлены',
     'this GPU or driver does not support DLSS (GeForce RTX needed)':
