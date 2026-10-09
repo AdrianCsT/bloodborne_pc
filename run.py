@@ -130,9 +130,9 @@ def main():
         # Patches exist for game version 01.09 only (patches.py applies none to others): other
         # versions keep the game's 30 FPS timing and change resolutions live.
         sys.path.insert(0, str(PORT / 'scripts'))
-        from patches import game_app_version
+        from patches import game_app_version, game_is_patched
         version = game_app_version(game)
-        patched = version in (None, '01.09') or bool(env.get('BB_FORCE_PATCHES'))
+        patched = game_is_patched(version, env)
         if not patched:
             print(f'Game version {version}: community patches need 01.09; 30 FPS, no effect patches')
         # Sizes chosen below for the previous launch are recomputed after an in-game restart.

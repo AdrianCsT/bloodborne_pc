@@ -23,6 +23,9 @@ from pathlib import Path
 def game_app_version(game):
     return os.environ.get("STUB_VERSION") or None
 
+def game_is_patched(version, env=os.environ):
+    return version in (None, "01.09") or bool(env.get("BB_FORCE_PATCHES"))
+
 if __name__ == "__main__":  # run.py also imports this file for game_app_version
     if "--print-scaled" in sys.argv:
         print(os.environ.get("STUB_SCALED", ""))
