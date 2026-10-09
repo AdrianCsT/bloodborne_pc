@@ -18,7 +18,7 @@ import sys
 PORT = Path(__file__).resolve().parent
 # Direct memory (BB_DMEM_MB, MiB) of a render size above 1080p, where patches.py also enlarges the
 # graphics heap ("Increased Graphics Heap Sizes").
-OUTPUT_PIXELS = 1920 * 1080
+FULL_HD_PIXELS = 1920 * 1080
 HIGH_RESOLUTION_DMEM_MB = '9152'
 
 
@@ -165,7 +165,7 @@ def main():
         # but patches.py still grows the graphics heap above 1080p: the direct memory has to follow,
         # or the game stops at start (exit 139). A game without the patches keeps its memory.
         pixels = render_pixels(env.get('BB_RENDER_RES'))
-        if patched and pixels > OUTPUT_PIXELS and not env.get('BB_DMEM_MB'):
+        if patched and pixels > FULL_HD_PIXELS and not env.get('BB_DMEM_MB'):
             env['BB_DMEM_MB'] = HIGH_RESOLUTION_DMEM_MB
             print(f'Render {env["BB_RENDER_RES"]}: direct memory {env["BB_DMEM_MB"]} MiB')
         run_script('patches.py', '--out', out, '--fps', fps, '--extra', env.get('BB_PATCHES', ''),
