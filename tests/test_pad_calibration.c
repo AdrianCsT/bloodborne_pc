@@ -81,6 +81,20 @@ static int failed;
     if (!sticks_are(&(d),lx,ly,rx,ry)) { \
         printf("  FAIL line %d: sticks %d %d %d %d, expected %d %d %d %d\n",__LINE__,(d).left_x,(d).left_y,(d).right_x,(d).right_y,lx,ly,rx,ry); \
         ++failed; } } while (0)
+/* Waits for a state of the replay (1 playing, 2 ended) or a button value, polling the pad every
+ * 5 ms; a deadline of 10 s fails the test instead of hanging it. Returns the last read. */
+static PadData wait_until(int replay_state,uint32_t buttons) {
+    const uint64_t deadline=now_us()+10000000u;
+    PadData d=read_once();
+    while (replay_state ? replay_armed!=replay_state : d.buttons!=buttons) {
+        if (now_us()>deadline) { printf("line %d: timed out waiting for replay state %d / buttons %u\n",__LINE__,replay_state,buttons); abort(); }
+        SLEEP_MS(5);
+        d=read_once();
+    }
+    return d;
+}
+#define wait_for_replay(state) wait_until(state,0)
+#define wait_for_buttons(b) wait_until(0,b)
 
 int main(void) {
     setvbuf(stdout,NULL,_IONBF,0); /* a failed check aborts: keep what was printed before it */
@@ -90,7 +104,7 @@ int main(void) {
     f=fopen("bbport-pad-calibration-replay.txt","w");
     assert(f);
     /* ms buttons lx ly rx ry l2 r2: a held walk, then a turn */
-    fputs("0 0 10 200 50 250 0 0\n150 16384 255 0 128 128 0 0\n",f);
+    fputs("0 0 10 200 50 250 0 0\n1500 16384 255 0 128 128 0 0\n",f);
     fclose(f);
     SETENV("SDL_VIDEODRIVER","dummy");
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT,"0x1d50/0x6189");
@@ -213,30 +227,26 @@ int main(void) {
         CHECK(pad_deadzone_outer==127 && pad_deadzone==5);
     }
     /* 9. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
-     * and the pad shows again once the recording ends. */
+     * and the pad shows again once the recording ends. The route is slow enough (the second row
+     * 1.5 s in) that a loaded machine cannot skip a row; every wait has a deadline. */
     {
         const int16_t rest[4]={-16380,16380,-16380,16380};
         Virtual v=attach(rest);
         settle(20);
         f=fopen("bbport-pad-calibration-pad.txt","w"); assert(f);
         fputs("replay\n",f); fclose(f);
-        SLEEP_MS(40);
-        PadData d=read_once();
+        PadData d=wait_for_replay(1);
         EXPECT_STICKS(d,10,200,50,250);
-        SLEEP_MS(170);
-        d=read_once();
-        assert(d.buttons==16384);
+        d=wait_for_buttons(16384);
         EXPECT_STICKS(d,255,0,128,128);
-        for (int i=0;i<12 && replay_armed==1;++i) { SLEEP_MS(100); d=read_once(); }
-        assert(replay_armed==2);
+        d=wait_for_replay(2);
         d=read_once();
         EXPECT_STICKS(d,128,128,128,128); /* the calibrated clone, after the route */
         detach(v);
         /* Same route with no pad connected. */
         f=fopen("bbport-pad-calibration-pad.txt","w"); assert(f);
         fputs("replay replay2\n",f); fclose(f);
-        SLEEP_MS(40);
-        d=read_once();
+        d=wait_for_replay(1);
         EXPECT_STICKS(d,10,200,50,250);
     }
     SDL_Quit();
