@@ -49,6 +49,8 @@ def non_utf8_environment():
 
 
 class LegacyCodePageTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'elsewhere the legacy stand-in is the C locale (ASCII), '
+                         'which cannot even list the non-ASCII mod folder: the failure would be unrelated')
     def test_config_files_with_non_ascii_text_are_read_as_utf8(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
