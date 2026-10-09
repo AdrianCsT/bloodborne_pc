@@ -2346,8 +2346,9 @@ bool TemporalUpscaler::RecordFsr4(vk::CommandBuffer cmdbuf, Fsr4Upscaler::Image 
 }
 
 bool TemporalUpscaler::FullRangeSharpen() const {
-    // XeSS and FSR 4.1.1 through fsr4vk have no RCAS of their own: ExtraSharpen covers 0..2.
-    return UseXess() || (BbSettings::Get().upscaler == BbSettings::UpscalerFsr411 &&
+    // XeSS and FSR 4.1.1 through fsr4vk have no RCAS of their own: ExtraSharpen covers 0..2. Only while
+    // fsr4vk is the upscaler in use: after it failed (fsr4_failed) FSR 3.1 runs, with its own RCAS.
+    return UseXess() || (BbSettings::Get().upscaler == BbSettings::UpscalerFsr411 && UseFsr4() &&
                          !instance.IsFsr411Supported());
 }
 
