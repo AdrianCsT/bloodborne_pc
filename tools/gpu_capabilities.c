@@ -347,6 +347,8 @@ static void load_upscaler_dlls(Dlls *dlls, const char **list, uint32_t *count) {
 /* The fsr4vk provider runs FSR 4.1.1 where the replay cannot (no VK_VALVE_shader_mixed_float_dot_product):
  * the device requirements vk_instance.cpp requests for it (provider/INTEGRATION-CONTRACT.md of fsr4vk) and
  * its DLL in BB_FSR4VK_DIR or the fsr4vk folder next to this executable (vk_fsr4vk.cpp, tools/fetch_fsr4vk.py).
+ * The DLL name below repeats Fsr4Vk::LibraryName (gpu/shadps4/video_core/renderer_vulkan/vk_fsr4vk.h) and
+ * tools/fetch_fsr4vk.py; the feature list repeats the one in Instance::CreateDevice (vk_instance.cpp).
  * Returns why it cannot run, or NULL. */
 static const char *fsr4vk_problem(VkPhysicalDevice device, const VkPhysicalDeviceFeatures *core,
                                   const VkPhysicalDeviceVulkan12Features *vk12,
@@ -379,9 +381,12 @@ static const char *fsr4vk_problem(VkPhysicalDevice device, const VkPhysicalDevic
     const char *off = getenv("BB_FSR4VK");
     if (off && off[0] == '0') return "switched off (BB_FSR4VK=0)";
     wchar_t path[MAX_PATH + 64];
-    const char *dir = getenv("BB_FSR4VK_DIR");
+    /* The wide environment, as Fsr4Vk::Directory does: this program has no UTF-8 manifest, so getenv would
+     * hand back the ANSI page and a folder with a non-ASCII name would read differently from the game's. */
+    const wchar_t *dir = _wgetenv(L"BB_FSR4VK_DIR");
     if (dir && dir[0]) {
-        if (!MultiByteToWideChar(CP_UTF8, 0, dir, -1, path, MAX_PATH)) return "FSR 4.1.1 files are not downloaded";
+        if (wcslen(dir) >= MAX_PATH) return "FSR 4.1.1 files are not downloaded";
+        wcscpy(path, dir);
     } else {
         DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
         if (!length || length >= MAX_PATH) return "FSR 4.1.1 files are not downloaded";
@@ -389,7 +394,7 @@ static const char *fsr4vk_problem(VkPhysicalDevice device, const VkPhysicalDevic
         path[length] = 0;
         wcscat(path, L"fsr4vk");
     }
-    wcscat(path, L"\\amd_fidelityfx_upscaler_vk.dll");
+    wcscat(path, L"\\amd_fidelityfx_upscaler_vk.dll"); /* Fsr4Vk::LibraryName */
     if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) return "FSR 4.1.1 files are not downloaded";
     return NULL;
 }

@@ -28,8 +28,6 @@ namespace Vulkan {
 
 namespace {
 
-constexpr char LibraryName[] = "amd_fidelityfx_upscaler_vk.dll";
-
 std::filesystem::path ExecutableDirectory() {
 #ifdef _WIN32
     std::wstring path(MAX_PATH, L'\0');
@@ -44,10 +42,23 @@ std::filesystem::path ExecutableDirectory() {
 } // namespace
 
 std::filesystem::path Fsr4Vk::Directory() {
+#ifdef _WIN32
+    // The wide environment: a folder with a non-ASCII name must read the same here and in
+    // bb-gpu-capabilities, whatever the process's ANSI code page is.
+    if (const wchar_t* dir = _wgetenv(L"BB_FSR4VK_DIR"); dir && dir[0]) {
+        return dir;
+    }
+#else
     if (const char* dir = std::getenv("BB_FSR4VK_DIR"); dir && dir[0]) {
         return dir;
     }
+#endif
     return ExecutableDirectory() / "fsr4vk";
+}
+
+std::string Fsr4Vk::LibraryPathUtf8() {
+    const auto u8 = (Directory() / LibraryName).u8string();
+    return {reinterpret_cast<const char*>(u8.data()), u8.size()};
 }
 
 bool Fsr4Vk::FilesPresent() {
@@ -258,7 +269,7 @@ struct Fsr4Vk::Impl {
         const auto path = Fsr4Vk::Directory() / LibraryName;
         module = LoadLibraryW(path.c_str());
         if (!module) {
-            Fail("cannot load " + path.string() + " (error " + std::to_string(GetLastError()) + ")",
+            Fail("cannot load " + Fsr4Vk::LibraryPathUtf8() + " (error " + std::to_string(GetLastError()) + ")",
                  true);
             return false;
         }
@@ -274,7 +285,7 @@ struct Fsr4Vk::Impl {
         load(query, "ffxQuery");
         load(dispatch, "ffxDispatch");
         if (!complete) {
-            Fail(path.string() + " is not an FFX API provider", true);
+            Fail(Fsr4Vk::LibraryPathUtf8() + " is not an FFX API provider", true);
             return false;
         }
         return true;

@@ -471,7 +471,7 @@ bool Instance::CreateDevice() {
         add_extension(VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME);
         add_extension(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
         LOG_INFO(Render_Vulkan, "fsr4vk: {} found, its device features are enabled",
-                 (Fsr4Vk::Directory() / "amd_fidelityfx_upscaler_vk.dll").string());
+                 Fsr4Vk::LibraryPathUtf8());
     }
     // bbport: DLSS (optional bridge DLL) needs its own device extensions on NVIDIA GPUs.
     std::vector<const char*> dlss_extensions;

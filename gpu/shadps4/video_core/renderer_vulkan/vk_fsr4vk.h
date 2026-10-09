@@ -22,11 +22,15 @@ class Scheduler;
 
 class Fsr4Vk {
 public:
+    /// The provider's file name in Directory(). tools/gpu_capabilities.c and tools/fetch_fsr4vk.py repeat it.
+    static constexpr const char* LibraryName = "amd_fidelityfx_upscaler_vk.dll";
     /// The folder of the provider files: BB_FSR4VK_DIR, else `fsr4vk` next to the executable.
     static std::filesystem::path Directory();
     /// The provider DLL is installed there and BB_FSR4VK is not 0. Device creation asks this before
     /// requesting the extra device features, so nothing is requested without the files.
     static bool FilesPresent();
+    /// The provider's path as UTF-8, for the log (path::string() is the ANSI page and can throw).
+    static std::string LibraryPathUtf8();
 
     Fsr4Vk(const Instance& instance, Scheduler& scheduler);
     ~Fsr4Vk();
