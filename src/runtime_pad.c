@@ -11,7 +11,10 @@
  * biased neutral (a Switch-style pad was seen returning both sticks at a constant ~ +/-16380).
  * The neutral of each axis is taken from a quiet window after the pad opens (SDL returns zero
  * until the first report arrives, so those samples are skipped) and subtracted when all four axes
- * are biased; otherwise (a genuine pad, perhaps opened with a stick held) the neutral is 0.
+ * are biased; otherwise (a genuine pad, perhaps opened with a stick held) the neutral is 0. Until
+ * it is decided the sticks read centred (a biased clone would read as deflected). A pad opened
+ * with a stick held past the bound is taken as genuine until it reconnects: recalibrating while a
+ * player holds a stick steady would be worse.
  *
  * Travel: such a clone also uses only part of SDL's -32768..32767 span (its neutral sits in the
  * middle of one half), so reading the axis as -128..127 would reach only half deflection and a
@@ -442,7 +445,7 @@ static void sample_host(PadData *d) {
         cal_sample(raw);
         uint8_t *axis_out[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
         for (int i=0;i<4;++i)
-            *axis_out[i]=stick_axis(i,raw[i]); /* center 0 until the neutral is known */
+            *axis_out[i]=cal_have_center ? stick_axis(i,raw[i]) : 128; /* centred until the neutral is known */
         if (SDL_GetNumGamepadTouchpads(g)>0) {
             const int fingers=SDL_GetNumGamepadTouchpadFingers(g,0);
             for (int finger=0;finger<fingers && d->touch_count<2;++finger) {

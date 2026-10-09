@@ -153,6 +153,7 @@ int main(void) {
         PadData d;
         for (int i=0;i<30;++i) { move(v,SDL_GAMEPAD_AXIS_RIGHTX,(int16_t)((i&1) ? 20000 : -20000)); d=read_once(); }
         assert(!cal_have_center);
+        SOFT_STICKS(d,128,128,128,128); /* a stick that is still moving reads centred until it is decided */
         move(v,SDL_GAMEPAD_AXIS_RIGHTX,100);
         d=settle(20);
         EXPECT_STICKS(d,128,128,128,128);
@@ -180,7 +181,21 @@ int main(void) {
         move(v,SDL_GAMEPAD_AXIS_RIGHTY,-32768); d=read_once(); CHECK(d.right_y==0);
         detach(v);
     }
-    /* 7. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
+    /* 7. Until the neutral is decided the sticks read centred, not deflected by the bias. */
+    {
+        const int16_t rest[4]={-16380,16380,-16380,16380};
+        Virtual v=attach(rest);
+        PadData d=read_once();
+        CHECK(!cal_have_center);
+        SOFT_STICKS(d,128,128,128,128);
+        d=read_once();
+        SOFT_STICKS(d,128,128,128,128);
+        d=settle(20);
+        CHECK(cal_have_center && cal_center[0]==-16380);
+        SOFT_STICKS(d,128,128,128,128);
+        detach(v);
+    }
+    /* 8. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
      * and the pad shows again once the recording ends. */
     {
         const int16_t rest[4]={-16380,16380,-16380,16380};
@@ -211,6 +226,6 @@ int main(void) {
     remove("bbport-pad-calibration-pad.txt");
     remove("bbport-pad-calibration-replay.txt");
     if (failed) { printf("FAIL: %d check(s) failed\n",failed); return 1; }
-    puts("PASS: stick neutral of a genuine and a biased pad, per-side travel, held sticks at connect, replay route unchanged");
+    puts("PASS: stick neutral of a genuine and a biased pad, per-side travel, centred until decided, held sticks at connect, replay route unchanged");
     return 0;
 }
