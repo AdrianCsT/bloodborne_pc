@@ -232,6 +232,39 @@ class DownloadTests(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class GpuCheckTests(unittest.TestCase):
+    def test_one_gpu_check_builds_the_tool_and_its_environment_once(self):
+        ran = []
+
+        def run(command, **kwargs):
+            ran.append(command[1])
+            return types.SimpleNamespace(stdout='UPSCALER fsr3 supported\n', stderr='GPU: Test GPU: discrete, 1 MiB\n',
+                                         returncode=0)
+        window = types.SimpleNamespace(upscaler_support=None, gpu_text='', gpu_checking=True, ui_calls=queue.Queue(),
+                                       apply_upscaler_support=lambda: None, refresh_status=lambda: None,
+                                       apply_displays=lambda: None)
+        window.check_upscalers = lambda tool=None: launcher.Launcher.check_upscalers(window, tool)
+        with mock.patch.object(launcher, 'gpu_tool', return_value=('tool.exe', {})) as tool, \
+                mock.patch.object(launcher.subprocess, 'run', side_effect=run), \
+                mock.patch.object(launcher, 'connected_displays', return_value=[]), \
+                mock.patch.object(launcher, 'LANG', 'en'):
+            launcher.Launcher.detect_gpu(window)
+        self.assertEqual(tool.call_count, 1)
+        self.assertEqual(ran, ['--upscalers', '--live-resolution'])
+        self.assertEqual(window.upscaler_support, {'fsr3': (True, '')})
+        self.assertEqual(window.gpu_text, '✓ Graphics card: Test GPU')
+
+    def test_the_check_after_a_download_asks_for_the_tool_itself(self):
+        window = types.SimpleNamespace(upscaler_support=None)
+        with mock.patch.object(launcher, 'gpu_tool', return_value=('tool.exe', {})) as tool, \
+                mock.patch.object(launcher.subprocess, 'run', return_value=types.SimpleNamespace(
+                    stdout='UPSCALER fsr411 supported\n', stderr='', returncode=0)):
+            launcher.Launcher.check_upscalers(window)
+        self.assertEqual(tool.call_count, 1)
+        self.assertEqual(window.upscaler_support, {'fsr411': (True, '')})
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class WorkerTests(unittest.TestCase):
     """Launcher.start_fsr4vk_download on a stand-in window: whatever goes wrong in the thread, done() is queued."""
 

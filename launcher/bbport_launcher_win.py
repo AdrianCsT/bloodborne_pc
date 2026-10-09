@@ -2938,10 +2938,11 @@ class Launcher:
         output = self.var('output_res', 'ini').get().replace('x', ' × ')
         return f'{_(*fps)}   ·   {upscaler}   ·   {output}'
 
-    def check_upscalers(self):
+    def check_upscalers(self, tool=None):
         """What each upscaler needs of this PC (bb-gpu-capabilities --upscalers); unknown (every upscaler
-        offered) when this fails. Run it off the window's thread."""
-        exe, env = gpu_tool()
+        offered) when this fails. TOOL is gpu_tool()'s answer when the caller has it already. Run it off
+        the window's thread."""
+        exe, env = tool or gpu_tool()
         try:
             check = subprocess.run([str(exe), '--upscalers'], capture_output=True, text=True, timeout=30,
                                    env=env, creationflags=NO_WINDOW)
@@ -2950,9 +2951,10 @@ class Launcher:
             pass
 
     def detect_gpu(self):
-        exe, env = gpu_tool()
+        tool = gpu_tool()
+        exe, env = tool
         text = _('• Graphics card: not checked', '• Видеокарта: не проверена')
-        self.check_upscalers()
+        self.check_upscalers(tool)
         try:
             result = subprocess.run([str(exe), '--live-resolution'], capture_output=True, text=True, timeout=30,
                                     env=env, creationflags=NO_WINDOW)
