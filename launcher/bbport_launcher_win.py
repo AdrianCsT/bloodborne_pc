@@ -3758,9 +3758,13 @@ class Launcher:
         self.collect()  # Bloodborne.exe starts the game with the saved settings
         done, failed = bbport_steam.add_to_accounts(steam, 'Bloodborne', str(exe), str(PORT_DIR), str(exe), options)
         if failed:
-            self.messagebox.showerror('Bloodborne', _('Could not add the game to Steam: {}',
-                                                      'Не удалось добавить игру в Steam: {}').format(
-                '; '.join(f'{path}: {error}' for path, error in failed)))
+            text = _('Could not add the game to Steam: {}', 'Не удалось добавить игру в Steam: {}').format(
+                '; '.join(f'{path}: {error}' for path, error in failed))
+            if done:  # the other accounts were written: say so, and where
+                text += '\n\n' + _('It was added or updated in: {}. An earlier shortcuts.vdf is kept as shortcuts.vdf.bak.',
+                                   'Добавлено или обновлено в: {}. Прежний shortcuts.vdf сохранён как shortcuts.vdf.bak.'
+                                   ).format('; '.join(str(path) for path, _result in done))
+            self.messagebox.showerror('Bloodborne', text)
             return
         added = sum(result == 'added' for _path, result in done)
         self.messagebox.showinfo('Bloodborne', _('Bloodborne is in your Steam library: {} added, {} updated (one shortcut per Steam '

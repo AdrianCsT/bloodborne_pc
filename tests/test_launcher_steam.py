@@ -246,6 +246,23 @@ class LauncherButtonTests(unittest.TestCase):
         again = self.press(self.steam.root)
         self.assertIn('0 added, 2 updated', again['info'][0])
 
+    def test_when_one_account_fails_it_still_says_where_the_game_was_added(self):
+        broken = b'\x00shortcuts\x00\x05bad'
+        self.steam.vdf('1001').write_bytes(broken)
+        before = steam_made_file(('Celeste', r'D:\Celeste\Celeste.exe', 1, []))
+        self.steam.vdf('2002').write_bytes(before)
+        shown = self.press(self.steam.root)
+        self.assertEqual(shown['info'], [])
+        self.assertEqual(len(shown['error']), 1)
+        message = shown['error'][0]
+        self.assertIn('Could not add the game to Steam', message)
+        self.assertIn(str(self.steam.vdf('1001')), message)  # the account that failed
+        self.assertIn('was added or updated in', message)
+        self.assertIn(str(self.steam.vdf('2002')), message)  # the account that got it
+        self.assertIn('shortcuts.vdf.bak', message)
+        self.assertEqual(self.steam.vdf('1001').read_bytes(), broken)
+        self.assertEqual(self.steam.vdf('2002').with_name('shortcuts.vdf.bak').read_bytes(), before)
+
     def test_no_steam_or_no_signed_in_account_is_reported(self):
         for folder in (None, self.steam.root / 'nowhere'):
             shown = self.press(folder)
