@@ -109,10 +109,19 @@ elif [[ -n ${scaled_output:-} ]]; then
     export BB_DMEM_MB=${BB_DMEM_MB:-9152}
     echo "Output ${scaled_output}: scene ${scaled_render}, direct memory ${BB_DMEM_MB} MiB (live_resolution=1: live changes)"
 fi
+# Patches exist for game version 01.09 only (patches.py applies none to others), like run.py's
+# "patched": an unreadable version counts as patched, BB_FORCE_PATCHES forces it.
+game_is_patched() {
+    [[ -n ${BB_FORCE_PATCHES:-} ]] && return 0
+    local version
+    version=$("$PYTHON" -c 'import sys; sys.path.insert(0, "scripts"); from patches import game_app_version; print(game_app_version(sys.argv[1]) or "")' "$game" 2>/dev/null) || version=
+    [[ -z $version || $version == 01.09 ]]
+}
 # An explicit render size above 1080p skips the scaled path above, but patches.py still grows the
-# graphics heap: the direct memory has to follow, or the game stops at start (exit 139).
+# graphics heap: the direct memory has to follow, or the game stops at start (exit 139). A game
+# without the patches keeps its memory.
 if [[ -z ${BB_DMEM_MB:-} && ${BB_RENDER_RES:-} =~ ^[[:space:]]*([0-9]+)[[:space:]]*[xX][[:space:]]*([0-9]+)[[:space:]]*$ ]] &&
-        (( 10#${BASH_REMATCH[1]} * 10#${BASH_REMATCH[2]} > 1920 * 1080 )); then
+        (( 10#${BASH_REMATCH[1]} * 10#${BASH_REMATCH[2]} > 1920 * 1080 )) && game_is_patched; then
     export BB_DMEM_MB=9152
     echo "Render ${BB_RENDER_RES}: direct memory ${BB_DMEM_MB} MiB"
 fi
