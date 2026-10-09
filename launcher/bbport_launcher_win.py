@@ -45,8 +45,60 @@ MAX_LOG_LINES = 6000
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # This build; GitHub release tags are windows-v<VERSION>.
 VERSION = '1.6.16'
-RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases/latest'
+# GitHub's /releases list leaves nothing out (pre-releases included); /releases/latest hides them.
+RELEASES_API = 'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases?per_page=20'
 RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
+TAG_PREFIX = 'windows-v'
+
+
+def version_tuple(text):
+    """A sort key for '1.6.16', '1.7.0-beta.1', 'windows-v1.7.0' or a game version such as '01.09': the
+    numbers, then 1 for a final release and 0 for a pre-release (so 1.7.0 is above 1.7.0-beta.2), then
+    the pre-release parts (beta.10 above beta.2, rc above beta)."""
+    match = re.match(r'\D*?(\d+(?:\.\d+)*)(?:-([0-9A-Za-z][0-9A-Za-z.-]*))?', text or '')
+    numbers = tuple(int(part) for part in match.group(1).split('.')) if match else ()
+    numbers += (0,) * (4 - len(numbers))
+    parts = tuple((0, int(part), '') if part.isdigit() else (1, 0, part)
+                  for part in ((match and match.group(2)) or '').split('.') if part)
+    return numbers, 0 if parts else 1, parts
+
+
+def is_prerelease(version):
+    return version_tuple(version)[1] == 0
+
+
+def release_version(tag):
+    """'1.7.0-beta.1' from the tag 'windows-v1.7.0-beta.1'."""
+    return re.sub(r'^(?:windows-)?v', '', tag or '')
+
+
+def newest_release(releases, beta):
+    """(version, zip URL, page URL) of the newest release in RELEASES (GitHub's /releases list) that
+    this launcher may offer: stable ones, and pre-releases only when BETA. None when there is none.
+    Only windows-v<version> tags count; drafts never do."""
+    if not isinstance(releases, list):
+        raise ValueError('GitHub did not return a list of releases')
+    best = None
+    for release in releases:
+        tag = release.get('tag_name') if isinstance(release, dict) else None
+        if not isinstance(tag, str) or not tag.startswith(TAG_PREFIX) or release.get('draft'):
+            continue
+        version = release_version(tag)
+        if (release.get('prerelease') or is_prerelease(version)) and not beta:
+            continue
+        if best is None or version_tuple(version) > version_tuple(best[0]):
+            url = next((asset.get('browser_download_url') for asset in release.get('assets') or []
+                        if asset.get('name', '').lower().endswith('.zip')), None)
+            best = (version, url, release.get('html_url') or RELEASES_PAGE)
+    return best
+
+
+def latest_release(beta=False):
+    """newest_release() of the releases GitHub lists now (raises OSError or ValueError on a failure)."""
+    request = urllib.request.Request(RELEASES_API, headers={'Accept': 'application/vnd.github+json',
+                                                            'User-Agent': 'bbport-launcher'})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return newest_release(json.load(response), beta)
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'bbport-update'
 # Never copied over an installation by an update (the package does not hold them either).
 USER_FILES = ('user', 'out', 'mods', 'bbport.ini', 'mods.json', 'patches.json', 'last_run.log')
@@ -180,7 +232,8 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'frames_ahead': '', 'frame_stats': False, 'gpu_profile': False,
                 'vk_validation': False, 'extra_env': '', 'close_on_play': False,
                 'check_updates': True, 'ui_advanced': False, 'animations': True,
-                'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False}
+                'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False,
+                'beta_versions': is_prerelease(VERSION)}  # a beta user keeps getting betas unless they say no
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
@@ -2567,6 +2620,9 @@ class Launcher:
         self.check(f, 'close_on_play', 'app', _('Close the launcher when the game starts', 'Закрывать лаунчер при запуске игры'))
         self.check(f, 'check_updates', 'app', _('Check for updates when the launcher opens',
                                                 'Проверять обновления при открытии лаунчера'))
+        self.check(f, 'beta_versions', 'app', _('Beta versions', 'Бета-версии'),
+                   _('Also offer beta releases when checking for updates. They are tested less than stable ones.',
+                     'Предлагать и бета-версии при проверке обновлений. Они проверены меньше, чем стабильные.'))
         self.check(f, 'animations', 'app', _('Animations', 'Анимации'))
         self.vars['animations'].trace_add('write', lambda *_a: self.animations_changed())
         holder = tk.Frame(f, bg=CARD)
@@ -2577,7 +2633,8 @@ class Launcher:
         holder = tk.Frame(f, bg=CARD)
         holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(10), 0))
         self.button(holder, _('Check for updates', 'Проверить обновления'),
-                    lambda: threading.Thread(target=self.check_update, args=(True,), daemon=True).start()
+                    lambda: threading.Thread(target=self.check_update, daemon=True,
+                                             args=(True, bool(self.var('beta_versions', 'app').get()))).start()
                     ).pack(side='left')
         self.label(holder, f'v{VERSION}', 'small', MUTED).pack(side='left', padx=px(12))
         holder = tk.Frame(f, bg=CARD)
@@ -3327,19 +3384,20 @@ class Launcher:
         self.refresh_status()
 
     # ---- updates -------------------------------------------------------------------------------
-    def check_update(self, manual=False):
-        """Helper thread: asks GitHub for the newest release and offers it when it is newer."""
+    def check_update(self, manual=False, beta=None):
+        """Helper thread: asks GitHub for the newest release (a pre-release only with the Beta versions
+        switch on; BETA is its value, read on the window's thread) and offers it when it is newer."""
         try:
-            version, url, page = latest_release()
-        except (OSError, ValueError, KeyError) as failure:
+            release = latest_release(self.app.get('beta_versions', False) if beta is None else beta)
+        except (OSError, ValueError, KeyError, AttributeError) as failure:
             if manual:
                 self.ui_calls.put(lambda error=failure: self.messagebox.showerror(
                     'Bloodborne', _('Could not check for updates: {}', 'Не удалось проверить обновления: {}').format(error)))
             return
 
         def show():
-            if version_tuple(version) > version_tuple(VERSION):
-                self.offer_update(version, url, page)
+            if release and version_tuple(release[0]) > version_tuple(VERSION):
+                self.offer_update(*release)
             elif manual:
                 self.messagebox.showinfo('Bloodborne', _('You have the latest version ({}).',
                                                          'У вас последняя версия ({}).').format(VERSION))
@@ -3570,22 +3628,6 @@ def play_without_window(settings):
             except (OSError, ValueError):
                 pass
         return process.wait()
-
-
-def version_tuple(text):
-    return tuple(int(number) for number in re.findall(r'\d+', text or ''))
-
-
-def latest_release():
-    """(version, zip URL, page URL) of the newest GitHub release."""
-    request = urllib.request.Request(RELEASES_API, headers={'Accept': 'application/vnd.github+json',
-                                                            'User-Agent': 'bbport-launcher'})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        release = json.load(response)
-    version = '.'.join(re.findall(r'\d+', release['tag_name']))
-    url = next((asset['browser_download_url'] for asset in release.get('assets', [])
-                if asset.get('name', '').lower().endswith('.zip')), None)
-    return version, url, release.get('html_url') or RELEASES_PAGE
 
 
 def update_ignore(target):

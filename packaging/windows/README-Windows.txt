@@ -42,7 +42,9 @@ Starting
 - Advanced -> "Desktop shortcut" puts Bloodborne on the desktop.
 - Updates: when a new version is out, the launcher shows it at the bottom left; "Update"
   downloads and installs it and opens the launcher again (saves, settings and mods are kept).
-  Advanced -> "Check for updates" checks by hand.
+  Advanced -> "Check for updates" checks by hand. Only stable versions are offered unless
+  Advanced -> "Beta versions" is on (it is on by default while you run a beta, and a beta user
+  is still offered the final release when it comes out).
 - Advanced -> "Launcher language": English, Russian, Arabic, Spanish, Portuguese, French,
   German, Italian, Polish, Turkish, Chinese, Japanese, Korean (default: the Windows language).
 - In the game, Insert (or L3+R3 on a gamepad) opens the port's menu (upscaler, resolution,
