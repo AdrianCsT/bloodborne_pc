@@ -487,7 +487,7 @@ More in [docs/](docs). Recent changes: [docs/CHANGES_0.4.md](docs/CHANGES_0.4.md
 | `tests/` | Loader, runtime, patch and renderer tests |
 | `docs/` | Design notes and measurements ([upscaler](docs/upscaler.md), [parallel GPU](docs/parallel_gpu.md), [motion vectors](docs/motion_vectors.md), [roadmap](docs/ROADMAP.md)) |
 
-Tests: `bash build.sh --test`, `python3 -m unittest discover -s tests`, and `ninja -C out/gpu motion-history-test ui-composition-test scene-resolution-test motion-shader-test settings-test`.
+Tests: `bash build.sh --test`, `python3 -m unittest discover -s tests`, and `ninja -C out/gpu motion-history-test cache-consistency-test ui-composition-test scene-resolution-test motion-shader-test settings-test`.
 
 </details>
 

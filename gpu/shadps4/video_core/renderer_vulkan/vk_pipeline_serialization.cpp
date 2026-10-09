@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2025-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <array>
 #include <chrono>
 #include <cstdio>
-#include <unordered_set>
+#include <string>
 #include "common/serdes.h"
 #include "core/emulator_settings.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
@@ -164,7 +165,16 @@ bool PipelineCache::LoadComputePipeline(Serialization::Archive& ar) {
 
     Serialization::Archive meta_ar{std::move(meta_blob)};
 
-    if (!LoadPipelineStage(meta_ar, 0)) {
+    CacheCheck::StageBindings facts{};
+    if (!LoadPipelineStage(meta_ar, 0, facts)) {
+        DropSelection();
+        return false;
+    }
+    if (CacheCheck::FirstMisplacedStage({&facts, 1}) >= 0) {
+        LOG_WARNING(Render_Vulkan, "Cached compute pipeline {:#x} skipped: its shader was compiled "
+                                   "to start at descriptor {}",
+                    compute_key.value, facts.start.unified);
+        DropSelection();
         return false;
     }
 
@@ -225,6 +235,10 @@ bool PipelineCache::LoadGraphicsPipeline(Serialization::Archive& ar) {
     GraphicsPipeline::SerializationSupport sdata{};
     sdata.Deserialize(ar);
 
+    // bbport: every way out below that is not a pipeline leaves `sel` empty. A stage left in it by
+    // an entry that was skipped (a motion vertex shader, a permutation conflict) was taken over
+    // by the next entry that has no such stage, which got a shader it never had.
+    std::array<CacheCheck::StageBindings, MaxShaderStages> facts{};
     for (int stage_idx = 0; stage_idx < MaxShaderStages; ++stage_idx) {
         const auto& hash = sel.graphics_key.stage_hashes[stage_idx];
         if (!hash) {
@@ -235,14 +249,27 @@ bool PipelineCache::LoadGraphicsPipeline(Serialization::Archive& ar) {
         Storage::DataBase::Instance().Load(Storage::BlobType::ShaderMeta,
                                            fmt::format("{:#018x}", hash), meta_blob);
         if (meta_blob.empty()) {
+            DropSelection();
             return false;
         }
 
         Serialization::Archive meta_ar{std::move(meta_blob)};
 
-        if (!LoadPipelineStage(meta_ar, stage_idx)) {
+        if (!LoadPipelineStage(meta_ar, stage_idx, facts[stage_idx])) {
+            DropSelection();
             return false;
         }
+    }
+    if (const int misplaced = CacheCheck::FirstMisplacedStage(facts); misplaced >= 0) {
+        // The stored shaders were compiled next to other neighbours than the ones this entry
+        // names now: the descriptor set layout built here would disagree with their SPIR-V.
+        LOG_WARNING(Render_Vulkan,
+                    "Cached pipeline {:#x} skipped: its stage {} was compiled to start at "
+                    "descriptor {}, the stages before it end elsewhere",
+                    sel.graphics_key.stage_hashes[misplaced], misplaced,
+                    facts[misplaced].start.unified);
+        DropSelection();
+        return false;
     }
 
     auto pipeline = std::make_unique<GraphicsPipeline>(
@@ -259,7 +286,14 @@ bool PipelineCache::LoadGraphicsPipeline(Serialization::Archive& ar) {
     return true;
 }
 
-bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) {
+void PipelineCache::DropSelection() {
+    sel.infos.fill(nullptr);
+    sel.modules.fill(nullptr);
+    sel.fetch_shader.reset();
+}
+
+bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage,
+                                      CacheCheck::StageBindings& facts) {
     auto program = std::make_unique<Program>();
     Shader::StageSpecialization spec{};
     spec.info = &program->info;
@@ -267,6 +301,10 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
     if (!LoadShaderMeta(ar, program->info, sel.fetch_shader, spec, perm_idx)) {
         return false;
     }
+    facts.present = true;
+    facts.has_resources = spec.bitset.any();
+    facts.start = spec.start;
+    program->info.AddBindings(facts.size);
 
     std::vector<u32> spv{};
     Storage::DataBase::Instance().Load(Storage::BlobType::ShaderBinary,
@@ -296,10 +334,13 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
         return created;
     };
 
-    auto [it_pgm, new_program] = program_cache.try_emplace(program->info.pgm_hash);
-    if (new_program) {
+    // bbport: the program is entered after its module was made: a module the driver rejects
+    // throws, and an entry left in program_cache without a program would make every later
+    // lookup of this hash believe somebody else is translating it.
+    auto it_pgm = program_cache.find(program->info.pgm_hash);
+    if (it_pgm == program_cache.end()) {
         module = compile();
-        it_pgm.value() = std::move(program);
+        it_pgm = program_cache.try_emplace(program->info.pgm_hash, std::move(program)).first;
     } else {
         const auto& it = std::ranges::find(it_pgm.value()->modules, spec, &Program::Module::spec);
         if (it != it_pgm.value()->modules.end()) {
@@ -335,111 +376,96 @@ void PipelineCache::WarmUp() {
     Storage::DataBase::Instance().Open();
     const auto warm_up_start = std::chrono::steady_clock::now();
 
+    // Shader metadata and SPIR-V are stored under names made of a program hash and a permutation
+    // index, and a pipeline key names its shaders the same way. Blobs from before a version change
+    // or from another session can therefore sit beside new ones under the same name, so the
+    // versions are part of the profile blob and a cache from other versions is rebuilt whole.
+    constexpr std::array<u32, 4> cache_versions{0x42425043u, Serialization::ShaderBinaryVersion,
+                                                Serialization::ShaderMetaVersion,
+                                                Serialization::PipelineKeyVersion};
+    constexpr size_t header_size = sizeof(cache_versions);
+    const auto save_profile = [&] {
+        std::vector<u8> current(header_size + sizeof(profile));
+        std::memcpy(current.data(), cache_versions.data(), header_size);
+        std::memcpy(current.data() + header_size, &profile, sizeof(profile));
+        Storage::DataBase::Instance().Save(Storage::BlobType::ShaderProfile, "profile",
+                                           std::move(current));
+    };
+
     // Check if cache is compatible
     std::vector<u8> profile_data{};
     Storage::DataBase::Instance().Load(Storage::BlobType::ShaderProfile, "profile", profile_data);
     if (profile_data.empty()) {
+        // Blobs without a profile have unknown origin.
+        Storage::DataBase::Instance().Clear();
         Storage::DataBase::Instance().FinishPreload();
-
-        profile_data.resize(sizeof(profile));
-        std::memcpy(profile_data.data(), &profile, sizeof(profile));
-        Storage::DataBase::Instance().Save(Storage::BlobType::ShaderProfile, "profile",
-                                           std::move(profile_data));
+        save_profile();
         return;
     }
-    if (profile_data.size() != sizeof(Shader::Profile)) {
-        LOG_WARNING(Render, "Pipeline cache profile has unexpected size ({} != {})",
-                    profile_data.size(), sizeof(Shader::Profile));
-    }
+    const bool versions_match =
+        CacheCheck::HeaderMatches(profile_data, cache_versions, sizeof(Shader::Profile));
     Shader::Profile cached_profile{};
-    if (profile_data.size() == sizeof(Shader::Profile)) {
-        std::memcpy(&cached_profile, profile_data.data(), sizeof(cached_profile));
+    if (versions_match) {
+        std::memcpy(&cached_profile, profile_data.data() + header_size, sizeof(cached_profile));
     }
-    if (profile_data.size() != sizeof(Shader::Profile) || cached_profile != profile) {
+    if (!versions_match || cached_profile != profile) {
         // bbport: upstream closed the cache for the session here, so it was never rewritten
         // and every later session compiled every shader again (stutters on each new area).
         // Start a fresh cache for this build and GPU instead.
         LOG_WARNING(Render, "Pipeline cache isn't compatible with current system: rebuilding it");
         Storage::DataBase::Instance().Clear();
         Storage::DataBase::Instance().FinishPreload();
-        profile_data.resize(sizeof(profile));
-        std::memcpy(profile_data.data(), &profile, sizeof(profile));
-        Storage::DataBase::Instance().Save(Storage::BlobType::ShaderProfile, "profile",
-                                           std::move(profile_data));
+        save_profile();
         return;
     }
 
     u32 num_pipelines{};
     u32 num_total_pipelines{};
     u32 num_damaged{};
+    std::vector<std::string> unused_keys;
 
     Storage::DataBase::Instance().ForEachBlob(
-        Storage::BlobType::PipelineKey, [&](std::vector<u8>&& data) {
+        Storage::BlobType::PipelineKey, [&](const std::string& name, std::vector<u8>&& data) {
             ++num_total_pipelines;
             // bbport: a damaged entry (cut short by a crash or a power loss, or rejected by the
             // driver) used to stop the game at every start until the cache was deleted by hand
-            // (issues #28, #38, #39). It is counted here and the cache is rebuilt below.
+            // (issues #28, #38, #39). Only that entry is given up: an entry is a file of its own,
+            // the shaders it loaded are checked one by one, and a driver that rejects some
+            // pipelines (AMD does where NVIDIA accepts) used to have the whole cache deleted at
+            // every start.
+            bool loaded = false;
             try {
                 Serialization::Archive ar{std::move(data)};
                 Serialization::Reader pldata{ar};
 
                 u32 version{};
                 pldata.Read(version);
-                if (version != Serialization::PipelineKeyVersion) {
-                    return;
-                }
+                if (version == Serialization::PipelineKeyVersion) {
+                    u32 is_compute{};
+                    pldata.Read(is_compute);
 
-                u32 is_compute{};
-                pldata.Read(is_compute);
-
-                bool result{};
-                if (is_compute) {
-                    result = LoadComputePipeline(ar);
-                } else {
-                    result = LoadGraphicsPipeline(ar);
-                }
-
-                if (result) {
-                    ++num_pipelines;
+                    loaded = is_compute ? LoadComputePipeline(ar) : LoadGraphicsPipeline(ar);
                 }
             } catch (const std::exception& e) {
                 if (num_damaged++ == 0) {
-                    LOG_WARNING(Render, "Pipeline cache: damaged entry ({})", e.what());
+                    LOG_WARNING(Render, "Pipeline cache: damaged entry ({}), dropping it",
+                                e.what());
                 }
-                sel.infos.fill(nullptr);
-                sel.modules.fill(nullptr);
-                sel.fetch_shader.reset();
+                DropSelection();
+            }
+            if (loaded) {
+                ++num_pipelines;
+            } else {
+                unused_keys.push_back(name);
             }
         });
 
-    if (num_damaged) {
-        // Nothing preloaded is trusted: modules of a damaged entry may sit in programs that later
-        // lookups would reuse. Start as with no cache and write a fresh one.
-        LOG_WARNING(Render, "Pipeline cache: {} damaged entries, rebuilding it", num_damaged);
-        graphics_pipelines.clear();
-        compute_pipelines.clear();
-        std::unordered_set<VkShaderModule> modules;
-        for (const auto& [_, program] : program_cache) {
-            if (!program) {
-                continue;
-            }
-            for (const auto& permutation : program->modules) {
-                if (permutation.module) {
-                    modules.insert(VkShaderModule(permutation.module));
-                }
-            }
-        }
-        for (const VkShaderModule module : modules) {
-            instance.GetDevice().destroyShaderModule(vk::ShaderModule{module});
-        }
-        program_cache.clear();
-        Storage::DataBase::Instance().Clear();
-        Storage::DataBase::Instance().FinishPreload();
-        profile_data.resize(sizeof(profile));
-        std::memcpy(profile_data.data(), &profile, sizeof(profile));
-        Storage::DataBase::Instance().Save(Storage::BlobType::ShaderProfile, "profile",
-                                           std::move(profile_data));
-        return;
+    // An entry that did not become a pipeline is deleted. A pipeline key names its shaders by
+    // program and permutation index, and a program that was not preloaded numbers its
+    // permutations from zero again in this session, writing other shaders under the names the
+    // entry still holds; a later start would join the entry's other shaders with these.
+    for (const auto& name : unused_keys) {
+        Storage::DataBase::Instance().Remove(Storage::BlobType::PipelineKey, name);
     }
 
     LOG_INFO(Render, "Preloaded {} pipelines", num_pipelines);
@@ -448,9 +474,9 @@ void PipelineCache::WarmUp() {
                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                            std::chrono::steady_clock::now() - warm_up_start)
                                            .count()));
-    if (num_total_pipelines > num_pipelines) {
-        LOG_WARNING(Render, "{} stale pipelines were found. Consider re-generating the cache",
-                    num_total_pipelines - num_pipelines);
+    if (!unused_keys.empty()) {
+        LOG_WARNING(Render, "{} cache entries could not be used ({} damaged) and were removed",
+                    unused_keys.size(), num_damaged);
     }
 
     Storage::DataBase::Instance().FinishPreload();

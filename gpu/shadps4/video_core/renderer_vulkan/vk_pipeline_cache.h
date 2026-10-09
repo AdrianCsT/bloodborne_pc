@@ -17,6 +17,7 @@
 #include "shader_recompiler/profile.h"
 #include "shader_recompiler/recompiler.h"
 #include "shader_recompiler/specialization.h"
+#include "video_core/renderer_vulkan/vk_cache_consistency.h"
 #include "video_core/renderer_vulkan/vk_compute_pipeline.h"
 #include "video_core/renderer_vulkan/vk_graphics_pipeline.h"
 #include "video_core/renderer_vulkan/vk_resource_pool.h"
@@ -146,7 +147,10 @@ public:
 
     bool LoadComputePipeline(Serialization::Archive& ar);
     bool LoadGraphicsPipeline(Serialization::Archive& ar);
-    bool LoadPipelineStage(Serialization::Archive& ar, size_t stage);
+    bool LoadPipelineStage(Serialization::Archive& ar, size_t stage,
+                           CacheCheck::StageBindings& facts);
+    /// bbport: forgets the stages a cache entry that is not used left in `sel`.
+    void DropSelection();
 
     const GraphicsPipeline* GetGraphicsPipeline(const DrawIndirectParams params = {},
                                                 const PreparedDraw* prepared = nullptr);

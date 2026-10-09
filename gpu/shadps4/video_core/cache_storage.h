@@ -48,7 +48,12 @@ public:
     void Load(BlobType type, const std::string& name, std::vector<u8>& data);
     void Load(BlobType type, const std::string& name, std::vector<u32>& data);
 
-    void ForEachBlob(BlobType type, const std::function<void(std::vector<u8>&& data)>& func);
+    /// bbport: `name` is the blob's file name without the extension, as Save/Load take it.
+    void ForEachBlob(BlobType type,
+                     const std::function<void(const std::string& name, std::vector<u8>&& data)>&
+                         func);
+    /// bbport: deletes one blob (not in an archive: false there, and when it is missing).
+    bool Remove(BlobType type, const std::string& name);
 
     /// bbport: the driver's VkPipelineCache blob, kept beside the shader cache of the game. Not
     /// queued like the blobs above: Load/Save are synchronous and Save is atomic (temporary

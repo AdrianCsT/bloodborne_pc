@@ -266,7 +266,9 @@ void DataBase::Load(BlobType type, const std::string& name, std::vector<u32>& da
     return LoadVector(type, path, data);
 }
 
-void DataBase::ForEachBlob(BlobType type, const std::function<void(std::vector<u8>&& data)>& func) {
+void DataBase::ForEachBlob(
+    BlobType type,
+    const std::function<void(const std::string& name, std::vector<u8>&& data)>& func) {
     const auto& ext = GetBlobFileExtension(type);
     if (EmulatorSettings.IsPipelineCacheArchived()) {
         const auto num_files = mz_zip_reader_get_num_files(&zip_ar);
@@ -279,7 +281,7 @@ void DataBase::ForEachBlob(BlobType type, const std::function<void(std::vector<u
                 mz_zip_reader_file_stat(&zip_ar, index, &stat);
                 std::vector<u8> data(stat.m_uncomp_size);
                 mz_zip_reader_extract_to_mem(&zip_ar, index, data.data(), data.size(), 0);
-                func(std::move(data));
+                func(std::filesystem::path{file_name.data()}.stem().string(), std::move(data));
             }
         }
     } else {
@@ -290,11 +292,21 @@ void DataBase::ForEachBlob(BlobType type, const std::function<void(std::vector<u
                 if (file.IsOpen()) {
                     std::vector<u8> data(file.GetSize());
                     file.Read(data);
-                    func(std::move(data));
+                    func(file_name.path().stem().string(), std::move(data));
                 }
             }
         }
     }
+}
+
+bool DataBase::Remove(BlobType type, const std::string& name) {
+    if (!opened || EmulatorSettings.IsPipelineCacheArchived()) {
+        return false;
+    }
+    auto path = cache_path / name;
+    path.replace_extension(GetBlobFileExtension(type));
+    std::error_code ec;
+    return std::filesystem::remove(path, ec);
 }
 
 void DataBase::Clear() {
@@ -308,7 +320,10 @@ void DataBase::Clear() {
             ++removed;
         }
     }
-    LOG_WARNING(Render, "Pipeline cache cleared ({} files): it is rebuilt for this build", removed);
+    if (removed) {
+        LOG_WARNING(Render, "Pipeline cache cleared ({} files): it is rebuilt for this build",
+                    removed);
+    }
 }
 
 std::filesystem::path DataBase::DriverCachePath() const {
