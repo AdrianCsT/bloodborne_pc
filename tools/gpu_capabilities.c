@@ -344,6 +344,56 @@ static void load_upscaler_dlls(Dlls *dlls, const char **list, uint32_t *count) {
     }
 }
 
+/* The fsr4vk provider runs FSR 4.1.1 where the replay cannot (no VK_VALVE_shader_mixed_float_dot_product):
+ * the device requirements vk_instance.cpp requests for it (provider/INTEGRATION-CONTRACT.md of fsr4vk) and
+ * its DLL in BB_FSR4VK_DIR or the fsr4vk folder next to this executable (vk_fsr4vk.cpp, tools/fetch_fsr4vk.py).
+ * Returns why it cannot run, or NULL. */
+static const char *fsr4vk_problem(VkPhysicalDevice device, const VkPhysicalDeviceFeatures *core,
+                                  const VkPhysicalDeviceVulkan12Features *vk12,
+                                  const VkPhysicalDeviceVulkan13Features *vk13, int derivatives_ok,
+                                  const VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT *mutable_type,
+                                  const VkPhysicalDeviceDescriptorBufferFeaturesEXT *buffer) {
+    static char reason[120];
+    const struct { const char *name; int ok; } features[] = {
+        {"shaderInt16", core->shaderInt16},
+        {"shaderStorageImageReadWithoutFormat", core->shaderStorageImageReadWithoutFormat},
+        {"shaderStorageImageWriteWithoutFormat", core->shaderStorageImageWriteWithoutFormat},
+        {"shaderFloat16", vk12->shaderFloat16},
+        {"shaderInt8", vk12->shaderInt8},
+        {"storageBuffer8BitAccess", vk12->storageBuffer8BitAccess},
+        {"runtimeDescriptorArray", vk12->runtimeDescriptorArray},
+        {"descriptorBindingVariableDescriptorCount", vk12->descriptorBindingVariableDescriptorCount},
+        {"bufferDeviceAddress", vk12->bufferDeviceAddress},
+        {"synchronization2", vk13->synchronization2},
+        {"shaderIntegerDotProduct", vk13->shaderIntegerDotProduct},
+        {"computeDerivativeGroupLinear", derivatives_ok},
+        {"mutableDescriptorType", mutable_type->mutableDescriptorType && has_extension(device, "VK_EXT_mutable_descriptor_type")},
+        {"descriptorBuffer", buffer->descriptorBuffer && has_extension(device, "VK_EXT_descriptor_buffer")},
+    };
+    for (size_t i = 0; i < sizeof features / sizeof features[0]; ++i) {
+        if (!features[i].ok) {
+            snprintf(reason, sizeof reason, "needs the Vulkan feature %s", features[i].name);
+            return reason;
+        }
+    }
+    const char *off = getenv("BB_FSR4VK");
+    if (off && off[0] == '0') return "switched off (BB_FSR4VK=0)";
+    wchar_t path[MAX_PATH + 64];
+    const char *dir = getenv("BB_FSR4VK_DIR");
+    if (dir && dir[0]) {
+        if (!MultiByteToWideChar(CP_UTF8, 0, dir, -1, path, MAX_PATH)) return "FSR 4.1.1 files are not downloaded";
+    } else {
+        DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
+        if (!length || length >= MAX_PATH) return "FSR 4.1.1 files are not downloaded";
+        while (length && path[length - 1] != L'\\') --length;
+        path[length] = 0;
+        wcscat(path, L"fsr4vk");
+    }
+    wcscat(path, L"\\amd_fidelityfx_upscaler_vk.dll");
+    if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) return "FSR 4.1.1 files are not downloaded";
+    return NULL;
+}
+
 static void verdict_xess(const Dlls *dlls, VkInstance instance, VkPhysicalDevice device, int instance_ok,
                          UpscalerVerdict *v) {
     if (!dlls->xess) return fail(v, "libxess.dll is not installed");
@@ -422,8 +472,10 @@ static int upscalers_mode(void) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES, .pNext = &derivatives};
     VkPhysicalDeviceVulkan12Features vk12 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES, .pNext = &vk13};
+    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT, .pNext = &vk12};
     VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mutable_type = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT, .pNext = &vk12};
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MUTABLE_DESCRIPTOR_TYPE_FEATURES_EXT, .pNext = &descriptor_buffer};
     VkPhysicalDeviceFeatures2 features = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
                                           .pNext = &mutable_type};
     vkGetPhysicalDeviceFeatures2(device, &features);
@@ -453,11 +505,20 @@ static int upscalers_mode(void) {
         if (amd && (!matrix_ok || old_name))
             snprintf(fsr4.reason, sizeof fsr4.reason, "may be slow on this GPU");
     }
-    /* IsFsr411Supported: FSR 4 INT8 plus VK_VALVE_shader_mixed_float_dot_product, which only Mesa
-     * exposes today. The reason stays plain: the launcher shows it, and no Windows driver reports it. */
+    /* IsFsr411Available: FSR 4 INT8 plus VK_VALVE_shader_mixed_float_dot_product, which only Mesa
+     * exposes today, or (Windows) the fsr4vk provider: its device features and its downloaded DLL.
+     * The reason stays plain: the launcher shows it. */
     pass(&fsr411);
     if (!fsr4.ok) fail(&fsr411, "%s", fsr4.reason);
-    else if (!mixed_ok) fail(&fsr411, "needs a Vulkan extension that no Windows driver is known to support yet");
+    else if (!mixed_ok) {
+#ifdef _WIN32
+        const char *problem = fsr4vk_problem(device, &features.features, &vk12, &vk13, derivatives_ok,
+                                             &mutable_type, &descriptor_buffer);
+        if (problem) fail(&fsr411, "%s", problem);
+#else
+        fail(&fsr411, "needs a Vulkan extension that no Windows driver is known to support yet");
+#endif
+    }
 #ifdef _WIN32
     verdict_dlss(&dlls, &props, instance, device, instance_ok, &dlss);
     verdict_xess(&dlls, instance, device, instance_ok, &xess);
