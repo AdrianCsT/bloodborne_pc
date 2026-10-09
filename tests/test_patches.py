@@ -146,6 +146,22 @@ class FpsListTests(unittest.TestCase):
         self.assertGreater(lines, 0)
         self.assertEqual(len(self.writes('uncap')), lines)
 
+    def unknown_names(self, presets):
+        """(preset, name) of every listed patch the XML does not have for the app version."""
+        known = {meta.get('Name') for meta in ET.parse(XML).getroot().iter('Metadata')
+                 if meta.get('AppVer') == '01.09'}
+        return [(preset, name) for preset, names in presets.items() for name in names
+                if name not in known]
+
+    def test_every_preset_names_patches_the_xml_has(self):
+        # The write-count test above reads the same XML with the same filter, so a misspelled or
+        # missing name would drop out on both sides of it. This one names the culprit.
+        self.assertEqual(self.unknown_names(patches.FPS_PRESETS), [])
+
+    def test_a_misspelled_preset_name_is_reported(self):
+        presets = {'60': ['60 FPS++'], 'uncap': ['Uncap FPS+', 'Sprint Fix (High FPS)']}
+        self.assertEqual(self.unknown_names(presets), [('uncap', 'Uncap FPS+')])
+
 
 class NoteTests(unittest.TestCase):
     """The launcher shows a patch's Note as a tooltip after turning the two characters \\n into a
