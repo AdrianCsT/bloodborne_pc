@@ -122,6 +122,15 @@ class FpsListTests(unittest.TestCase):
                 for offset, data in self.writes(preset):
                     self.assertFalse(offset <= 0x011383CA - EBOOT_BASE < offset + len(data))
 
+    def test_uncap_keeps_the_games_240_fps_ceiling(self):
+        # ps4_cheats' 2026-10-02 Uncap list writes a frame time of 0.0 at three of the four frame
+        # limiter sites, which let the title screen and menus run at 1100 to 1400 FPS. Ours keeps
+        # 1/240 there, the ceiling the older list had, so menus stay at 240 FPS with no frame cap.
+        found = {offset + EBOOT_BASE: data for offset, data in self.writes('uncap')}
+        for address in (0x02434840, 0x0243485A, 0x0243487E, 0x024348B3):
+            with self.subTest(address=hex(address)):
+                self.assertEqual(found[address], bytes.fromhex('41C74424188988883B'))
+
     def test_sprint_fix_stays_with_the_high_frame_rates(self):
         self.assertNotIn('Sprint Fix (High FPS)', patches.FPS_PRESETS['60'])
         for preset in ('90', 'uncap'):

@@ -1211,10 +1211,12 @@ Will help with better input delay/response times for 90 FPS. Remember to change 
             <Line Type="bytes" Address="0x02434854" Value="41C644241400"/>
             <Line Type="bytes" Address="0x02434878" Value="41C644241400"/>
             <Line Type="bytes" Address="0x024348AD" Value="41C644241400"/>
-            <Line Type="bytes" Address="0x02434840" Value="41C744241800000000"/>
-            <Line Type="bytes" Address="0x0243485A" Value="41C744241800000000"/>
+            <!-- bbport: frame time 1/240 at all four limiter sites, as in the older list. ps4_cheats
+                 (2026-10-02) writes 0.0 at three of them, and the menus then ran at 1100+ FPS. -->
+            <Line Type="bytes" Address="0x02434840" Value="41C74424188988883B"/>
+            <Line Type="bytes" Address="0x0243485A" Value="41C74424188988883B"/>
             <Line Type="bytes" Address="0x0243487E" Value="41C74424188988883B"/>
-            <Line Type="bytes" Address="0x024348B3" Value="41C744241800000000"/>
+            <Line Type="bytes" Address="0x024348B3" Value="41C74424188988883B"/>
             <Line Type="bytes" Address="0x024349D5" Value="448B3B"/>
             <Line Type="bytes" Address="0x02418E39" Value="8988883C"/>
             <Line Type="bytes" Address="0x02434883" Value="8988883C"/>
