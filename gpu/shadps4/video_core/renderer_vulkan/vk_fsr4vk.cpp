@@ -167,7 +167,9 @@ constexpr u64 Version411 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (1ull << 12) 
 constexpr u32 FlagHdr = 1u << 0;
 constexpr u32 FlagDepthInverted = 1u << 3;
 constexpr u32 FlagAutoExposure = 1u << 5;
-constexpr u32 FormatRgba16Float = 4, FormatRg16Float = 18;
+// FfxApiSurfaceFormat values. The depth image is D32_SFLOAT_S8_UINT; the provider takes its Vulkan
+// format from the DEPTHTARGET and STENCILTARGET usage flags, and R32_FLOAT is the FFX format it expects.
+constexpr u32 FormatRgba16Float = 4, FormatRg16Float = 18, FormatR32Float = 28;
 constexpr u32 StateUav = 2, StateComputeRead = 4;
 constexpr u32 UsageUav = 1u << 1, UsageDepth = 1u << 2, UsageStencil = 1u << 5;
 constexpr u32 ResourceTexture2d = 2;
@@ -323,9 +325,12 @@ struct Fsr4Vk::Impl {
         QueryPresetCapabilities caps{{QueryPresetCapabilitiesType, nullptr}, 0};
         preset_mask = query(&context, &caps.header) == ReturnOk ? caps.forced_preset_mask : 0;
         QueryProviderVersion name{{QueryProviderVersionType, nullptr}, 0, nullptr};
-        provider_name = query(&context, &name.header) == ReturnOk && name.version_name
-                            ? std::string{"FSR"} + name.version_name
-                            : "fsr4vk";
+        // The provider's names start with a space ("FSR" is prefixed by the host): " 4.1.1 VK INT8".
+        std::string shown = query(&context, &name.header) == ReturnOk && name.version_name
+                                ? name.version_name
+                                : "";
+        shown.erase(0, shown.find_first_not_of(' '));
+        provider_name = shown.empty() ? "fsr4vk" : "FSR " + shown;
         if ((ow | oh) & 1) {
             std::printf("Upscaler: fsr4vk leaves the last row or column of an odd output size "
                         "unwritten (a known 4.1.1 limitation)\n");
@@ -338,6 +343,7 @@ struct Fsr4Vk::Impl {
             return true;
         }
         const u32 id = ProviderPreset[size_t(preset)];
+        std::string model = "automatic (by scale)";
         if (preset_mask & (1u << id)) {
             ConfigurePreset configuration{{ConfigurePresetType, nullptr}, id};
             if (const u32 result = configure(&context, &configuration.header); result != ReturnOk) {
@@ -346,10 +352,14 @@ struct Fsr4Vk::Impl {
                      true);
                 return false;
             }
+            model = std::string{PresetName[size_t(preset)]};
+        } else {
+            std::printf("Upscaler: fsr4vk cannot force the %s model; it picks the model by scale\n",
+                        PresetName[size_t(preset)]);
         }
         configured_preset = preset;
-        described = provider_name + ", " + PresetName[size_t(preset)] + " model, output " +
-                    std::to_string(out_width) + "x" + std::to_string(out_height);
+        described = provider_name + ", " + model + " model, output " + std::to_string(out_width) +
+                    "x" + std::to_string(out_height);
         return true;
     }
 
@@ -444,10 +454,10 @@ struct Fsr4Vk::Impl {
         DispatchUpscale d{};
         d.header.type = DispatchUpscaleType;
         d.command_list = reinterpret_cast<void*>(VkCommandBuffer(f.cmdbuf));
-        // The depth image is D32_SFLOAT_S8_UINT, sampled through its depth aspect.
+        // The depth image is D32_SFLOAT_S8_UINT, sampled through its depth aspect (see FormatR32Float).
         d.color = ResourceOf(f.color, f.render_width, f.render_height, FormatRgba16Float, 0,
                            StateComputeRead);
-        d.depth = ResourceOf(f.depth, f.render_width, f.render_height, 28, UsageDepth | UsageStencil,
+        d.depth = ResourceOf(f.depth, f.render_width, f.render_height, FormatR32Float, UsageDepth | UsageStencil,
                            StateComputeRead);
         d.motion_vectors = ResourceOf(f.motion, f.render_width, f.render_height, FormatRg16Float, 0,
                                     StateComputeRead);
@@ -455,7 +465,10 @@ struct Fsr4Vk::Impl {
                             StateUav);
         d.jitter_offset = {f.jitter[0], f.jitter[1]};
         // Vectors are in render pixels; the provider divides by the render size.
-        d.motion_vector_scale = {1.0f, BbToggle::Disabled(BbToggle::Fsr4MotionYFlip) ? -1.0f : 1.0f};
+        // Intended: the toggle bit is named for what it switches off, and Fsr4MotionYFlip's bit
+        // set means FSR 4 gets y negated (bbport_toggles.h), as in vk_fsr4.cpp. Clear: y stays.
+        const bool flip_y = BbToggle::Disabled(BbToggle::Fsr4MotionYFlip);
+        d.motion_vector_scale = {1.0f, flip_y ? -1.0f : 1.0f};
         d.render_size = {f.render_width, f.render_height};
         d.upscale_size = {f.output.width, f.output.height};
         d.frame_time_delta = f.frame_ms;
