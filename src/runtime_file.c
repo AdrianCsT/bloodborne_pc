@@ -380,10 +380,14 @@ static void current_copy(char *path,size_t size,int write) {
  * file, as under POSIX. Moves the pending commit of every writer of `from` to `to` and orphans
  * the writers of the file `to` replaces; with no `to` (unlink) it orphans the writers of `from`.
  * `done`: the host operation succeeded (when it failed because `from` is missing, the writers'
- * copy is the file). Returns the number of writers of `from`. */
+ * copy is the file). Returns the number of writers of `from`. Called with `lock` held, and held
+ * since before the host operation: a close on another thread cannot commit to the old name in
+ * between. That cannot deadlock: nothing the host operation calls (save_replace, rename, unlink)
+ * takes `lock`, and translate(), which does, ran before. The cost is that other opens and closes
+ * wait for a replace that retries (up to SAVE_REPLACE_BUDGET_MS on Windows, when another program
+ * holds the target), the same wait the renaming thread has. */
 static int writers_follow(const char *from,const char *to,int done) {
     int found=0;
-    pthread_mutex_lock(&lock);
     for (int i=3;i<MAX_FILES;++i)
         if (files[i].used && files[i].commit && !files[i].unlinked && save_same_path(files[i].commit,from)) ++found;
     if (done || found)
@@ -396,7 +400,6 @@ static int writers_follow(const char *from,const char *to,int done) {
                 else if (!to) f->unlinked=1;
             } else if (to && save_same_path(f->commit,to)) f->unlinked=1;
         }
-    pthread_mutex_unlock(&lock);
     return found;
 }
 /* Returns the descriptor of the copy, or -(errno). */
@@ -718,9 +721,14 @@ static int64_t path_op(const char *guest,int op,int mode) {
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
+    const int save=op==2 && save_path(guest);
+    if (save) pthread_mutex_lock(&lock); /* until the writers know (see writers_follow) */
     int r= op==0 ? mkdir(path,mode ? mode : 0755) : op==1 ? rmdir(path) : unlink(path);
     r=r ? -errno : 0;
-    if (op==2 && save_path(guest) && (!r || r==-ENOENT) && writers_follow(path,NULL,!r)) r=0; /* the open writer's copy was the file */
+    if (save) {
+        if ((!r || r==-ENOENT) && writers_follow(path,NULL,!r)) r=0; /* the open writer's copy was the file */
+        pthread_mutex_unlock(&lock);
+    }
     if (save_trace() && save_path(guest)) printf("Save trace: %s(%s) -> %d\n",op==0 ? "mkdir" : op==1 ? "rmdir" : "unlink",guest,r);
     return r;
 }
@@ -732,6 +740,7 @@ static int64_t do_rename(const char *from,const char *to) {
     if (e) return -e;
     int r, save=save_path(from) || save_path(to);
     char detail[128]="";
+    if (save) pthread_mutex_lock(&lock); /* until the writers know (see writers_follow) */
 #ifdef _WIN32
     /* POSIX rename replaces an existing target; the CRT's fails. Saves go through the replace of
      * their own copies: it retries while another program holds the target. */
@@ -741,7 +750,10 @@ static int64_t do_rename(const char *from,const char *to) {
     r=rename(a,b) ? -errno : 0;
 #endif
     /* Open writers of the file follow it to its new name (their copy was the file, if it is missing). */
-    if (save && (!r || r==-ENOENT) && !save_same_path(a,b) && writers_follow(a,b,!r)) r=0;
+    if (save) {
+        if ((!r || r==-ENOENT) && !save_same_path(a,b) && writers_follow(a,b,!r)) r=0;
+        pthread_mutex_unlock(&lock);
+    }
 #ifdef _WIN32
     if (save && r) fprintf(stderr,"Runtime: rename(%s, %s) failed (%s%s%s)\n",from,to,strerror(-r),detail[0] ? ", " : "",detail);
 #else
