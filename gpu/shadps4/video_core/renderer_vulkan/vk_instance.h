@@ -313,6 +313,22 @@ public:
         return IsFsr4Int8Supported() && mixed_float_dot_product;
     }
 
+    /// bbport: FSR 4.1.1 through the fsr4vk provider DLL (Windows): standard Vulkan features only,
+    /// requested at device creation when the DLL is installed (Fsr4Vk::FilesPresent).
+    bool IsFsr4VkSupported() const {
+        return fsr4vk;
+    }
+
+    /// bbport: FSR 4.1.1 can run, by the replay (IsFsr411Supported) or through fsr4vk.
+    bool IsFsr411Available() const {
+        return IsFsr4Int8Supported() && (mixed_float_dot_product || fsr4vk);
+    }
+
+    /// bbport: robustBufferAccess is enabled on the device (descriptor sizes depend on it).
+    bool IsRobustBufferAccessEnabled() const {
+        return features.robustBufferAccess;
+    }
+
     /// bbport: FSR 4.1.1's FP8 matrix variant (RDNA4): FP8 cooperative matrices, the Vulkan
     /// memory model, wave32 in full subgroups.
     bool IsFsr411Fp8Supported() const {
@@ -605,6 +621,7 @@ private:
     bool shader_clock{};
     bool compute_shader_derivatives{};
     bool mixed_float_dot_product{}; // bbport: VK_VALVE_shader_mixed_float_dot_product (FSR 4.1.1)
+    bool fsr4vk{};                  // bbport: the device features of the fsr4vk provider are enabled
     bool cooperative_matrix{};      // bbport: VK_KHR_cooperative_matrix (FSR 4.1.1 FP8 variant)
     bool shader_float8{};           // bbport: VK_EXT_shader_float8 with FP8 matrices (RDNA4)
     bool supports_memory_budget{};

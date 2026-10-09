@@ -15,6 +15,7 @@
 #include "ffx_vk_fsr4_v07_assets.h"
 #include "bbport_settings.h"
 #include "video_core/renderer_vulkan/fsr411/fsr411.h"
+#include "video_core/renderer_vulkan/vk_fsr4vk.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 
@@ -72,6 +73,9 @@ struct Fsr4Upscaler::Impl {
     std::unique_ptr<Fsr411::Upscaler> fsr411;
     std::deque<u64> fsr411_ticks; ///< scheduler ticks of its recent frames (constant ring)
     std::string fsr411_described;
+    // bbport: FSR 4.1.1 through the fsr4vk provider DLL where the replay cannot run (Windows).
+    std::unique_ptr<Fsr4Vk> fsr4vk;
+    std::string fsr4vk_described;
 
     Impl(const Instance& instance_, Scheduler& scheduler_)
         : instance{instance_}, scheduler{scheduler_} {}
@@ -235,10 +239,33 @@ struct Fsr4Upscaler::Impl {
         return ffxFsr4VkSetExternalImageState(&backend, &state);
     }
 
-    bool Record411(const Frame& f) {
-        if (!instance.IsFsr411Supported()) {
-            Fail("FSR 4.1.1 needs INT8 dot products and VK_VALVE_shader_mixed_float_dot_product", true);
+    bool RecordFsr4Vk(const Frame& f) {
+        if (!fsr4vk) {
+            fsr4vk = std::make_unique<Fsr4Vk>(instance, scheduler);
+        }
+        if (!fsr4vk->Record(f)) {
+            const char* reason = fsr4vk->Problem();
+            Fail(std::string{"FSR 4.1.1 (fsr4vk): "} + (reason ? reason : "dispatch failed"),
+                 fsr4vk->Fatal());
             return false;
+        }
+        if (const std::string d = fsr4vk->Describe(); d != fsr4vk_described) {
+            fsr4vk_described = d;
+            std::printf("Upscaler: FSR 4.1.1 through fsr4vk, %s\n", d.c_str());
+        }
+        problem.clear();
+        return true;
+    }
+
+    bool Record411(const Frame& f) {
+        if (!instance.IsFsr411Available()) {
+            Fail("FSR 4.1.1 needs INT8 dot products and either VK_VALVE_shader_mixed_float_dot_product "
+                 "or the fsr4vk files",
+                 true);
+            return false;
+        }
+        if (!instance.IsFsr411Supported()) {
+            return RecordFsr4Vk(f);
         }
         if (!fsr411) {
             const char* env = std::getenv("BB_FSR411_DIR");

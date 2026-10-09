@@ -1,0 +1,524 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <deque>
+#include <string>
+#include <type_traits>
+
+#include "video_core/renderer_vulkan/vk_fsr4vk.h"
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+#include "bbport_toggles.h"
+#include "video_core/renderer_vulkan/vk_instance.h"
+#include "video_core/renderer_vulkan/vk_scheduler.h"
+#endif
+
+namespace Vulkan {
+
+namespace {
+
+constexpr char LibraryName[] = "amd_fidelityfx_upscaler_vk.dll";
+
+std::filesystem::path ExecutableDirectory() {
+#ifdef _WIN32
+    std::wstring path(MAX_PATH, L'\0');
+    const DWORD length = GetModuleFileNameW(nullptr, path.data(), DWORD(path.size()));
+    path.resize(length);
+    return std::filesystem::path{path}.parent_path();
+#else
+    return {};
+#endif
+}
+
+} // namespace
+
+std::filesystem::path Fsr4Vk::Directory() {
+    if (const char* dir = std::getenv("BB_FSR4VK_DIR"); dir && dir[0]) {
+        return dir;
+    }
+    return ExecutableDirectory() / "fsr4vk";
+}
+
+bool Fsr4Vk::FilesPresent() {
+#ifdef _WIN32
+    const char* setting = std::getenv("BB_FSR4VK");
+    if (setting && setting[0] == '0') {
+        return false;
+    }
+    std::error_code error;
+    return std::filesystem::is_regular_file(Directory() / LibraryName, error);
+#else
+    return false;
+#endif
+}
+
+#ifdef _WIN32
+
+namespace {
+
+// The ABI of the FFX API (AMD FidelityFX SDK api/include/ffx_api.h, ffx_api_types.h and
+// upscalers/include/ffx_upscale.h, MIT) as fsr4vk's provider implements it, plus fsr4vk's own
+// descriptors (provider/ffx_vk_*.h in its repository). The port's headers are newer than the SDK
+// this provider was built with, so the layouts are repeated here and checked below.
+using StructType = u64;
+struct Header {
+    StructType type;
+    Header* next;
+};
+struct Dimensions {
+    u32 width, height;
+};
+struct Float2 {
+    float x, y;
+};
+struct ResourceDescription {
+    u32 type, format, width, height, depth, mip_count, flags, usage;
+};
+struct Resource {
+    void* resource;
+    ResourceDescription description;
+    u32 state;
+};
+using Message = void (*)(u32 type, const wchar_t* text);
+struct CreateUpscale {
+    Header header;
+    u32 flags;
+    Dimensions max_render_size, max_upscale_size;
+    Message message;
+};
+struct DispatchUpscale {
+    Header header;
+    void* command_list;
+    Resource color, depth, motion_vectors, exposure, reactive, transparency_and_composition, output;
+    Float2 jitter_offset, motion_vector_scale;
+    Dimensions render_size, upscale_size;
+    bool enable_sharpening;
+    float sharpness, frame_time_delta, pre_exposure;
+    bool reset;
+    float camera_near, camera_far, camera_fov_vertical, view_space_to_meters;
+    u32 flags;
+};
+struct OverrideVersion {
+    Header header;
+    u64 version_id;
+};
+struct BackendVk {
+    Header header;
+    VkDevice device;
+    VkPhysicalDevice physical_device;
+    PFN_vkGetDeviceProcAddr get_device_proc_addr;
+};
+struct ApiVersion {
+    Header header;
+    u32 api_version;
+};
+struct QueryDeviceFeatures {
+    Header header;
+    u32 version;
+};
+struct CreateDeviceFeatures {
+    Header header;
+    u32 enabled_flags, api_version, queue_family_index;
+};
+struct QueryProviderVersion {
+    Header header;
+    u64 version_id;
+    const char* version_name;
+};
+struct QueryPresetCapabilities {
+    Header header;
+    u32 forced_preset_mask;
+};
+struct ConfigurePreset {
+    Header header;
+    u32 preset;
+};
+static_assert(sizeof(Resource) == 48 && sizeof(CreateUpscale) == 48 && sizeof(DispatchUpscale) == 432 &&
+              sizeof(OverrideVersion) == 24);
+static_assert(offsetof(CreateUpscale, max_upscale_size) == 28 && offsetof(CreateUpscale, message) == 40);
+static_assert(offsetof(DispatchUpscale, output) == 312 && offsetof(DispatchUpscale, jitter_offset) == 360 &&
+              offsetof(DispatchUpscale, enable_sharpening) == 392 &&
+              offsetof(DispatchUpscale, reset) == 408 && offsetof(DispatchUpscale, flags) == 428);
+
+constexpr StructType CreateUpscaleType = 0x00010000u;
+constexpr StructType DispatchUpscaleType = 0x00010001u;
+constexpr StructType OverrideVersionType = 5u;
+constexpr StructType QueryProviderVersionType = 6u;
+constexpr StructType BackendVkType = 3u;
+constexpr StructType ApiVersionType = 0x46535234564b4150ull;
+constexpr StructType QueryDeviceFeaturesType = 0x4653523444455651ull;
+constexpr StructType CreateDeviceFeaturesType = 0x4653523444455643ull;
+constexpr StructType QueryPresetCapabilitiesType = 0x4653523450434150ull;
+constexpr StructType ConfigurePresetType = 0x4653523450534554ull;
+// (4 << 22) | (1 << 12) | 1 under the provider's 0xF5A5CA1E tag: FSR 4.1.1 INT8.
+constexpr u64 Version411 = (0xF5A5CA1Eull << 32) | ((4ull << 22) | (1ull << 12) | 1ull);
+
+constexpr u32 FlagHdr = 1u << 0;
+constexpr u32 FlagDepthInverted = 1u << 3;
+constexpr u32 FlagAutoExposure = 1u << 5;
+constexpr u32 FormatRgba16Float = 4, FormatRg16Float = 18;
+constexpr u32 StateUav = 2, StateComputeRead = 4;
+constexpr u32 UsageUav = 1u << 1, UsageDepth = 1u << 2, UsageStencil = 1u << 5;
+constexpr u32 ResourceTexture2d = 2;
+constexpr u32 DeviceRobustBufferAccess = 1;
+constexpr u32 ReturnOk = 0;
+// The provider keeps eight descriptor, constant and view slots; the ninth outstanding frame
+// would overwrite the first one's.
+constexpr size_t FramesInFlight = 8;
+// 0 native, 1 quality, 2 balanced, 3 performance, 4 drs, 5 ultra performance; the port's
+// presets 0..4 skip DRS.
+constexpr std::array<u32, 5> ProviderPreset{0, 1, 2, 3, 5};
+constexpr std::array<const char*, 5> PresetName{"native", "quality", "balanced", "performance",
+                                                "ultra performance"};
+
+using CreateContext = u32 (*)(void** context, Header* desc, const void* callbacks);
+using DestroyContext = u32 (*)(void** context, const void* callbacks);
+using Configure = u32 (*)(void** context, const Header* desc);
+using Query = u32 (*)(void** context, Header* desc);
+using Dispatch = u32 (*)(void** context, const Header* desc);
+
+void ProviderMessage(u32 type, const wchar_t* text) {
+    std::printf("Upscaler: fsr4vk %s: %ls\n", type == 0 ? "error" : "warning", text ? text : L"");
+}
+
+const char* ReturnName(u32 code) {
+    static constexpr std::array<const char*, 8> names{
+        "ok",        "error",          "unknown descriptor type", "runtime error",
+        "no provider", "out of memory", "invalid parameter",       "descriptor type too new"};
+    return code < names.size() ? names[code] : "unknown";
+}
+
+} // namespace
+
+struct Fsr4Vk::Impl {
+    const Instance& instance;
+    Scheduler& scheduler;
+    HMODULE module{};
+    CreateContext create{};
+    DestroyContext destroy{};
+    Configure configure{};
+    Query query{};
+    Dispatch dispatch{};
+    void* context{};
+    u32 out_width{}, out_height{};
+    u32 preset_mask{};
+    int configured_preset{-1};
+    std::deque<u64> ticks; ///< scheduler ticks of the frames in flight (the provider's slot ring)
+    std::string problem, described, provider_name;
+    bool fatal{};
+
+    Impl(const Instance& instance_, Scheduler& scheduler_)
+        : instance{instance_}, scheduler{scheduler_} {}
+
+    ~Impl() {
+        DestroyContextNow(false);
+    }
+
+    /// Fsr4Upscaler logs the reason and the fallback to FSR 3.1.
+    void Fail(std::string reason, bool permanent) {
+        problem = std::move(reason);
+        fatal |= permanent;
+    }
+
+    /// `recording`: called from Record() on the command buffer being recorded, so only the earlier
+    /// submissions are waited for.
+    void DestroyContextNow(bool recording) {
+        if (!context) {
+            return;
+        }
+        if (recording) {
+            scheduler.WaitSubmittedWork();
+        } else {
+            scheduler.Finish();
+        }
+        destroy(&context, nullptr);
+        context = nullptr;
+        ticks.clear();
+        configured_preset = -1;
+        described.clear();
+    }
+
+    bool Load() {
+        if (module) {
+            return true;
+        }
+        const auto path = Fsr4Vk::Directory() / LibraryName;
+        module = LoadLibraryW(path.c_str());
+        if (!module) {
+            Fail("cannot load " + path.string() + " (error " + std::to_string(GetLastError()) + ")",
+                 true);
+            return false;
+        }
+        bool complete = true;
+        const auto load = [&](auto& function, const char* name) {
+            function = reinterpret_cast<std::remove_reference_t<decltype(function)>>(
+                GetProcAddress(module, name));
+            complete = complete && function;
+        };
+        load(create, "ffxCreateContext");
+        load(destroy, "ffxDestroyContext");
+        load(configure, "ffxConfigure");
+        load(query, "ffxQuery");
+        load(dispatch, "ffxDispatch");
+        if (!complete) {
+            Fail(path.string() + " is not an FFX API provider", true);
+            return false;
+        }
+        return true;
+    }
+
+    bool CreateContextNow(u32 ow, u32 oh) {
+        if (ow < 64 || oh < 64 || ow > 3840 || oh > 2160) {
+            Fail("output size " + std::to_string(ow) + "x" + std::to_string(oh) +
+                     " is outside 64x64 to 3840x2160",
+                 true);
+            return false;
+        }
+        CreateUpscale desc{};
+        desc.header.type = CreateUpscaleType;
+        desc.flags = FlagHdr | FlagDepthInverted | FlagAutoExposure;
+        desc.max_render_size = {ow, oh};
+        desc.max_upscale_size = {ow, oh};
+        desc.message = ProviderMessage;
+        OverrideVersion version{{OverrideVersionType, nullptr}, Version411};
+        BackendVk backend{{BackendVkType, nullptr},
+                          VkDevice(instance.GetDevice()),
+                          VkPhysicalDevice(instance.GetPhysicalDevice()),
+                          VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr};
+        ApiVersion api{{ApiVersionType, nullptr}, VK_API_VERSION_1_3};
+        QueryDeviceFeatures features_query{{QueryDeviceFeaturesType, nullptr}, 0};
+        CreateDeviceFeatures features{{CreateDeviceFeaturesType, nullptr},
+                                      instance.IsRobustBufferAccessEnabled()
+                                          ? DeviceRobustBufferAccess
+                                          : 0u,
+                                      VK_API_VERSION_1_3, instance.GetGraphicsQueueFamilyIndex()};
+        desc.header.next = &version.header;
+        version.header.next = &backend.header;
+        backend.header.next = &api.header;
+        api.header.next = nullptr;
+        // The device snapshot is optional: a provider that does not know it gets none.
+        if (query(nullptr, &features_query.header) == ReturnOk && features_query.version >= 1) {
+            api.header.next = &features.header;
+        }
+        if (const u32 result = create(&context, &desc.header, nullptr); result != ReturnOk) {
+            context = nullptr;
+            Fail(std::string{"context creation failed: "} + ReturnName(result) + " (" +
+                     std::to_string(result) + "); the provider may lack FSR 4.1.1 or a device feature",
+                 true);
+            return false;
+        }
+        out_width = ow;
+        out_height = oh;
+        QueryPresetCapabilities caps{{QueryPresetCapabilitiesType, nullptr}, 0};
+        preset_mask = query(&context, &caps.header) == ReturnOk ? caps.forced_preset_mask : 0;
+        QueryProviderVersion name{{QueryProviderVersionType, nullptr}, 0, nullptr};
+        provider_name = query(&context, &name.header) == ReturnOk && name.version_name
+                            ? std::string{"FSR"} + name.version_name
+                            : "fsr4vk";
+        if ((ow | oh) & 1) {
+            std::printf("Upscaler: fsr4vk leaves the last row or column of an odd output size "
+                        "unwritten (a known 4.1.1 limitation)\n");
+        }
+        return true;
+    }
+
+    bool SelectPreset(int preset) {
+        if (preset == configured_preset) {
+            return true;
+        }
+        const u32 id = ProviderPreset[size_t(preset)];
+        if (preset_mask & (1u << id)) {
+            ConfigurePreset configuration{{ConfigurePresetType, nullptr}, id};
+            if (const u32 result = configure(&context, &configuration.header); result != ReturnOk) {
+                Fail(std::string{"cannot select the "} + PresetName[size_t(preset)] +
+                         " model: " + ReturnName(result),
+                     true);
+                return false;
+            }
+        }
+        configured_preset = preset;
+        described = provider_name + ", " + PresetName[size_t(preset)] + " model, output " +
+                    std::to_string(out_width) + "x" + std::to_string(out_height);
+        return true;
+    }
+
+    /// The inputs and the output are General; the provider reads its inputs as shader-read-only
+    /// images and writes the output as a storage image.
+    void Transition(vk::CommandBuffer cmdbuf, const Fsr4Upscaler::Frame& f, bool to_read_only) {
+        const std::array<std::pair<const Fsr4Upscaler::Image*, vk::ImageAspectFlags>, 3> inputs{{
+            {&f.color, vk::ImageAspectFlagBits::eColor},
+            {&f.depth, vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil},
+            {&f.motion, vk::ImageAspectFlagBits::eColor},
+        }};
+        std::array<vk::ImageMemoryBarrier2, 3> barriers;
+        for (size_t i = 0; i < inputs.size(); ++i) {
+            barriers[i] = vk::ImageMemoryBarrier2{
+                .srcStageMask = to_read_only ? vk::PipelineStageFlagBits2::eAllCommands
+                                             : vk::PipelineStageFlagBits2::eComputeShader,
+                .srcAccessMask = to_read_only ? vk::AccessFlagBits2::eMemoryWrite
+                                              : vk::AccessFlagBits2::eShaderRead,
+                .dstStageMask = to_read_only ? vk::PipelineStageFlagBits2::eComputeShader
+                                             : vk::PipelineStageFlagBits2::eAllCommands,
+                .dstAccessMask = to_read_only ? vk::AccessFlagBits2::eShaderRead
+                                              : vk::AccessFlagBits2::eMemoryRead |
+                                                    vk::AccessFlagBits2::eMemoryWrite,
+                .oldLayout = to_read_only ? vk::ImageLayout::eGeneral
+                                          : vk::ImageLayout::eShaderReadOnlyOptimal,
+                .newLayout = to_read_only ? vk::ImageLayout::eShaderReadOnlyOptimal
+                                          : vk::ImageLayout::eGeneral,
+                .image = inputs[i].first->image,
+                .subresourceRange = {inputs[i].second, 0, 1, 0, 1},
+            };
+        }
+        // The output: earlier users are done before the provider writes it, and its writes are
+        // visible to everything after.
+        const vk::MemoryBarrier2 memory{
+            .srcStageMask = to_read_only ? vk::PipelineStageFlagBits2::eAllCommands
+                                         : vk::PipelineStageFlagBits2::eComputeShader,
+            .srcAccessMask = to_read_only ? vk::AccessFlagBits2::eMemoryRead |
+                                                vk::AccessFlagBits2::eMemoryWrite
+                                          : vk::AccessFlagBits2::eShaderStorageWrite,
+            .dstStageMask = to_read_only ? vk::PipelineStageFlagBits2::eComputeShader
+                                         : vk::PipelineStageFlagBits2::eAllCommands,
+            .dstAccessMask = to_read_only ? vk::AccessFlagBits2::eShaderStorageRead |
+                                                vk::AccessFlagBits2::eShaderStorageWrite
+                                          : vk::AccessFlagBits2::eMemoryRead |
+                                                vk::AccessFlagBits2::eMemoryWrite,
+        };
+        cmdbuf.pipelineBarrier2({.memoryBarrierCount = 1,
+                                 .pMemoryBarriers = &memory,
+                                 .imageMemoryBarrierCount = u32(barriers.size()),
+                                 .pImageMemoryBarriers = barriers.data()});
+    }
+
+    static Resource ResourceOf(const Fsr4Upscaler::Image& image, u32 width, u32 height, u32 format,
+                             u32 usage, u32 state) {
+        Resource r{};
+        r.resource = reinterpret_cast<void*>(VkImage(image.image));
+        r.description = {ResourceTexture2d, format, width, height, 1, 1, 0, usage};
+        r.state = state;
+        return r;
+    }
+
+    bool Record(const Fsr4Upscaler::Frame& f) {
+        if (fatal) {
+            return false;
+        }
+        if (!Load()) {
+            return false;
+        }
+        // The provider reads the render-size part from the origin of each input.
+        const auto exact = [&](const Fsr4Upscaler::Image& image) {
+            return image.width == f.render_width && image.height == f.render_height;
+        };
+        if (!exact(f.color) || !exact(f.depth) || !exact(f.motion)) {
+            Fail("the scene targets are larger than the render size (fixed render resolution mode)",
+                 true);
+            return false;
+        }
+        if (!context || f.output.width != out_width || f.output.height != out_height) {
+            DestroyContextNow(true);
+            if (!CreateContextNow(f.output.width, f.output.height)) {
+                return false;
+            }
+        }
+        if (!SelectPreset(std::clamp(f.preset, 0, 4))) {
+            return false;
+        }
+        // The provider's slot ring holds FramesInFlight frames: the oldest must be done.
+        while (ticks.size() >= FramesInFlight) {
+            scheduler.Wait(ticks.front());
+            ticks.pop_front();
+        }
+        DispatchUpscale d{};
+        d.header.type = DispatchUpscaleType;
+        d.command_list = reinterpret_cast<void*>(VkCommandBuffer(f.cmdbuf));
+        // The depth image is D32_SFLOAT_S8_UINT, sampled through its depth aspect.
+        d.color = ResourceOf(f.color, f.render_width, f.render_height, FormatRgba16Float, 0,
+                           StateComputeRead);
+        d.depth = ResourceOf(f.depth, f.render_width, f.render_height, 28, UsageDepth | UsageStencil,
+                           StateComputeRead);
+        d.motion_vectors = ResourceOf(f.motion, f.render_width, f.render_height, FormatRg16Float, 0,
+                                    StateComputeRead);
+        d.output = ResourceOf(f.output, f.output.width, f.output.height, FormatRgba16Float, UsageUav,
+                            StateUav);
+        d.jitter_offset = {f.jitter[0], f.jitter[1]};
+        // Vectors are in render pixels; the provider divides by the render size.
+        d.motion_vector_scale = {1.0f, BbToggle::Disabled(BbToggle::Fsr4MotionYFlip) ? -1.0f : 1.0f};
+        d.render_size = {f.render_width, f.render_height};
+        d.upscale_size = {f.output.width, f.output.height};
+        d.frame_time_delta = f.frame_ms;
+        d.pre_exposure = 1.0f;
+        d.reset = f.reset;
+        d.camera_near = f.near_plane;
+        d.camera_far = f.far_plane;
+        d.camera_fov_vertical = f.vertical_fov;
+        d.view_space_to_meters = 1.0f;
+        Transition(f.cmdbuf, f, true);
+        const u32 result = dispatch(&context, &d.header);
+        Transition(f.cmdbuf, f, false);
+        if (result != ReturnOk) {
+            Fail(std::string{"dispatch failed: "} + ReturnName(result) + " (" +
+                     std::to_string(result) + ")",
+                 true);
+            return false;
+        }
+        ticks.push_back(scheduler.CurrentTick());
+        problem.clear();
+        return true;
+    }
+};
+
+Fsr4Vk::Fsr4Vk(const Instance& instance, Scheduler& scheduler)
+    : impl{std::make_unique<Impl>(instance, scheduler)} {}
+
+Fsr4Vk::~Fsr4Vk() = default;
+
+bool Fsr4Vk::Record(const Fsr4Upscaler::Frame& frame) {
+    return impl->Record(frame);
+}
+
+const char* Fsr4Vk::Problem() const noexcept {
+    return impl->problem.empty() ? nullptr : impl->problem.c_str();
+}
+
+bool Fsr4Vk::Fatal() const noexcept {
+    return impl->fatal;
+}
+
+std::string Fsr4Vk::Describe() const {
+    return impl->described;
+}
+
+#else
+
+struct Fsr4Vk::Impl {};
+Fsr4Vk::Fsr4Vk(const Instance&, Scheduler&) {}
+Fsr4Vk::~Fsr4Vk() = default;
+bool Fsr4Vk::Record(const Fsr4Upscaler::Frame&) {
+    return false;
+}
+const char* Fsr4Vk::Problem() const noexcept {
+    return "fsr4vk is built for Windows only";
+}
+bool Fsr4Vk::Fatal() const noexcept {
+    return true;
+}
+std::string Fsr4Vk::Describe() const {
+    return {};
+}
+
+#endif
+
+} // namespace Vulkan

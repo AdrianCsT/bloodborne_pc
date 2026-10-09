@@ -196,6 +196,8 @@ private:
                     bool hdr);
     /// bbport: XeSS selected and ready (libxess.dll, a GPU with DP4a).
     [[nodiscard]] bool UseXess() const;
+    /// The upscaler has no sharpening of its own: ExtraSharpen covers the menu's whole 0..2.
+    [[nodiscard]] bool FullRangeSharpen() const;
     /// Records XeSS into `cmdbuf` (output in General). `hdr`: linear scene color input.
     bool RecordXess(vk::CommandBuffer cmdbuf, const Xess::Resource& color,
                     const Xess::Resource& depth, u32 w, u32 h, u32 ow, u32 oh, bool hdr);
