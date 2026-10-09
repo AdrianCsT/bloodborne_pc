@@ -47,6 +47,10 @@ Starting
   is still offered the final release when it comes out).
 - Advanced -> "Launcher language": English, Russian, Arabic, Spanish, Portuguese, French,
   German, Italian, Polish, Turkish, Chinese, Japanese, Korean (default: the Windows language).
+- Advanced -> Display & FPS -> "Monitor" (shown with more than one monitor) picks the monitor
+  the game opens on; "Primary monitor" is the default. The launcher saves the monitor's name and
+  starts the game with BB_DISPLAY set to it. If that monitor is not connected the launcher says
+  so and the game uses the primary one. BB_DISPLAY also takes a monitor number (1, 2, ...).
 - Advanced -> "Experimental features" (off by default) unlocks options that are still being
   tested; the launcher marks them (experimental). For now that is object motion vectors on AMD
   graphics cards, which the game keeps off there because they cost frame rate and drew some

@@ -234,7 +234,7 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'check_updates': True, 'ui_advanced': False, 'animations': True,
                 'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False,
                 'beta_versions': is_prerelease(VERSION),  # a beta user keeps getting betas unless they say no
-                'experimental': False}
+                'experimental': False, 'monitor': ''}  # monitor: a name from --displays; '' is the primary
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
@@ -415,6 +415,58 @@ def parse_upscaler_support(output):
     return support
 
 
+def gpu_tool():
+    """(bb-gpu-capabilities.exe, the environment to run it with): the packaged copy, else out/."""
+    exe = PORT_DIR / 'bin' / 'bb-gpu-capabilities.exe'
+    if not exe.is_file():
+        exe = PORT_DIR / 'out' / 'bb-gpu-capabilities.exe'
+    env = dict(os.environ)
+    if not (exe.parent / 'SDL3.dll').is_file():
+        clang64 = Path(os.environ.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
+        env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
+    return exe, env
+
+
+def parse_displays(output):
+    """The monitors of `bb-gpu-capabilities --displays`: one tab-separated line each (number from 1,
+    name, WxH, refresh Hz or 0, primary 1/0). Lines that do not fit are skipped."""
+    monitors = []
+    for line in output.splitlines():
+        fields = line.rstrip('\r\n').split('\t')
+        if len(fields) == 5 and fields[0].isdigit() and fields[3].isdigit() and fields[1].strip():
+            monitors.append({'number': int(fields[0]), 'name': fields[1].strip(), 'size': fields[2],
+                             'hz': int(fields[3]), 'primary': fields[4] == '1'})
+    return monitors
+
+
+def display_label(monitor):
+    """'2: DELL U2417H, 1920x1080, 60 Hz' (no Hz part when the refresh rate is unknown)."""
+    parts = [f"{monitor['number']}: {monitor['name']}", monitor['size']]
+    if monitor['hz']:
+        parts.append(f"{monitor['hz']} Hz")
+    return ', '.join(parts)
+
+
+_displays = None
+
+
+def connected_displays():
+    """The monitors the game would see, asked of bb-gpu-capabilities once per run ([] when it fails).
+    Run it off the window's thread."""
+    global _displays
+    if _displays is None:
+        _displays = []
+        exe, env = gpu_tool()
+        try:
+            result = subprocess.run([str(exe), '--displays'], capture_output=True, text=True, encoding='utf-8',
+                                    errors='replace', timeout=30, env=env, creationflags=NO_WINDOW)
+            if result.returncode == 0:
+                _displays = parse_displays(result.stdout)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return _displays
+
+
 def upscaler_state(name, support, assets_missing):
     """('ok' | 'slow' | 'no', reason) of one upscaler. support is None until the GPU check has run (and
     when it could not): then only the missing FSR 4 assets are known."""
@@ -593,6 +645,8 @@ def game_environment(s, frame_generation=None):
     if str(s.get('addcont', '')).strip():
         env['BB_ADDCONT'] = str(s['addcont']).strip()
     env['BB_FULLSCREEN'] = '1' if s['fullscreen'] else '0'
+    if str(s.get('monitor', '')).strip():  # the game opens on the primary monitor when this one is gone
+        env['BB_DISPLAY'] = str(s['monitor']).strip()
     env['BB_PRESENT_MODE'] = s['present_mode']
     if s['hdr']:
         env['BB_HDR'] = '1'
@@ -2551,6 +2605,10 @@ class Launcher:
         self.check(f, 'hdr', 'app', _('Allow HDR output', 'Разрешить HDR'),
                    _('When HDR is on in Windows and the display supports it.',
                      'Если HDR включён в Windows и монитор его поддерживает.'))
+        # Filled by apply_displays once the monitors are known; absent with a single monitor.
+        self.monitor_frame = self.tk.Frame(f, bg=CARD)
+        self.monitor_frame.grid(row=self.next_row(f), column=0, columnspan=2, sticky='we')
+        self.monitor_frame.grid_remove()
 
     def build_game(self):
         page = self.scrolled_page('game', _('Game & effects', 'Игра и эффекты'),
@@ -2768,13 +2826,7 @@ class Launcher:
         return f'{_(*fps)}   ·   {upscaler}   ·   {output}'
 
     def detect_gpu(self):
-        exe = PORT_DIR / 'bin' / 'bb-gpu-capabilities.exe'
-        if not exe.is_file():
-            exe = PORT_DIR / 'out' / 'bb-gpu-capabilities.exe'
-        env = dict(os.environ)
-        if not (exe.parent / 'SDL3.dll').is_file():
-            clang64 = Path(os.environ.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
-            env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
+        exe, env = gpu_tool()
         text = _('• Graphics card: not checked', '• Видеокарта: не проверена')
         try:
             # What each upscaler needs of this PC; unknown (every upscaler offered) when this fails.
@@ -2797,6 +2849,28 @@ class Launcher:
         self.gpu_text, self.gpu_checking = text, False
         self.ui_calls.put(self.apply_upscaler_support)
         self.ui_calls.put(self.refresh_status)
+        connected_displays()  # asked here, off the window's thread; the picker is filled from the cache
+        self.ui_calls.put(self.apply_displays)
+
+    def apply_displays(self):
+        """The monitor picker of Display & FPS: shown only when the PC has more than one monitor."""
+        shown = connected_displays()
+        if len(shown) < 2:
+            return
+        saved = str(self.var('monitor', 'app').get())
+        names = [monitor['name'] for monitor in shown]
+        note = (_('The saved monitor "{}" is not connected; the primary monitor is used.',
+                  'Сохранённый монитор «{}» не подключён; используется основной.').format(saved)
+                if saved and saved not in names else None)
+        # The game takes the first monitor whose name contains the saved one: twins of one model share an entry.
+        options = [('', ('Primary monitor', 'Основной монитор'))] + [
+            (monitor['name'], (display_label(monitor),)) for index, monitor in enumerate(shown)
+            if monitor['name'] not in names[:index]]
+        self.row(self.monitor_frame, _('Monitor', 'Монитор'), self.choice(self.monitor_frame, 'monitor', 'app', options),
+                 note or _('Which monitor the game opens on. The primary monitor is used when the chosen one is '
+                           'not connected.', 'На каком мониторе откроется игра. Если выбранный не подключён, '
+                           'используется основной.'))
+        self.monitor_frame.grid()
 
     def refresh_fsr4(self):
         total, missing = len(fsr4_files()), len(fsr4_missing())

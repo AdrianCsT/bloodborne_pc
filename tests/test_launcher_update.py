@@ -171,6 +171,80 @@ class ExperimentalTests(unittest.TestCase):
         self.assertNotIn('Off on AMD graphics cards', on)
 
 
+DISPLAYS = '1\tQ27GAZD\t2560x1440\t240\t1\n2\tDELL U2417H\t1920x1080\t60\t0\n'
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class MonitorPickerTests(unittest.TestCase):
+    """The monitor list of bb-gpu-capabilities --displays and BB_DISPLAY (same file: launcher settings)."""
+
+    def setUp(self):
+        launcher._displays = None
+        self.addCleanup(setattr, launcher, '_displays', None)
+
+    def run_tool(self, stdout='', returncode=0, error=None):
+        result = types.SimpleNamespace(stdout=stdout, stderr='', returncode=returncode)
+        return mock.patch.object(launcher.subprocess, 'run', side_effect=error, return_value=result)
+
+    def test_the_tool_output_becomes_labelled_monitors(self):
+        monitors = launcher.parse_displays(DISPLAYS)
+        self.assertEqual([m['name'] for m in monitors], ['Q27GAZD', 'DELL U2417H'])
+        self.assertEqual([m['primary'] for m in monitors], [True, False])
+        self.assertEqual([launcher.display_label(m) for m in monitors],
+                         ['1: Q27GAZD, 2560x1440, 240 Hz', '2: DELL U2417H, 1920x1080, 60 Hz'])
+
+    def test_an_unknown_refresh_rate_has_no_hz_part(self):
+        self.assertEqual(launcher.display_label(launcher.parse_displays('3\tTV\t3840x2160\t0\t0\n')[0]),
+                         '3: TV, 3840x2160')
+
+    def test_empty_output_and_bad_lines_mean_no_monitors(self):
+        self.assertEqual(launcher.parse_displays(''), [])
+        self.assertEqual(launcher.parse_displays('error: SDL\nx\ty\n1\t\t1x1\t0\t1\n'), [])
+
+    def test_the_tool_runs_once_per_run(self):
+        with self.run_tool(DISPLAYS) as run:
+            first, second = launcher.connected_displays(), launcher.connected_displays()
+        self.assertEqual(run.call_count, 1)
+        self.assertIs(first, second)
+        self.assertEqual(run.call_args[0][0][1], '--displays')
+        self.assertEqual(len(first), 2)
+
+    def test_a_failing_tool_gives_no_monitors_and_is_not_asked_again(self):
+        with self.run_tool(returncode=1) as run:
+            self.assertEqual(launcher.connected_displays(), [])
+            self.assertEqual(launcher.connected_displays(), [])
+        self.assertEqual(run.call_count, 1)
+        launcher._displays = None
+        with self.run_tool(error=OSError('missing')):
+            self.assertEqual(launcher.connected_displays(), [])
+        launcher._displays = None
+        with self.run_tool(error=launcher.subprocess.TimeoutExpired('tool', 30)):
+            self.assertEqual(launcher.connected_displays(), [])
+
+    def environment(self, monitor):
+        settings = {**launcher.APP_DEFAULTS, 'game_dir': 'G', 'monitor': monitor}
+        with mock.patch.dict(launcher.os.environ), mock.patch.object(launcher, 'load_ini', return_value=({}, [])):
+            launcher.os.environ.pop('BB_DISPLAY', None)
+            return launcher.game_environment(settings)
+
+    def test_the_primary_monitor_writes_no_variable(self):
+        self.assertEqual(launcher.APP_DEFAULTS['monitor'], '')
+        self.assertNotIn('BB_DISPLAY', self.environment(''))
+
+    def test_a_chosen_monitor_is_passed_by_name(self):
+        self.assertEqual(self.environment('DELL U2417H')['BB_DISPLAY'], 'DELL U2417H')
+
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] / 'out' / 'bb-gpu-capabilities.exe').is_file(),
+                         'out/bb-gpu-capabilities.exe is not built')
+    def test_the_real_tool_output_parses(self):
+        exe, env = launcher.gpu_tool()
+        result = launcher.subprocess.run([str(exe), '--displays'], capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        monitors = launcher.parse_displays(result.stdout)
+        self.assertEqual(len(monitors), len([line for line in result.stdout.splitlines() if line.strip()]))
+        self.assertEqual(sum(m['primary'] for m in monitors), 1 if monitors else 0)
+
+
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class FetchTests(unittest.TestCase):
     def fetch(self, body, beta):

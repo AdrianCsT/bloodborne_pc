@@ -207,6 +207,10 @@ KEYS = [
     'Experimental features',
     'Unlocks options that are still being tested and marked (experimental). For now: object motion vectors on AMD graphics cards, which can lower the frame rate or draw some objects wrong.',
     '(experimental) On AMD graphics cards: it cost frame rate and drew some objects wrong with frame generation. Switched on by Experimental features.',
+    'Primary monitor',
+    'Monitor',
+    'The saved monitor "{}" is not connected; the primary monitor is used.',
+    'Which monitor the game opens on. The primary monitor is used when the chosen one is not connected.',
 ]
 
 TRANSLATIONS = {
@@ -395,6 +399,10 @@ TRANSLATIONS = {
         'ميزات تجريبية',
         'يفتح الخيارات التي لا تزال قيد الاختبار والمعلَّمة (تجريبي). حاليًا: متجهات حركة الأجسام على بطاقات AMD الرسومية، وقد تخفض معدل الإطارات أو ترسم بعض الأجسام بشكل خاطئ.',
         '(تجريبي) على بطاقات AMD الرسومية: كان يخفض معدل الإطارات ويرسم بعض الأجسام بشكل خاطئ مع توليد الإطارات. تم تفعيله بواسطة الميزات التجريبية.',
+        'الشاشة الرئيسية',
+        'الشاشة',
+        'الشاشة المحفوظة "{}" غير متصلة؛ تُستخدم الشاشة الرئيسية.',
+        'الشاشة التي تُفتح عليها اللعبة. تُستخدم الشاشة الرئيسية إذا كانت الشاشة المختارة غير متصلة.',
     ],
     'es': [
         'Jugar', 'Gráficos', 'Pantalla y FPS', 'Juego y efectos', 'Mods y parches', 'Avanzado', 'Registro',
@@ -581,6 +589,10 @@ TRANSLATIONS = {
         'Funciones experimentales',
         'Desbloquea opciones aún en prueba, marcadas (experimental). Por ahora: los vectores de movimiento de objetos en tarjetas gráficas AMD, que pueden bajar los FPS o dibujar mal algunos objetos.',
         '(experimental) En tarjetas gráficas AMD: bajaba los FPS y dibujaba mal algunos objetos con la generación de fotogramas. Activado por Funciones experimentales.',
+        'Monitor principal',
+        'Monitor',
+        'El monitor guardado "{}" no está conectado; se usa el monitor principal.',
+        'En qué monitor se abre el juego. Se usa el monitor principal si el elegido no está conectado.',
     ],
     'pt': [
         'Jogar', 'Gráficos', 'Tela e FPS', 'Jogo e efeitos', 'Mods e patches', 'Avançado', 'Registro',
@@ -767,6 +779,10 @@ TRANSLATIONS = {
         'Recursos experimentais',
         'Libera opções ainda em teste, marcadas (experimental). Por enquanto: vetores de movimento de objetos em placas de vídeo AMD, que podem reduzir os FPS ou desenhar alguns objetos errado.',
         '(experimental) Em placas de vídeo AMD: reduzia os FPS e desenhava alguns objetos errado com a geração de quadros. Ativado por Recursos experimentais.',
+        'Monitor principal',
+        'Monitor',
+        'O monitor salvo "{}" não está conectado; o monitor principal é usado.',
+        'Em qual monitor o jogo abre. O monitor principal é usado quando o escolhido não está conectado.',
     ],
     'fr': [
         'Jouer', 'Graphismes', 'Affichage et FPS', 'Jeu et effets', 'Mods et patchs', 'Avancé', 'Journal',
@@ -953,6 +969,10 @@ TRANSLATIONS = {
         'Fonctions expérimentales',
         "Débloque des options encore en test, marquées (expérimental). Pour l'instant : les vecteurs de mouvement des objets sur les cartes graphiques AMD, qui peuvent baisser les FPS ou mal dessiner certains objets.",
         "(expérimental) Sur les cartes graphiques AMD : baissait les FPS et dessinait mal certains objets avec la génération d'images. Activé par Fonctions expérimentales.",
+        'Écran principal',
+        'Écran',
+        'L\'écran enregistré "{}" n\'est pas connecté ; l\'écran principal est utilisé.',
+        "L'écran sur lequel le jeu s'ouvre. L'écran principal est utilisé si celui choisi n'est pas connecté.",
     ],
     'de': [
         'Spielen', 'Grafik', 'Anzeige & FPS', 'Spiel & Effekte', 'Mods & Patches', 'Erweitert', 'Protokoll',
@@ -1139,6 +1159,10 @@ TRANSLATIONS = {
         'Experimentelle Funktionen',
         'Schaltet Optionen frei, die noch getestet werden und mit (experimentell) gekennzeichnet sind. Derzeit: Objektbewegungsvektoren auf AMD-Grafikkarten, die die Bildrate senken oder einige Objekte falsch darstellen können.',
         '(experimentell) Auf AMD-Grafikkarten: kostete Bildrate und zeichnete mit Frame-Generierung einige Objekte falsch. Eingeschaltet durch Experimentelle Funktionen.',
+        'Hauptmonitor',
+        'Monitor',
+        'Der gespeicherte Monitor "{}" ist nicht angeschlossen; der Hauptmonitor wird verwendet.',
+        'Auf welchem Monitor sich das Spiel öffnet. Ist der gewählte nicht angeschlossen, wird der Hauptmonitor verwendet.',
     ],
     'it': [
         'Gioca', 'Grafica', 'Schermo e FPS', 'Gioco ed effetti', 'Mod e patch', 'Avanzate', 'Registro',
@@ -1325,6 +1349,10 @@ TRANSLATIONS = {
         'Funzioni sperimentali',
         'Sblocca opzioni ancora in prova, contrassegnate (sperimentale). Per ora: i vettori di movimento degli oggetti sulle schede grafiche AMD, che possono ridurre gli FPS o disegnare male alcuni oggetti.',
         '(sperimentale) Sulle schede grafiche AMD: riduceva gli FPS e disegnava male alcuni oggetti con la generazione di fotogrammi. Attivato da Funzioni sperimentali.',
+        'Monitor principale',
+        'Monitor',
+        'Il monitor salvato "{}" non è collegato; viene usato il monitor principale.',
+        'Su quale monitor si apre il gioco. Se quello scelto non è collegato, si usa il monitor principale.',
     ],
     'pl': [
         'Graj', 'Grafika', 'Ekran i FPS', 'Gra i efekty', 'Mody i łatki', 'Zaawansowane', 'Dziennik',
@@ -1511,6 +1539,10 @@ TRANSLATIONS = {
         'Funkcje eksperymentalne',
         'Odblokowuje opcje, które są jeszcze testowane i oznaczone (eksperymentalne). Na razie: wektory ruchu obiektów na kartach graficznych AMD, które mogą obniżyć liczbę klatek lub źle rysować niektóre obiekty.',
         '(eksperymentalne) Na kartach graficznych AMD: obniżało liczbę klatek i źle rysowało niektóre obiekty przy generowaniu klatek. Włączone przez Funkcje eksperymentalne.',
+        'Monitor główny',
+        'Monitor',
+        'Zapisany monitor "{}" nie jest podłączony; używany jest monitor główny.',
+        'Na którym monitorze otworzy się gra. Gdy wybrany nie jest podłączony, używany jest monitor główny.',
     ],
     'tr': [
         'Oyna', 'Grafik', 'Ekran ve FPS', 'Oyun ve efektler', 'Modlar ve yamalar', 'Gelişmiş', 'Günlük',
@@ -1697,6 +1729,10 @@ TRANSLATIONS = {
         'Deneysel özellikler',
         'Hâlâ test edilen ve (deneysel) olarak işaretlenen seçenekleri açar. Şimdilik: AMD ekran kartlarında nesne hareket vektörleri; kare hızını düşürebilir veya bazı nesneleri yanlış çizebilir.',
         '(deneysel) AMD ekran kartlarında: kare hızını düşürüyor ve kare üretimiyle bazı nesneleri yanlış çiziyordu. Deneysel özellikler tarafından açıldı.',
+        'Birincil monitör',
+        'Monitör',
+        'Kayıtlı "{}" monitörü bağlı değil; birincil monitör kullanılıyor.',
+        'Oyunun hangi monitörde açılacağı. Seçilen monitör bağlı değilse birincil monitör kullanılır.',
     ],
     'zh': [
         '开始', '图形', '显示与帧率', '游戏与效果', '模组与补丁', '高级', '日志',
@@ -1883,6 +1919,10 @@ TRANSLATIONS = {
         '实验性功能',
         '解锁仍在测试、标有（实验性）的选项。目前包括：AMD 显卡上的物体运动矢量，可能降低帧率或使部分物体绘制错误。',
         '（实验性）在 AMD 显卡上：曾降低帧率，并在帧生成时使部分物体绘制错误。由实验性功能开启。',
+        '主显示器',
+        '显示器',
+        '已保存的显示器“{}”未连接；将使用主显示器。',
+        '游戏在哪个显示器上打开。所选显示器未连接时使用主显示器。',
     ],
     'ja': [
         'プレイ', 'グラフィック', '表示とFPS', 'ゲームとエフェクト', 'MODとパッチ', '詳細設定', 'ログ',
@@ -2069,6 +2109,10 @@ TRANSLATIONS = {
         '試験的機能',
         'テスト中で（試験的）と表示されるオプションを使えるようにします。現在は AMD グラフィックスカードでのオブジェクトモーションベクトルで、フレームレートが下がったり一部のオブジェクトが正しく描画されなかったりすることがあります。',
         '（試験的）AMD グラフィックスカードでは、フレームレートが下がり、フレーム生成時に一部のオブジェクトが正しく描画されませんでした。試験的機能により有効です。',
+        'プライマリモニター',
+        'モニター',
+        '保存されたモニター「{}」は接続されていません。プライマリモニターを使用します。',
+        'ゲームを開くモニターです。選んだモニターが接続されていない場合はプライマリモニターを使用します。',
     ],
     'ko': [
         '플레이', '그래픽', '디스플레이 및 FPS', '게임 및 효과', '모드 및 패치', '고급', '로그',
@@ -2255,6 +2299,10 @@ TRANSLATIONS = {
         '실험적 기능',
         '아직 테스트 중이며 (실험적)으로 표시된 옵션을 사용할 수 있게 합니다. 현재는 AMD 그래픽 카드의 오브젝트 모션 벡터이며, 프레임 속도가 떨어지거나 일부 오브젝트가 잘못 그려질 수 있습니다.',
         '(실험적) AMD 그래픽 카드에서: 프레임 속도가 떨어지고 프레임 생성 시 일부 오브젝트가 잘못 그려졌습니다. 실험적 기능으로 켜졌습니다.',
+        '기본 모니터',
+        '모니터',
+        '저장된 모니터 "{}"이(가) 연결되어 있지 않아 기본 모니터를 사용합니다.',
+        '게임이 열릴 모니터입니다. 선택한 모니터가 연결되어 있지 않으면 기본 모니터를 사용합니다.',
     ],
 }
 
