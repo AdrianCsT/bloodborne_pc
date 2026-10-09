@@ -195,7 +195,24 @@ int main(void) {
         SOFT_STICKS(d,128,128,128,128);
         detach(v);
     }
-    /* 8. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
+    /* 8. The outer dead zone is held to 0..127 (and the inner one to 0..126): no push stays short of
+     * full deflection because the setting was out of range. */
+    {
+        SETENV("BB_PAD_DEADZONE_OUTER","500");
+        SETENV("BB_PAD_DEADZONE","500");
+        cal_read_env();
+        CHECK(pad_deadzone_outer==127 && pad_deadzone==126);
+        SETENV("BB_PAD_DEADZONE","5");
+        cal_read_env();
+        CHECK(pad_deadzone_outer==127 && pad_deadzone==5 && stick_axis(0,32767)==255 && stick_axis(0,-32768)==0);
+        SETENV("BB_PAD_DEADZONE_OUTER","-3");
+        cal_read_env();
+        CHECK(pad_deadzone_outer>pad_deadzone && pad_deadzone_outer<=127);
+        SETENV("BB_PAD_DEADZONE_OUTER","");
+        cal_read_env();
+        CHECK(pad_deadzone_outer==127 && pad_deadzone==5);
+    }
+    /* 9. The BB_PAD_REPLAY route is what the file says, with a clone connected or with no pad,
      * and the pad shows again once the recording ends. */
     {
         const int16_t rest[4]={-16380,16380,-16380,16380};
@@ -226,6 +243,6 @@ int main(void) {
     remove("bbport-pad-calibration-pad.txt");
     remove("bbport-pad-calibration-replay.txt");
     if (failed) { printf("FAIL: %d check(s) failed\n",failed); return 1; }
-    puts("PASS: stick neutral of a genuine and a biased pad, per-side travel, centred until decided, held sticks at connect, replay route unchanged");
+    puts("PASS: stick neutral of a genuine and a biased pad, per-side travel, centred until decided, dead zone limits, held sticks at connect, replay route unchanged");
     return 0;
 }

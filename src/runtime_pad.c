@@ -101,16 +101,16 @@ static uint64_t cal_since;
 
 static uint64_t now_us(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000000u+(uint64_t)t.tv_nsec/1000u; }
 static uint8_t trigger(int16_t v) { int x=v>>7; return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x); }
-static void cal_load(void) {
-    static int loaded;
-    if (loaded) return;
-    loaded=1;
+static void cal_read_env(void) {
     const char *v=getenv("BB_PAD_CENTER_CAL"); cal_enabled=!(v && *v=='0');
     /* Inner/outer dead zone, as shadPS4's analog_deadzone: [inner, outer] maps linearly to the
-     * full deflection, so an axis with a reduced travel (outer below 127) reaches full. */
+     * full deflection, so an axis with a reduced travel (outer below 127) reaches full. Both are
+     * held to the axis' range (inner 0..126, outer 0..127): an outer past 127 would leave every
+     * push short of full deflection. */
     v=getenv("BB_PAD_DEADZONE"); pad_deadzone=v && *v ? atoi(v) : 5;
     if (pad_deadzone<0) pad_deadzone=0; else if (pad_deadzone>126) pad_deadzone=126;
     v=getenv("BB_PAD_DEADZONE_OUTER"); pad_deadzone_outer=v && *v ? atoi(v) : 127;
+    if (pad_deadzone_outer>127) pad_deadzone_outer=127;
     if (pad_deadzone_outer<=pad_deadzone) pad_deadzone_outer=pad_deadzone<127 ? pad_deadzone+1 : 127;
     v=getenv("BB_PAD_CENTER");
     if (v && *v && sscanf(v,"%d,%d,%d,%d",&cal_manual_center[0],&cal_manual_center[1],
@@ -119,6 +119,12 @@ static void cal_load(void) {
         printf("Runtime: pad center (BB_PAD_CENTER): lx=%d ly=%d rx=%d ry=%d\n",
                cal_manual_center[0],cal_manual_center[1],cal_manual_center[2],cal_manual_center[3]);
     }
+}
+static void cal_load(void) {
+    static int loaded;
+    if (loaded) return;
+    loaded=1;
+    cal_read_env();
 }
 static void cal_set_base(void) {
     int biased=0;
