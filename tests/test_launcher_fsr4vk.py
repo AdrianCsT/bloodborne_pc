@@ -2,6 +2,7 @@
 to a saved choice that cannot run any more, and the download (urlopen replaced by a local fake)."""
 import hashlib
 import http.client
+import importlib.util
 import io
 import queue
 import sys
@@ -229,6 +230,43 @@ class DownloadTests(unittest.TestCase):
             error = launcher.download_fsr4vk()
         self.assertIn('SHA-256', error)
         self.assertFalse(launcher.fsr4vk_present())
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class MissingHelperTests(unittest.TestCase):
+    """tools/fetch_fsr4vk.py hidden: only the download card is off, the launcher still loads."""
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('launcher_without_fetch', Path(launcher.__file__))
+        self.hidden = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(sys.modules, {'fetch_fsr4vk': None}):  # None makes the import raise ImportError
+            spec.loader.exec_module(self.hidden)
+
+    def test_the_launcher_still_loads_with_the_download_switched_off(self):
+        self.assertIsNone(self.hidden.fetch_fsr4vk)
+        self.assertTrue(hasattr(self.hidden, 'Launcher'))
+        problem = self.hidden.fsr4vk_download_problem()
+        self.assertTrue(problem)
+        self.assertEqual(self.hidden.download_fsr4vk(), problem)  # no AttributeError on None
+        self.assertEqual(launcher.fsr4vk_download_problem(), '')  # the real module is there
+
+    def test_the_gate_does_not_need_the_helper(self):
+        # files put there by hand still make the entry usable
+        self.assertEqual(self.hidden.fsr411_state(SUPPORTED, True, True), ('ok', ''))
+
+    def test_the_card_says_why_and_the_button_stays_off_even_with_experimental_features_on(self):
+        shown = {}
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=False, var=lambda key, store: types.SimpleNamespace(get=lambda: True),
+            fsr4vk_label=types.SimpleNamespace(configure=lambda **kw: shown.update(label=kw['text'])),
+            fsr4vk_progress=types.SimpleNamespace(set=lambda value: shown.update(progress=value)),
+            fsr4vk_button=types.SimpleNamespace(configure=lambda **kw: shown.update(button=kw['state'])))
+        with mock.patch.object(self.hidden, 'fsr4vk_present', return_value=False), \
+                mock.patch.object(self.hidden, 'LANG', 'en'):
+            self.hidden.Launcher.refresh_fsr4vk(window)
+        self.assertEqual(shown['button'], 'disabled')
+        self.assertIn('not available', shown['label'])
+        self.assertIn(self.hidden.fsr4vk_download_problem(), shown['label'])
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')

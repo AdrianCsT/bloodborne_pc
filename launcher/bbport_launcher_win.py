@@ -38,7 +38,11 @@ FROZEN = getattr(sys, 'frozen', False)
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 sys.path.insert(0, str(PORT_DIR / 'tools'))  # fetch_fsr4vk.py in a source tree; the frozen launcher bundles it
-import fetch_fsr4vk  # noqa: E402
+try:
+    import fetch_fsr4vk  # noqa: E402
+    FETCH_FSR4VK_ERROR = ''
+except Exception as _error:  # a missing or broken helper turns off the FSR 4.1.1 download only
+    fetch_fsr4vk, FETCH_FSR4VK_ERROR = None, f'{type(_error).__name__}: {_error}'
 DATA_DIR = Path(os.environ.get('BB_DATA_DIR', PORT_DIR))
 CONFIG_DIR = Path(os.environ.get('APPDATA', Path.home())) / 'bbport-launcher'
 CONFIG_FILE = CONFIG_DIR / 'settings.json'
@@ -442,9 +446,16 @@ def fsr4vk_present():
     return (fsr4vk_dir() / 'amd_fidelityfx_upscaler_vk.dll').is_file()
 
 
+def fsr4vk_download_problem():
+    """Why the download cannot run in this build ('' when it can): tools/fetch_fsr4vk.py did not import."""
+    return f'the download helper did not load ({FETCH_FSR4VK_ERROR})' if fetch_fsr4vk is None else ''
+
+
 def download_fsr4vk(progress=None):
     """Downloads the pinned fsr4vk release into fsr4vk_dir(); progress(done, total) is optional. Returns
     '' or the reason it failed. Run it off the window's thread."""
+    if fsr4vk_download_problem():
+        return fsr4vk_download_problem()
     try:
         fetch_fsr4vk.fetch(fsr4vk_dir(), progress)
     except (fetch_fsr4vk.FetchError, OSError) as error:
@@ -3038,12 +3049,15 @@ class Launcher:
         """The FSR 4.1.1 card: what is downloaded, and the button (only while Experimental features is on)."""
         if not hasattr(self, 'fsr4vk_button'):  # the Graphics page builds the card; a switch can change before
             return
-        ready = fsr4vk_present()
+        ready, problem = fsr4vk_present(), fsr4vk_download_problem()
         self.fsr4vk_label.configure(text=_('Installed in {}.', 'Установлено в {}.').format(fsr4vk_shown()) if ready
+                                    else _('The download is not available in this build: {}',
+                                           'В этой сборке скачивание недоступно: {}').format(problem) if problem
                                     else _('Not downloaded.', 'Не скачано.'))
         if not self.downloading_fsr4vk:
             self.fsr4vk_progress.set(1.0 if ready else 0.0)
-        usable = not ready and not self.downloading_fsr4vk and bool(self.var('experimental', 'app').get())
+        usable = (not ready and not problem and not self.downloading_fsr4vk
+                  and bool(self.var('experimental', 'app').get()))
         self.fsr4vk_button.configure(state='normal' if usable else 'disabled')
 
     def start_fsr4vk_download(self):
