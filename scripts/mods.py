@@ -101,19 +101,18 @@ def mod_files(folder):
             yield relative, source
 
 
-# Windows without the symlink privilege (Developer Mode off): directories become junctions,
-# files hard links (copies across volumes). Those are not symlinks, so the overlay remembers
-# what it linked and where to.
+# On Windows the overlay never holds a symlink, whether or not the user may create them (Developer
+# Mode): the game panics reading files through symlinks (Dantelion2 FileTransferTask.cpp(865), every
+# boot, with any loose-file mod; upstream #102). Directories become junctions, files hard links
+# (copies across volumes). Those are not symlinks, so the overlay remembers what it linked and
+# where to. Everything else uses symlinks.
 LINKED = {}
 
 
 def make_link(link, target):
-    try:
+    if os.name != 'nt':
         link.symlink_to(target, target_is_directory=target.is_dir())
         return
-    except OSError:
-        if os.name != 'nt':
-            raise
     if target.is_dir():
         import _winapi
         _winapi.CreateJunction(str(target), str(link))
@@ -123,17 +122,6 @@ def make_link(link, target):
         except OSError:
             shutil.copy2(target, link)
     LINKED[str(link)] = target
-
-
-def symlinks_work(directory):
-    probe = Path(tempfile.mkdtemp(prefix='link-test-', dir=directory))
-    try:
-        (probe / 'link').symlink_to(probe, target_is_directory=True)
-        return True
-    except OSError:
-        return False
-    finally:
-        shutil.rmtree(probe, ignore_errors=True)
 
 
 def is_link(path):
@@ -186,7 +174,7 @@ def build_overlay(game, out, mods):
         return game
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    if os.name == 'nt' and not symlinks_work(out) and out.drive.casefold() != game.drive.casefold():
+    if os.name == 'nt' and out.drive.casefold() != game.drive.casefold():
         # Hard links only reach files on the same volume: the overlay goes beside the game.
         out = game.parent
     overlay = Path(tempfile.mkdtemp(prefix='mod-game-', dir=out))

@@ -3,10 +3,13 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location('bbmods', ROOT / 'scripts/mods.py')
 mods = importlib.util.module_from_spec(spec)
@@ -158,3 +161,100 @@ class ModTests(unittest.TestCase):
         self.assertEqual(mounted['content'], 'mod')
         self.assertFalse(Path(mounted['path']).exists())
         self.assertEqual((self.assets/'a.dcx').read_bytes(), b'original')
+
+
+class WindowsLinkTests(unittest.TestCase):
+    """On Windows the overlay holds junctions and hard links, never symlinks (upstream #102): with
+    Developer Mode on, symlinks are created fine and the game then panics reading through them
+    (Dantelion2 FileTransferTask.cpp(865), every boot, with any loose-file mod)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.game = self.root / 'CUSA03173'
+        for folder in ('chr', 'map'):
+            (self.game / 'dvdroot_ps4' / folder).mkdir(parents=True)
+            (self.game / 'dvdroot_ps4' / folder / 'a.dcx').write_bytes(b'original ' + folder.encode())
+        (self.game / 'eboot.bin').write_bytes(b'original executable')
+        self.mod = self.root / 'mods' / 'A' / 'dvdroot_ps4' / 'chr'
+        self.mod.mkdir(parents=True)
+        (self.mod / 'a.dcx').write_bytes(b'mod')
+        (self.mod / 'new.dcx').write_bytes(b'new')
+        self.layers = [('A', self.root / 'mods' / 'A')]
+
+    def build_with_symlinks_recorded(self):
+        real = Path.symlink_to
+        calls = []
+
+        def record(path, *args, **kwargs):
+            calls.append(str(path))
+            return real(path, *args, **kwargs)
+        with mock.patch.object(Path, 'symlink_to', record):
+            overlay = mods.build_overlay(self.game, self.root / 'out', self.layers)
+        return overlay, calls
+
+    @unittest.skipUnless(os.name == 'nt', 'junctions and hard links are Windows')
+    def test_no_symlink_is_made_or_left_behind_and_the_game_reads_through_the_links(self):
+        overlay, calls = self.build_with_symlinks_recorded()
+        self.assertEqual(calls, [])
+        entries = [overlay, *overlay.rglob('*')]
+        # rglob does not enter junctions: the untouched map folder is one, the merged chr folder is real.
+        self.assertTrue(entries)
+        self.assertFalse([p for p in entries if p.is_symlink()])
+        self.assertTrue((overlay / 'dvdroot_ps4' / 'map').is_junction())
+        self.assertFalse((overlay / 'dvdroot_ps4' / 'chr').is_junction())
+        self.assertEqual((overlay / 'dvdroot_ps4/map/a.dcx').read_bytes(), b'original map')
+        self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
+        self.assertEqual((overlay / 'dvdroot_ps4/chr/new.dcx').read_bytes(), b'new')
+        self.assertTrue((overlay / 'eboot.bin').samefile(self.game / 'eboot.bin'))  # a hard link
+        self.assertTrue((overlay / 'dvdroot_ps4/chr/a.dcx').samefile(self.mod / 'a.dcx'))
+
+    @unittest.skipUnless(os.name == 'nt', 'junctions and hard links are Windows')
+    def test_removing_the_overlay_leaves_the_game_and_the_mod_alone(self):
+        overlay, _ = self.build_with_symlinks_recorded()
+        shutil.rmtree(overlay)
+        self.assertFalse(overlay.exists())
+        self.assertEqual((self.game / 'dvdroot_ps4/map/a.dcx').read_bytes(), b'original map')
+        self.assertEqual((self.game / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'original chr')
+        self.assertEqual((self.game / 'eboot.bin').read_bytes(), b'original executable')
+        self.assertEqual((self.mod / 'a.dcx').read_bytes(), b'mod')
+
+    def test_windows_uses_junctions_and_hard_links_even_where_symlinks_succeed(self):
+        junctions = []
+        links = []
+        windows = types.SimpleNamespace(name='nt', link=lambda target, link: links.append((str(target), str(link))))
+        winapi = types.SimpleNamespace(CreateJunction=lambda target, link: junctions.append((target, link)))
+        real_symlink_to = Path.symlink_to
+        symlinks = []
+
+        def symlink_that_works(path, *args, **kwargs):  # Developer Mode on: this succeeds
+            symlinks.append(str(path))
+            return real_symlink_to(path, *args, **kwargs)
+        folder, file = self.game / 'dvdroot_ps4', self.game / 'eboot.bin'
+        with mock.patch.object(mods, 'os', windows), mock.patch.dict(sys.modules, {'_winapi': winapi}), \
+                mock.patch.object(Path, 'symlink_to', symlink_that_works):
+            mods.make_link(self.root / 'folder-link', folder)
+            mods.make_link(self.root / 'file-link', file)
+        self.assertEqual(symlinks, [])
+        self.assertEqual(junctions, [(str(folder), str(self.root / 'folder-link'))])
+        self.assertEqual(links, [(str(file), str(self.root / 'file-link'))])
+        self.assertEqual(mods.LINKED.pop(str(self.root / 'folder-link')), folder)
+        self.assertEqual(mods.LINKED.pop(str(self.root / 'file-link')), file)
+
+    def test_windows_copies_a_file_when_it_cannot_be_hard_linked(self):
+        def refuse(target, link):
+            raise OSError('cross-device link')
+        windows = types.SimpleNamespace(name='nt', link=refuse)
+        with mock.patch.object(mods, 'os', windows):
+            mods.make_link(self.root / 'copy', self.game / 'eboot.bin')
+        self.assertEqual((self.root / 'copy').read_bytes(), b'original executable')
+        self.assertFalse((self.root / 'copy').is_symlink())
+        mods.LINKED.pop(str(self.root / 'copy'))
+
+    @unittest.skipIf(os.name == 'nt', 'symlinks are the other systems')
+    def test_other_systems_keep_using_symlinks(self):
+        overlay, calls = self.build_with_symlinks_recorded()
+        self.assertTrue(calls)
+        self.assertTrue((overlay / 'dvdroot_ps4' / 'map').is_symlink())
+        self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
