@@ -243,6 +243,13 @@ if (WIN32)
     target_compile_options(save-commit-test PRIVATE $<$<COMPILE_LANGUAGE:C>:-UNDEBUG -Wall -Wextra -Werror>)
     target_include_directories(save-commit-test PRIVATE ../src)
     target_link_libraries(save-commit-test PRIVATE bcrypt -pthread)
+    # Stick neutral and dead zone on SDL virtual controllers (run from a scratch directory: it
+    # writes two small files next to itself).
+    add_executable(pad-calibration-test EXCLUDE_FROM_ALL ../tests/test_pad_calibration.c ../src/compat_win.c)
+    set_target_properties(pad-calibration-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    target_compile_options(pad-calibration-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_include_directories(pad-calibration-test PRIVATE .. ../src)
+    target_link_libraries(pad-calibration-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
 endif()
 
 add_executable(motion-history-test EXCLUDE_FROM_ALL ../tests/test_motion_history.cpp)
