@@ -65,7 +65,7 @@ window) and `bb-gpu-capabilities.exe`.
 | glibc `nanosleep`, monotonic condition variables | High-resolution waitable timers (`compat_sleep_ns`; winpthreads' sleep rounds to 15.6 ms); semaphore deadlines use `CLOCK_REALTIME` (winpthreads rejects monotonic condition variables). |
 | `libbbgpu.so` | `libbbgpu.a`, linked into `bb-probe.exe` by CMake (`gpu/CMakeLists.txt`), with a manifest for UTF-8 paths and long paths. |
 | `execlp bash run.sh` (in-game restart) | `run.py` puts its command line in `BB_RESTART_COMMAND`; the new launch waits for the old process (`--after PID`). The launcher keeps the game in a job object. |
-| Mod overlay with symlinks | Symlinks when allowed (Developer Mode), else junctions for folders and hard links for files. |
+| Mod overlay with symlinks | Junctions for folders and hard links for files (a copy across volumes), never symlinks: with Developer Mode on, symlinked mod files made the game crash at boot (upstream #102). |
 
 Diagnostics added on the way: `BB_FRAME_DUMP_TRIGGER=<file>` writes the guest display buffer
 and the presented image of the next frame to `BB_DUMP_DIR` (raw 32-bit pixels), which also
