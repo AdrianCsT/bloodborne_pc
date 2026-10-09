@@ -2609,10 +2609,7 @@ class Launcher:
         self.check(f, 'hdr', 'app', _('Allow HDR output', 'Разрешить HDR'),
                    _('When HDR is on in Windows and the display supports it.',
                      'Если HDR включён в Windows и монитор его поддерживает.'))
-        # Filled by apply_displays once the monitors are known; absent with a single monitor.
-        self.monitor_frame = self.tk.Frame(f, bg=CARD)
-        self.monitor_frame.grid(row=self.next_row(f), column=0, columnspan=2, sticky='we')
-        self.monitor_frame.grid_remove()
+        self.window_card = f  # apply_displays adds the Monitor row once the monitors are known
 
     def build_game(self):
         page = self.scrolled_page('game', _('Game & effects', 'Игра и эффекты'),
@@ -2870,11 +2867,10 @@ class Launcher:
         options = [('', ('Primary monitor', 'Основной монитор'))] + [
             (monitor['name'], (display_label(monitor),)) for index, monitor in enumerate(shown)
             if monitor['name'] not in names[:index]]
-        self.row(self.monitor_frame, _('Monitor', 'Монитор'), self.choice(self.monitor_frame, 'monitor', 'app', options),
+        self.row(self.window_card, _('Monitor', 'Монитор'), self.choice(self.window_card, 'monitor', 'app', options),
                  note or _('Which monitor the game opens on. The primary monitor is used when the chosen one is '
                            'not connected.', 'На каком мониторе откроется игра. Если выбранный не подключён, '
                            'используется основной.'))
-        self.monitor_frame.grid()
 
     def refresh_fsr4(self):
         total, missing = len(fsr4_files()), len(fsr4_missing())
