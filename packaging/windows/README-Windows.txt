@@ -18,11 +18,16 @@ Starting
   FSR 4 assets.
 - Bloodborne.exe starts the game straight away with the settings saved in the launcher,
   without opening it. Set things up once in BLauncher.exe, then use Bloodborne.exe (or a
-  shortcut to it, or add it to Steam with "Add a Non-Steam Game"). If no game folder is chosen
+  shortcut to it, or "Add to Steam" on the Play page). If no game folder is chosen
   yet it opens the launcher. BLauncher.exe --play does the same. The log goes to
   user\last_run.log. Advanced -> "Close the launcher when the game starts" closes the launcher
   once the game window is up (not while mods are prepared, which can take 30 to 40 seconds with
   large mods); the game writes user\last_run.log itself, so it keeps filling after that.
+- Add to Steam (Play page) writes a non-Steam game shortcut to Bloodborne.exe into the
+  shortcuts.vdf of every Steam account on this PC (Steam's userdata\<id>\config folder) and keeps
+  the old file as shortcuts.vdf.bak. Steam rewrites that file as it exits, so close Steam fully
+  first (the launcher refuses while it runs), press the button, then start Steam. Pressing it
+  again updates the entry for the same Bloodborne.exe instead of adding a second one.
 - Installing from .pkg files: "Install from PKG..." (on the Play page, and on "Game & effects")
   opens one window. "Choose PKG files..." takes the game .pkg (about 31 GB), the v1.09 update
   .pkg and the DLC .pkg of Bloodborne; "Scan a folder..." looks for .pkg files in a folder and

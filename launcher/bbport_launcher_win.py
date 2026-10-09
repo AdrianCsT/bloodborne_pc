@@ -160,6 +160,7 @@ def run_command():
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bbport_lang  # noqa: E402
+import bbport_steam  # noqa: E402
 
 LANG = 'en'
 
@@ -2389,8 +2390,11 @@ class Launcher:
         for key in ('game', 'saves', 'gpu', 'fsr4', 'upscaler'):
             self.checks[key] = StatusLine(self, info)
             self.checks[key].frame.grid(row=self.next_row(info), column=0, columnspan=2, sticky='we', pady=(px(10), 0))
-        self.button(info, _('Open folder', 'Открыть папку'), lambda: self.open_path(self.var('user_dir', 'app').get(), 'user_dir')).grid(
-            row=self.next_row(info), column=0, columnspan=2, sticky='w', pady=(px(14), 0))
+        holder = tk.Frame(info, bg=CARD)
+        holder.grid(row=self.next_row(info), column=0, columnspan=2, sticky='w', pady=(px(14), 0))
+        self.button(holder, _('Open folder', 'Открыть папку'),
+                    lambda: self.open_path(self.var('user_dir', 'app').get(), 'user_dir')).pack(side='left')
+        self.button(holder, _('Add to Steam', 'Добавить в Steam'), self.add_to_steam).pack(side='left', padx=(px(8), 0))
         self.note(info, _("In the game: Insert or L3+R3\nopens the port's menu.", 'В игре: Insert или L3+R3\nоткрывает меню порта.'),
                   top=14)
         # Only shown after the saved upscaler was changed; hidden last so the rows below keep their place.
@@ -3605,6 +3609,41 @@ class Launcher:
             self.messagebox.showinfo('Bloodborne', _('Shortcut created on the desktop.', 'Ярлык создан на рабочем столе.'))
         else:
             self.messagebox.showerror('Bloodborne', result.stderr.decode(errors='replace')[:400])
+
+    def add_to_steam(self):
+        """Bloodborne in the Steam library: a non-Steam game that starts Bloodborne.exe (in a source
+        tree, this script with --play). Steam rewrites shortcuts.vdf as it exits, so nothing is written
+        while it runs; the player closes it and presses the button again."""
+        steam = bbport_steam.steam_folder()
+        if not steam or not bbport_steam.user_configs(steam):
+            self.messagebox.showerror('Bloodborne', _('Steam was not found on this PC, or nobody has signed in to it yet.',
+                                                      'Steam не найден на этом ПК или в нём ещё никто не входил.'))
+            return
+        if bbport_steam.steam_running():
+            self.messagebox.showerror('Bloodborne', _('Steam is running. Close Steam completely, also from its tray '
+                                                      'icon, and press Add to Steam again.',
+                                                      'Steam запущен. Закройте Steam полностью, в том числе в области '
+                                                      'уведомлений, и нажмите «Добавить в Steam» снова.'))
+            return
+        if FROZEN:
+            exe, options = PORT_DIR / 'Bloodborne.exe', ''
+        else:
+            pythonw = Path(sys.executable).with_name('pythonw.exe')
+            exe, options = pythonw if pythonw.exists() else Path(sys.executable), f'"{Path(__file__).resolve()}" --play'
+        self.collect()  # Bloodborne.exe starts the game with the saved settings
+        done, failed = bbport_steam.add_to_accounts(steam, 'Bloodborne', str(exe), str(PORT_DIR), str(exe), options)
+        if failed:
+            self.messagebox.showerror('Bloodborne', _('Could not add the game to Steam: {}',
+                                                      'Не удалось добавить игру в Steam: {}').format(
+                '; '.join(f'{path}: {error}' for path, error in failed)))
+            return
+        added = sum(result == 'added' for _path, result in done)
+        self.messagebox.showinfo('Bloodborne', _('Bloodborne is in your Steam library: {} added, {} updated (one shortcut per Steam '
+                             'account on this PC). It starts with the settings saved in this launcher. An existing '
+                             'shortcuts.vdf is kept as shortcuts.vdf.bak.',
+                             'Bloodborne в библиотеке Steam: добавлено {}, обновлено {} (по ярлыку на каждый аккаунт '
+                             'Steam на этом ПК). Игра запускается с настройками, сохранёнными в лаунчере. Прежний '
+                             'shortcuts.vdf сохранён как shortcuts.vdf.bak.').format(added, len(done) - added))
 
     def close(self):
         try:
