@@ -31,6 +31,25 @@ struct Skipped {
 s64 NowNs() {
     return std::chrono::steady_clock::now().time_since_epoch().count();
 }
+
+// BB_INDIRECT_GUARD_MAX: the most workgroups one indirect dispatch may launch. A value that is not
+// a positive number keeps the default: 0 would make the shader skip every indirect dispatch.
+u32 MaxTotal() {
+    constexpr u32 Default = 1u << 22;
+    const char* text = std::getenv("BB_INDIRECT_GUARD_MAX");
+    if (!text || !*text) {
+        return Default;
+    }
+    char* end = nullptr;
+    const unsigned long long value = std::strtoull(text, &end, 0);
+    if (*end != '\0' || value == 0 || value > 0xFFFFFFFFull) {
+        std::printf("Indirect dispatches: BB_INDIRECT_GUARD_MAX=\"%s\" is not a number from 1 to "
+                    "4294967295, keeping the default %u\n",
+                    text, Default);
+        return Default;
+    }
+    return static_cast<u32>(value);
+}
 } // namespace
 
 bool IndirectGuard::Enabled() {
@@ -57,8 +76,7 @@ IndirectGuard::IndirectGuard(const Instance& instance_, Scheduler& scheduler_)
     for (u32 i = 0; i < 3; ++i) {
         max_count[i] = limits.maxComputeWorkGroupCount[i];
     }
-    const char* max = std::getenv("BB_INDIRECT_GUARD_MAX");
-    max_total = max && *max ? static_cast<u32>(std::strtoul(max, nullptr, 0)) : 1u << 22;
+    max_total = MaxTotal();
 
     std::array<vk::DescriptorSetLayoutBinding, 3> bindings{};
     for (u32 i = 0; i < bindings.size(); ++i) {
