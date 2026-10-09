@@ -2705,7 +2705,13 @@ class Launcher:
         self.check(f, 'hdr', 'app', _('Allow HDR output', 'Разрешить HDR'),
                    _('When HDR is on in Windows and the display supports it.',
                      'Если HDR включён в Windows и монитор его поддерживает.'))
-        self.window_card = f  # apply_displays adds the Monitor row once the monitors are known
+        # The Monitor row lives in a frame of its own (empty, so it takes no room, until a PC with several
+        # monitors is detected); apply_displays fills it once and only refreshes it on later GPU checks.
+        self.monitor_frame = self.tk.Frame(f, bg=CARD)
+        self.monitor_frame.grid(row=self.next_row(f), column=0, columnspan=2, sticky='we')
+        self.monitor_frame.columnconfigure(0, minsize=self.px(210))  # as the card's own columns
+        self.monitor_frame.columnconfigure(1, weight=1)
+        self.monitor_note = None
 
     def build_game(self):
         page = self.scrolled_page('game', _('Game & effects', 'Игра и эффекты'),
@@ -2968,10 +2974,15 @@ class Launcher:
         options = [('', ('Primary monitor', 'Основной монитор'))] + [
             (monitor['name'], (display_label(monitor),)) for index, monitor in enumerate(shown)
             if monitor['name'] not in names[:index]]
-        self.row(self.window_card, _('Monitor', 'Монитор'), self.choice(self.window_card, 'monitor', 'app', options),
-                 note or _('Which monitor the game opens on. The primary monitor is used when the chosen one is '
-                           'not connected.', 'На каком мониторе откроется игра. Если выбранный не подключён, '
-                           'используется основной.'))
+        hint = note or _('Which monitor the game opens on. The primary monitor is used when the chosen one is '
+                         'not connected.', 'На каком мониторе откроется игра. Если выбранный не подключён, '
+                         'используется основной.')
+        if self.monitor_note is not None:  # a later GPU check: the row is there, only its note can change
+            self.monitor_note.configure(text=hint)
+            return
+        self.row(self.monitor_frame, _('Monitor', 'Монитор'), self.choice(self.monitor_frame, 'monitor', 'app', options))
+        self.monitor_note = self.label(self.monitor_frame, hint, 'small', MUTED, wraplength=self.px(560), justify='left')
+        self.monitor_note.grid(row=1, column=1, sticky='w', pady=(self.px(4), 0))
 
     def refresh_fsr4(self):
         total, missing = len(fsr4_files()), len(fsr4_missing())

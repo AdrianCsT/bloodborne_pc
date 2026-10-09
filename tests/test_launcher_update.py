@@ -259,6 +259,87 @@ class MonitorPickerTests(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class MonitorRowTests(unittest.TestCase):
+    """The Monitor picker of Display & FPS in a real (hidden-input) window: one row, however often the GPU
+    check runs (it runs again after the FSR 4.1.1 download)."""
+
+    MONITORS = launcher.parse_displays(DISPLAYS) if sys.platform == 'win32' else []
+
+    def setUp(self):
+        import tempfile
+        import tkinter
+        from tkinter import filedialog, messagebox, ttk
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        scratch = Path(self.tmp.name)
+        (scratch / 'config').mkdir()
+        (scratch / 'config' / 'settings.json').write_text('{"check_updates": false}', encoding='utf-8')
+        for patch in (mock.patch.dict(launcher.os.environ, {'BB_CONFIG': str(scratch / 'bbport.ini'),
+                                                            'BB_LAUNCHER_ANIMATIONS': '0'}),
+                      mock.patch.object(launcher, 'CONFIG_FILE', scratch / 'config' / 'settings.json'),
+                      mock.patch.object(launcher, 'CONFIG_DIR', scratch / 'config'),
+                      mock.patch.object(launcher, 'DATA_DIR', scratch),
+                      mock.patch.object(launcher, 'connected_displays', return_value=self.MONITORS),
+                      mock.patch.object(launcher, 'gpu_tool', return_value=(scratch / 'no-such.exe', {})),
+                      mock.patch.object(launcher, 'LANG', 'en')):
+            patch.start()
+            self.addCleanup(patch.stop)
+        import time
+        for _attempt in range(5):  # Tk now and then cannot find its scripts right after another window closed
+            try:
+                self.root = tkinter.Tk()
+                break
+            except tkinter.TclError:
+                time.sleep(0.5)
+        else:
+            self.skipTest('no display for Tk')
+        self.addCleanup(self.root.destroy)
+        self.tk = tkinter
+        self.app = launcher.Launcher(self.root, tkinter, ttk, filedialog, messagebox)
+
+    def settle(self, seconds=0.4):
+        import time
+        end = time.time() + seconds
+        while time.time() < end:
+            self.root.update()
+            time.sleep(0.02)
+
+    def widgets(self, widget):
+        for child in widget.winfo_children():
+            yield child
+            yield from self.widgets(child)
+
+    def monitor_rows(self):
+        return [w for w in self.widgets(self.root) if isinstance(w, self.tk.Label) and w.cget('text') == 'Monitor']
+
+    def run_gpu_check(self):
+        self.app.detect_gpu()  # what the start-up thread and the FSR 4.1.1 download run
+        self.settle()
+
+    def test_the_gpu_check_running_twice_leaves_one_monitor_row(self):
+        self.settle()
+        self.run_gpu_check()
+        self.run_gpu_check()
+        self.assertEqual(len(self.monitor_rows()), 1)
+        comboboxes = [w for w in self.widgets(self.app.monitor_frame) if w.winfo_class() == 'TCombobox']
+        self.assertEqual(len(comboboxes), 1)
+        self.assertEqual(len(comboboxes[0]['values']), 3)  # primary, Q27GAZD, DELL U2417H
+
+    def test_a_later_check_refreshes_the_note_for_a_monitor_that_is_gone(self):
+        self.run_gpu_check()
+        self.app.var('monitor', 'app').set('Gone Monitor')
+        self.run_gpu_check()
+        notes = [w.cget('text') for w in self.widgets(self.app.monitor_frame) if isinstance(w, self.tk.Label)]
+        self.assertTrue(any('Gone Monitor' in text for text in notes), notes)
+        self.assertEqual(len(self.monitor_rows()), 1)
+
+    def test_one_monitor_has_no_picker(self):
+        launcher.connected_displays.return_value = self.MONITORS[:1]
+        self.run_gpu_check()
+        self.assertEqual(self.monitor_rows(), [])
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class FetchTests(unittest.TestCase):
     def fetch(self, body, beta):
         class Response:
