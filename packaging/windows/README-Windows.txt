@@ -45,7 +45,7 @@ Starting
   (CUSA03173, CUSA00900, CUSA00207, CUSA01363, CUSA03023); an update other than 01.09 is
   accepted with a warning. PkgTool needs the .NET Framework 4, which Windows 10 and 11 include.
 - Advanced -> "Desktop shortcut" puts Bloodborne on the desktop.
-- Updates: when a new version is out, the launcher shows it at the bottom left; "Update"
+- Updates: when a new version is out, a card at the top right of the launcher says so; "Update"
   downloads and installs it and opens the launcher again (saves, settings and mods are kept).
   Advanced -> "Check for updates" checks by hand. Only stable versions are offered unless
   Advanced -> "Beta versions" is on (it is on by default while you run a beta, and a beta user

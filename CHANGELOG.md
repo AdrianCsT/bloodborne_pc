@@ -4,11 +4,17 @@ All notable changes to the Windows fork of the Bloodborne PS4 port. The format f
 
 The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags remain, and this file replaces their notes. Version 1.6.9 is folded into 1.6.10 (see there).
 
-## [Unreleased]
+## [1.7.1] - 2026-10-10
 
 ### Changed
 
 - The frame generation switch is called "Frame generation" in the launcher and the in-game menu. Its old name, "Frame generation (FSR 3.1)", made it look like it switched the upscaler to FSR 3.1; it works on top of every upscaler, FSR 4 and 4.1.1 included. The log names it AMD frame interpolation.
+- The README is written for players first, with current launcher screenshots; the developer reference follows below it.
+- Issues on GitHub open a bug report form that asks for the version, the graphics card and driver, and `user\last_run.log`.
+
+### Fixed
+
+- The Windows readme put the update card at the bottom left of the launcher; it is at the top right.
 
 ## [1.7.0] - 2026-10-10
 
