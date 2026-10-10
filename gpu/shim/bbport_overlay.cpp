@@ -721,9 +721,12 @@ bool HandleEvent(const SDL_Event& event) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP: {
         const bool down = event.type == SDL_EVENT_KEY_DOWN;
-        if (down && !event.key.repeat &&
-            (event.key.key == SDLK_INSERT || (is_open && event.key.key == SDLK_ESCAPE))) {
-            SetOpen(event.key.key == SDLK_INSERT ? !is_open : false);
+        // bbport: numpad 0 with Num Lock off is Insert on keyboards without the separate key, and
+        // SDL reports it as the keypad key.
+        const bool insert = event.key.key == SDLK_INSERT ||
+                            (event.key.scancode == SDL_SCANCODE_KP_0 && !(event.key.mod & SDL_KMOD_NUM));
+        if (down && !event.key.repeat && (insert || (is_open && event.key.key == SDLK_ESCAPE))) {
+            SetOpen(insert ? !is_open : false);
             return true;
         }
         if (!is_open) {
