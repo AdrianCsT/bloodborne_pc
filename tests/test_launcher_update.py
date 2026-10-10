@@ -14,7 +14,7 @@ if sys.platform == 'win32':
     import bbport_launcher_win as launcher
 
 
-def release(tag, prerelease=False, draft=False, assets=('Bloodborne-Windows.zip',)):
+def release(tag, prerelease=False, draft=False, assets=('bbport-windows.zip',)):
     return {'tag_name': tag, 'prerelease': prerelease, 'draft': draft,
             'html_url': f'https://github.com/AdrianCsT/bloodborne_pc/releases/tag/{tag}',
             'assets': [{'name': name, 'browser_download_url': f'https://example.test/{tag}/{name}'}
@@ -64,7 +64,7 @@ class ChannelTests(unittest.TestCase):
     def test_beta_switch_adds_the_newest_pre_release(self):
         version, url, page = launcher.newest_release(RELEASES, beta=True)
         self.assertEqual(version, '1.7.0-beta.2')
-        self.assertEqual(url, 'https://example.test/windows-v1.7.0-beta.2/Bloodborne-Windows.zip')
+        self.assertEqual(url, 'https://example.test/windows-v1.7.0-beta.2/bbport-windows.zip')
         self.assertTrue(page.endswith('/windows-v1.7.0-beta.2'))
 
     def test_list_order_does_not_matter(self):
@@ -83,6 +83,13 @@ class ChannelTests(unittest.TestCase):
                                assets=('fsr4vk-v0.4.3-amdfix.zip', 'bbport-windows.zip', 'fsr4vk-v0.4.3-amdfix-src.zip'))]
         url = launcher.newest_release(other_first + RELEASES, beta=True)[1]
         self.assertEqual(url, 'https://example.test/windows-v1.7.0-beta.3/bbport-windows.zip')
+
+    def test_a_release_without_the_package_offers_its_page_instead(self):
+        no_package = [release('windows-v1.7.0-beta.3', prerelease=True,
+                              assets=('fsr4vk-v0.4.3-amdfix.zip', 'fsr4vk-v0.4.3-amdfix-src.zip'))]
+        version, url, page = launcher.newest_release(no_package + RELEASES, beta=True)
+        self.assertEqual((version, url), ('1.7.0-beta.3', None))  # install_update opens the page for no URL
+        self.assertTrue(page.endswith('/windows-v1.7.0-beta.3'))
 
     def test_releases_are_looked_up_by_repository_id(self):
         # an owner name can change hands after a rename; the repository id cannot

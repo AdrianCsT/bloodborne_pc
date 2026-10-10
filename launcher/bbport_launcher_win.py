@@ -99,9 +99,9 @@ def newest_release(releases, beta):
             continue
         if best is None or version_tuple(version) > version_tuple(best[0]):
             assets = release.get('assets')
-            zips = [asset for asset in assets if isinstance(asset, dict) and isinstance(asset.get('name'), str)
-                    and asset['name'].lower().endswith('.zip')] if isinstance(assets, list) else []
-            package = next((asset for asset in zips if asset['name'].lower() == PACKAGE_ASSET), zips[0] if zips else None)
+            package = next((asset for asset in assets if isinstance(asset, dict) and isinstance(asset.get('name'), str)
+                            and asset['name'].lower() == PACKAGE_ASSET), None) if isinstance(assets, list) else None
+            # no package, no URL: install_update then opens the release page instead of installing another zip
             best = (version, package.get('browser_download_url') if package else None, release.get('html_url') or RELEASES_PAGE)
     return best
 

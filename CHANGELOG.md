@@ -9,7 +9,7 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 ### Fixed
 
 - The launcher found its updates through the GitHub account name, which changed from AdrianCsT to 0xCydral. GitHub forwards the old name only until someone else takes it and creates a repository of the same name, and from then on that person's releases would have been offered as updates. The launcher now looks releases up by the repository's id, which no rename changes, and downloads FSR 4.1.1 from the new address.
-- A release can hold more than one zip (beta.2 also carries the fsr4vk build and its source). The launcher took the first zip GitHub listed; it now takes `bbport-windows.zip` by name.
+- A release can hold more than one zip (beta.2 also carries the fsr4vk build and its source). The launcher took the first zip GitHub listed; it now takes `bbport-windows.zip` by name, and for a release without it, Update opens the release page.
 
 ## [1.7.0-beta.2] - 2026-10-10
 
