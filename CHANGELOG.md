@@ -9,6 +9,7 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 ### Added
 
 - A Controls tab in the Windows launcher (Advanced view), which the README already described ([#5](https://github.com/AdrianCsT/bloodborne_pc/issues/5)). It picks the controller and gives each input up to four keys and a gamepad button, saved as the `key.<input>=` and `pad.<input>=` lines the game already read from the Linux launcher. Keys are captured by their position, so AZERTY and Cyrillic layouts bind the key the game sees.
+- Mouse and keyboard play ([#5](https://github.com/AdrianCsT/bloodborne_pc/issues/5)). While the game window has focus the mouse turns the camera; Insert or Alt+Tab lets go of it. On game 1.09 a hook in the game's camera code turns it directly, so the camera follows the mouse with no stick lag; elsewhere the mouse acts as the right stick. Mouse buttons and wheel steps can be bound, alone or with Shift, Ctrl or Alt, and a "Dark Souls III layout" button sets the keyboard and mouse bindings in one go. The Controls tab also has the mouse sensitivity, inverted vertical look and an option to stop the camera turning by itself while walking (off by default). The camera hook is ported from [Ryansousa10's mouse and keyboard fork](https://github.com/Ryansousa10/bloodborne_windows_mouse_and_keyboard).
 - A `Perf:` line in `user\last_run.log` every 30 seconds: frames per second, the slowest 1% of frames, the worst frame and the shader compiles in that window. A tester's log now says how the game ran.
 
 ### Changed
