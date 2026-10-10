@@ -4,6 +4,8 @@ user/
 *.mp4
 bbport.ini
 fsr4_shaders/
+# The launcher's FSR 4.1.1 download (fsr4vk, GPLv3) in a source tree
+/fsr4vk/
 pgo/
 *.png
 last_run.log
