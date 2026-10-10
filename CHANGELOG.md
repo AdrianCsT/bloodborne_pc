@@ -14,6 +14,7 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 
 ### Fixed
 
+- The game could close by itself when Windows ran low on memory. The background save of the driver's shader cache could not get its few megabytes, and the error took the game with it (exit code 3, "Fault: exception 0x20474343" on the thread bb:VkCacheSave in the log). A failed save is now skipped and tried again later.
 - The Windows readme put the update card at the bottom left of the launcher; it is at the top right.
 
 ## [1.7.0] - 2026-10-10

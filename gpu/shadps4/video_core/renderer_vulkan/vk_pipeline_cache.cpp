@@ -11,6 +11,7 @@
 #include <cstring>
 #include <exception>
 #include <mutex>
+#include <new>
 #include <ranges>
 #include <string>
 #include <unordered_set>
@@ -596,26 +597,40 @@ void PipelineCache::CreateDriverCache() {
 }
 
 void PipelineCache::SaveDriverCache() {
-    std::scoped_lock lock{driver_cache_mutex};
-    const auto start = std::chrono::steady_clock::now();
-    const u32 marker = num_new_pipelines;
-    auto [result, data] = instance.GetDevice().getPipelineCacheData(*pipeline_cache);
-    if (result != vk::Result::eSuccess || data.size() < sizeof(VkPipelineCacheHeaderVersionOne)) {
-        return;
-    }
-    std::vector<u8> file(sizeof(DriverCacheHeader) + data.size());
-    const DriverCacheHeader header{.magic = DriverCacheMagic,
-                                   .version = DriverCacheVersion,
-                                   .payload_size = data.size(),
-                                   .payload_hash = XXH3_64bits(data.data(), data.size())};
-    std::memcpy(file.data(), &header, sizeof(header));
-    std::memcpy(file.data() + sizeof(header), data.data(), data.size());
-    if (Storage::DataBase::Instance().SaveDriverCache(file)) {
-        saved_pipelines = marker;
-        std::printf("GPU: driver pipeline cache saved: %zu KiB in %lld ms\n", data.size() / 1024,
-                    static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                               std::chrono::steady_clock::now() - start)
-                                               .count()));
+    // bbport: the save is optional, and it copies megabytes. With Windows short of memory the copy
+    // threw std::bad_alloc on the saver thread, and the escaping exception ended the game (exit 3).
+    // A failed save is skipped; the next one tries again. BB_TEST_CACHE_SAVE_OOM=1 makes the first
+    // save fail that way, so a run can check the game goes on.
+    static std::atomic<bool> test_out_of_memory{std::getenv("BB_TEST_CACHE_SAVE_OOM") != nullptr};
+    try {
+        if (test_out_of_memory.exchange(false)) {
+            throw std::bad_alloc();
+        }
+        std::scoped_lock lock{driver_cache_mutex};
+        const auto start = std::chrono::steady_clock::now();
+        const u32 marker = num_new_pipelines;
+        auto [result, data] = instance.GetDevice().getPipelineCacheData(*pipeline_cache);
+        if (result != vk::Result::eSuccess || data.size() < sizeof(VkPipelineCacheHeaderVersionOne)) {
+            return;
+        }
+        std::vector<u8> file(sizeof(DriverCacheHeader) + data.size());
+        const DriverCacheHeader header{.magic = DriverCacheMagic,
+                                       .version = DriverCacheVersion,
+                                       .payload_size = data.size(),
+                                       .payload_hash = XXH3_64bits(data.data(), data.size())};
+        std::memcpy(file.data(), &header, sizeof(header));
+        std::memcpy(file.data() + sizeof(header), data.data(), data.size());
+        if (Storage::DataBase::Instance().SaveDriverCache(file)) {
+            saved_pipelines = marker;
+            std::printf("GPU: driver pipeline cache saved: %zu KiB in %lld ms\n", data.size() / 1024,
+                        static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                   std::chrono::steady_clock::now() - start)
+                                                   .count()));
+        }
+    } catch (const std::bad_alloc&) {
+        std::printf("GPU: driver pipeline cache not saved this time (out of memory)\n");
+    } catch (const std::exception& e) {
+        std::printf("GPU: driver pipeline cache not saved this time (%s)\n", e.what());
     }
 }
 
