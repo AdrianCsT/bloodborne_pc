@@ -4,9 +4,11 @@ import hashlib
 import http.client
 import importlib.util
 import io
+import os
 import queue
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -22,7 +24,7 @@ if sys.platform == 'win32':
 
 DLL = 'amd_fidelityfx_upscaler_vk.dll'
 MEMBERS = {
-    'OptiScaler/' + DLL: b'MZ' + bytes(range(256)) * 20,
+    DLL: b'MZ' + bytes(range(256)) * 20,
     'LICENSES/GPL-3.0.txt': b'gpl',
     'LICENSES/AMD-FidelityFX-SDK-MIT.md': b'mit',
     'LICENSES/Zstandard-BSD.txt': b'bsd',
@@ -220,7 +222,7 @@ class DownloadTests(unittest.TestCase):
             mock.patch.object(fetch, 'ZIP_SIZE', len(self.body)),
             mock.patch.object(fetch, 'ZIP_SHA256', hashlib.sha256(self.body).hexdigest()),
             mock.patch.object(fetch, 'FILES', tuple(
-                (name, name.removeprefix('OptiScaler/'), len(data), hashlib.sha256(data).hexdigest())
+                (name, name, len(data), hashlib.sha256(data).hexdigest())
                 for name, data in MEMBERS.items())),
         ]
         for patch in patches:
@@ -241,7 +243,7 @@ class DownloadTests(unittest.TestCase):
         self.assertTrue(launcher.fsr4vk_present())
         folder = launcher.fsr4vk_dir()
         self.assertEqual(folder, Path(self.scratch.name) / 'fsr4vk')
-        self.assertEqual((folder / DLL).read_bytes(), MEMBERS['OptiScaler/' + DLL])
+        self.assertEqual((folder / DLL).read_bytes(), MEMBERS[DLL])
         self.assertTrue((folder / 'LICENSES' / 'GPL-3.0.txt').is_file())
         self.assertEqual(seen[-1], (len(self.body), len(self.body)))
 
@@ -258,6 +260,190 @@ class DownloadTests(unittest.TestCase):
             error = launcher.download_fsr4vk()
         self.assertIn('SHA-256', error)
         self.assertFalse(launcher.fsr4vk_present())
+
+    def test_the_download_replaces_an_outdated_dll(self):
+        folder = launcher.fsr4vk_dir()
+        folder.mkdir(parents=True)
+        (folder / DLL).write_bytes(b'MZ the original upstream build')
+        with mock.patch.object(launcher, 'FSR4VK_VERDICT', None):
+            self.assertTrue(launcher.fsr4vk_outdated())
+            with mock.patch.object(launcher.urllib.request, 'urlopen',
+                                   side_effect=lambda *a, **k: FakeResponse(self.body)) as opened:
+                error = launcher.download_fsr4vk()
+            self.assertEqual((error, opened.call_count), ('', 1))
+            self.assertEqual((folder / DLL).read_bytes(), MEMBERS[DLL])
+            self.assertFalse(launcher.fsr4vk_outdated())
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class OutdatedTests(unittest.TestCase):
+    """The DLL is there but is not the pinned build (the original upstream one): fsr4vk_outdated() says so,
+    hashing the files once per change."""
+
+    def setUp(self):
+        fetch = launcher.fetch_fsr4vk
+        files = tuple((name, name, len(data), hashlib.sha256(data).hexdigest()) for name, data in MEMBERS.items())
+        self.scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(self.scratch.cleanup)
+        for patch in (mock.patch.object(fetch, 'FILES', files),
+                      mock.patch.object(launcher, 'PORT_DIR', Path(self.scratch.name)),
+                      mock.patch.object(launcher, 'FSR4VK_VERDICT', None)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    OLD = b'MZ' + b'\x01' * (len(MEMBERS[DLL]) - 2)  # the original build: same size, other bytes
+
+    def install(self, **replace):
+        """Writes the files, each with a new mtime (a rewrite inside one clock tick must still show)."""
+        self.writes = getattr(self, 'writes', 0) + 1
+        for name, data in {**MEMBERS, **replace}.items():
+            path = launcher.fsr4vk_dir() / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            os.utime(path, ns=(10**18, 10**18 + self.writes * 10**9))
+
+    def test_no_dll_is_not_outdated(self):
+        self.assertFalse(launcher.fsr4vk_outdated())
+
+    def test_the_old_hash_is_outdated_and_the_new_one_is_not(self):
+        self.install(**{DLL: self.OLD})
+        self.assertTrue(launcher.fsr4vk_outdated())
+        self.install()
+        self.assertFalse(launcher.fsr4vk_outdated())
+
+    def test_a_dll_with_a_license_missing_is_outdated(self):
+        self.install()
+        (launcher.fsr4vk_dir() / 'LICENSES' / 'GPL-3.0.txt').unlink()
+        self.assertTrue(launcher.fsr4vk_outdated())
+
+    def test_the_files_are_hashed_once_until_they_change(self):
+        hashed = []
+        real = launcher.fetch_fsr4vk.sha256_of
+        self.install(**{DLL: self.OLD})
+        with mock.patch.object(launcher.fetch_fsr4vk, 'sha256_of', side_effect=lambda p: (hashed.append(p), real(p))[1]):
+            self.assertIsNone(launcher.fsr4vk_outdated(wait=False))  # not known yet, and nothing hashed for it
+            self.assertEqual(hashed, [])
+            self.assertTrue(launcher.fsr4vk_outdated())
+            done = len(hashed)
+            self.assertGreater(done, 0)
+            for _ in range(3):
+                self.assertTrue(launcher.fsr4vk_outdated())
+                self.assertTrue(launcher.fsr4vk_outdated(wait=False))
+            self.assertEqual(len(hashed), done)
+            self.install()  # other bytes and mtime: hashed again
+            self.assertFalse(launcher.fsr4vk_outdated())
+            self.assertGreater(len(hashed), done)
+            done = len(hashed)
+            dll = launcher.fsr4vk_dir() / DLL
+            stat = dll.stat()
+            os.utime(dll, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))  # same bytes, another mtime
+            self.assertFalse(launcher.fsr4vk_outdated())
+            self.assertGreater(len(hashed), done)
+
+
+class FakeButton:
+    def __init__(self):
+        self.state = self.text = None
+
+    def configure(self, **kw):
+        self.state = kw.get('state', self.state)
+        self.text = kw.get('text', self.text)
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class CardTests(unittest.TestCase):
+    """Launcher.refresh_fsr4vk on a stand-in window: the update offer for the outdated DLL."""
+
+    def card(self, outdated, experimental=True, present=True):
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=False, fsr4vk_hashing=False, ui_calls=queue.Queue(), shown={},
+            var=lambda key, store: types.SimpleNamespace(get=lambda: experimental),
+            fsr4vk_label=types.SimpleNamespace(configure=lambda **kw: window.shown.update(label=kw['text'])),
+            fsr4vk_progress=types.SimpleNamespace(set=lambda value: window.shown.update(progress=value)),
+            fsr4vk_button=FakeButton())
+        with mock.patch.object(launcher, 'fsr4vk_present', return_value=present), \
+                mock.patch.object(launcher, 'fsr4vk_outdated', return_value=outdated), \
+                mock.patch.object(launcher, 'LANG', 'en'):
+            launcher.Launcher.refresh_fsr4vk(window)
+        return window
+
+    def test_an_outdated_dll_offers_the_update(self):
+        window = self.card(True)
+        self.assertIn('update is available', window.shown['label'])
+        self.assertIn('AMD', window.shown['label'])
+        self.assertIn('fsr4vk', window.shown['label'])  # where the DLL in use sits
+        self.assertEqual((window.fsr4vk_button.state, window.fsr4vk_button.text), ('normal', 'Update FSR 4.1.1'))
+        self.assertEqual(window.shown['progress'], 0.0)
+
+    def test_the_update_needs_experimental_features_like_the_download(self):
+        self.assertEqual(self.card(True, experimental=False).fsr4vk_button.state, 'disabled')
+
+    def test_a_verified_dll_offers_nothing(self):
+        window = self.card(False)
+        self.assertIn('Installed in', window.shown['label'])
+        self.assertEqual(window.fsr4vk_button.state, 'disabled')
+        self.assertEqual(window.shown['progress'], 1.0)
+
+    def test_no_dll_still_offers_the_download(self):
+        window = self.card(False, present=False)
+        self.assertEqual((window.fsr4vk_button.state, window.fsr4vk_button.text),
+                         ('normal', 'Download FSR 4.1.1 (about 14 MB)'))
+        self.assertEqual(window.shown['label'], 'Not downloaded.')
+
+    def test_an_update_in_progress_keeps_the_button_off(self):
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=True, fsr4vk_hashing=False, ui_calls=queue.Queue(), shown={},
+            var=lambda key, store: types.SimpleNamespace(get=lambda: True),
+            fsr4vk_label=types.SimpleNamespace(configure=lambda **kw: None),
+            fsr4vk_progress=types.SimpleNamespace(set=lambda value: window.shown.update(progress=value)),
+            fsr4vk_button=FakeButton())
+        with mock.patch.object(launcher, 'fsr4vk_present', return_value=True), \
+                mock.patch.object(launcher, 'fsr4vk_outdated', return_value=True):
+            launcher.Launcher.refresh_fsr4vk(window)
+        self.assertEqual(window.fsr4vk_button.state, 'disabled')
+        self.assertNotIn('progress', window.shown)  # the download draws its own bar
+
+    def test_an_unhashed_dll_is_hashed_off_the_window_thread_and_the_card_drawn_again(self):
+        verdicts = {False: None, True: True}  # wait=False: unknown; wait=True: the hash
+        calls = []
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=False, fsr4vk_hashing=False, ui_calls=queue.Queue(), shown={},
+            var=lambda key, store: types.SimpleNamespace(get=lambda: True),
+            fsr4vk_label=types.SimpleNamespace(configure=lambda **kw: None),
+            fsr4vk_progress=types.SimpleNamespace(set=lambda value: None),
+            fsr4vk_button=FakeButton(), refresh_fsr4vk=lambda: calls.append('again'))
+        main = threading.get_ident()
+        hashed_on = []
+
+        def outdated(wait=True):
+            if wait:
+                hashed_on.append(threading.get_ident())
+            return verdicts[wait]
+        with mock.patch.object(launcher, 'fsr4vk_present', return_value=True), \
+                mock.patch.object(launcher, 'fsr4vk_outdated', side_effect=outdated), \
+                mock.patch.object(launcher, 'LANG', 'en'):
+            launcher.Launcher.refresh_fsr4vk(window)
+            self.assertEqual(window.fsr4vk_button.state, 'disabled')  # nothing offered until the hash is in
+            end = time.time() + 5
+            while time.time() < end and window.ui_calls.empty():
+                time.sleep(0.01)
+            window.ui_calls.get_nowait()()
+        self.assertEqual(calls, ['again'])
+        self.assertEqual(len(hashed_on), 1)
+        self.assertNotEqual(hashed_on[0], main)
+        self.assertFalse(window.fsr4vk_hashing)
+
+    def test_a_hash_already_running_is_not_started_twice(self):
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=False, fsr4vk_hashing=True, ui_calls=queue.Queue(), shown={},
+            var=lambda key, store: types.SimpleNamespace(get=lambda: True),
+            fsr4vk_label=types.SimpleNamespace(configure=lambda **kw: None),
+            fsr4vk_progress=types.SimpleNamespace(set=lambda value: None), fsr4vk_button=FakeButton())
+        with mock.patch.object(launcher, 'fsr4vk_present', return_value=True), \
+                mock.patch.object(launcher, 'fsr4vk_outdated', return_value=None) as asked:
+            launcher.Launcher.refresh_fsr4vk(window)
+        self.assertEqual([call.kwargs for call in asked.call_args_list], [{'wait': False}])
+        self.assertTrue(window.ui_calls.empty())
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
@@ -277,6 +463,10 @@ class MissingHelperTests(unittest.TestCase):
         self.assertTrue(problem)
         self.assertEqual(self.hidden.download_fsr4vk(), problem)  # no AttributeError on None
         self.assertEqual(launcher.fsr4vk_download_problem(), '')  # the real module is there
+
+    def test_no_update_is_offered_without_the_helper(self):
+        with mock.patch.object(self.hidden, 'fsr4vk_present', return_value=True):
+            self.assertFalse(self.hidden.fsr4vk_outdated())
 
     def test_the_gate_does_not_need_the_helper(self):
         # files put there by hand still make the entry usable

@@ -434,6 +434,21 @@ class TranslationTests(unittest.TestCase):
         self.assertNotIn('Press Change, then the key you want. Add gives the input a second key. '
                          'Applied when the game starts.', bbport_lang.KEYS)
 
+    def test_the_fsr411_update_texts_are_translated_everywhere(self):
+        texts = ['An update is available that makes FSR 4.1.1 work on AMD cards. The version in {} is used until you update.',
+                 'Update FSR 4.1.1', 'Download FSR 4.1.1 (about 14 MB)']
+        for text in texts:
+            self.assertIn(text, bbport_lang.KEYS, text)
+            for language in self.LANGUAGES:
+                translated = bbport_lang.table(language).get(text)
+                self.assertTrue(translated, f'{language}: {text}')
+                self.assertEqual(translated.count('{}'), text.count('{}'), f'{language}: {text}')
+        self.assertNotIn('Download FSR 4.1.1 (about 20 MB)', bbport_lang.KEYS)
+        note = next(key for key in bbport_lang.KEYS if key.startswith('Downloaded from this port'))
+        self.assertIn('fix for AMD', note)
+        for language in self.LANGUAGES:
+            self.assertEqual(bbport_lang.table(language)[note].count('{}'), 1, language)
+
     def test_the_file_keeps_its_windows_line_endings(self):
         data = (ROOT / 'launcher' / 'bbport_lang.py').read_bytes()
         self.assertEqual(data.count(b'\n'), data.count(b'\r\n'))

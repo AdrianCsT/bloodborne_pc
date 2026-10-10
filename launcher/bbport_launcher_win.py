@@ -453,6 +453,38 @@ def fsr4vk_present():
     return (fsr4vk_dir() / 'amd_fidelityfx_upscaler_vk.dll').is_file()
 
 
+FSR4VK_VERDICT = None  # (stamp of the pinned files, files_ok()): a 17.6 MB hash is not repeated for the same files
+
+
+def fsr4vk_stamp():
+    """Name, size and mtime of every pinned file; None when one is missing."""
+    stamp = []
+    for _member, name, _size, _sha in fetch_fsr4vk.FILES:
+        try:
+            info = (fsr4vk_dir() / name).stat()
+        except OSError:
+            return None
+        stamp.append((str(fsr4vk_dir() / name), info.st_size, info.st_mtime_ns))
+    return tuple(stamp)
+
+
+def fsr4vk_outdated(wait=True):
+    """True when the provider DLL is in fsr4vk_dir() but the folder is not the pinned build (the original
+    upstream DLL, which fails on AMD's driver; the game keeps using it). Hashes the files once per change;
+    with wait=False it returns None instead of hashing a stamp it has not seen. Hashing takes tens of ms."""
+    global FSR4VK_VERDICT
+    if fetch_fsr4vk is None or not fsr4vk_present():
+        return False
+    stamp = fsr4vk_stamp()
+    if stamp is None:
+        return True
+    if not FSR4VK_VERDICT or FSR4VK_VERDICT[0] != stamp:
+        if not wait:
+            return None
+        FSR4VK_VERDICT = (stamp, fetch_fsr4vk.files_ok(fsr4vk_dir()))
+    return not FSR4VK_VERDICT[1]
+
+
 def fsr4vk_download_problem():
     """Why the download cannot run in this build ('' when it can): tools/fetch_fsr4vk.py did not import."""
     return f'the download helper did not load ({FETCH_FSR4VK_ERROR})' if fetch_fsr4vk is None else ''
@@ -1965,7 +1997,7 @@ class Launcher:
         self.reshade_preset = tk.StringVar(value=get_reshade_preset() if reshade_ready() else '')
         self.reshade_started, self.reshade_refreshers = self.reshade_preset.get(), []
         self.process = self.job = None
-        self.downloading = self.downloading_fsr4vk = self.rechecking = False
+        self.downloading = self.downloading_fsr4vk = self.fsr4vk_hashing = self.rechecking = False
         self.close_scheduled = False  # "Close the launcher when the game starts" is armed once per run
         self.installing, self.install_proc, self.install_cancel = False, None, threading.Event()
         self.install_card = self.install_hide = self.pkg_dialog = None
@@ -2706,15 +2738,17 @@ class Launcher:
         self.fsr4vk_label.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(10), 0))
         holder = self.tk.Frame(f, bg=CARD)
         holder.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(12), 0))
-        self.fsr4vk_button = self.button(holder, _('Download FSR 4.1.1 (about 20 MB)', 'Скачать FSR 4.1.1 (около 20 МБ)'),
+        self.fsr4vk_button = self.button(holder, _('Download FSR 4.1.1 (about 14 MB)', 'Скачать FSR 4.1.1 (около 14 МБ)'),
                                          self.start_fsr4vk_download, 'primary')
         self.fsr4vk_button.pack(side='left')
         self.fsr4vk_progress = Bar(self, holder, 280)
         self.fsr4vk_progress.pack(side='left', padx=px(16))
-        self.note(f, _('Downloaded from the fsr4vk project on GitHub (GPL-3.0; the licenses are in {}). '
+        self.note(f, _("Downloaded from this port's release on GitHub: fsr4vk v0.4.3 with a fix for AMD cards "
+                       '(GPL-3.0; the licenses and SOURCE.txt, which links the source, are in {}). '
                        'It needs Experimental features in Advanced.',
-                       'Скачивается из проекта fsr4vk на GitHub (GPL-3.0; лицензии лежат в {}). '
-                       'Нужны «Экспериментальные функции» в «Дополнительно».').format(fsr4vk_shown('LICENSES')), top=10)
+                       'Скачивается из релиза этого порта на GitHub: fsr4vk v0.4.3 с исправлением для карт AMD '
+                       '(GPL-3.0; лицензии и SOURCE.txt со ссылкой на исходники лежат в {}). '
+                       'Нужны «Экспериментальные функции» в «Дополнительно».').format(fsr4vk_shown()), top=10)
         self.refresh_fsr4vk()
         f = self.card(page, _('Detail', 'Детализация'))
         self.row(f, _('Model detail (LOD)', 'Детализация моделей'), self.choice(f, 'model_lod', 'ini', LODS),
@@ -3442,15 +3476,36 @@ class Launcher:
         if not hasattr(self, 'fsr4vk_button'):  # the Graphics page builds the card; a switch can change before
             return
         ready, problem = fsr4vk_present(), fsr4vk_download_problem()
-        self.fsr4vk_label.configure(text=_('Installed in {}.', 'Установлено в {}.').format(fsr4vk_shown()) if ready
+        outdated = fsr4vk_outdated(wait=False) if ready else False
+        if outdated is None:  # files not hashed yet: hash them off this thread, then draw the card again
+            outdated = False
+            if not self.fsr4vk_hashing:
+                self.fsr4vk_hashing = True
+
+                def hash_files():
+                    try:
+                        fsr4vk_outdated()
+                    finally:
+                        self.fsr4vk_hashing = False
+                        self.ui_calls.put(self.refresh_fsr4vk)
+                threading.Thread(target=hash_files, daemon=True).start()
+        self.fsr4vk_label.configure(text=_('An update is available that makes FSR 4.1.1 work on AMD cards. '
+                                           'The version in {} is used until you update.',
+                                           'Доступно обновление, с которым FSR 4.1.1 работает на картах AMD. '
+                                           'Пока вы не обновите, используется версия из {}.').format(fsr4vk_shown())
+                                    if outdated
+                                    else _('Installed in {}.', 'Установлено в {}.').format(fsr4vk_shown()) if ready
                                     else _('The download is not available in this build: {}',
                                            'В этой сборке скачивание недоступно: {}').format(problem) if problem
                                     else _('Not downloaded.', 'Не скачано.'))
         if not self.downloading_fsr4vk:
-            self.fsr4vk_progress.set(1.0 if ready else 0.0)
-        usable = (not ready and not problem and not self.downloading_fsr4vk
+            self.fsr4vk_progress.set(1.0 if ready and not outdated else 0.0)
+        usable = ((outdated or not ready) and not problem and not self.downloading_fsr4vk
                   and bool(self.var('experimental', 'app').get()))
-        self.fsr4vk_button.configure(state='normal' if usable else 'disabled')
+        self.fsr4vk_button.configure(
+            text=_('Update FSR 4.1.1', 'Обновить FSR 4.1.1') if outdated
+            else _('Download FSR 4.1.1 (about 14 MB)', 'Скачать FSR 4.1.1 (около 14 МБ)'),
+            state='normal' if usable else 'disabled')
 
     def start_fsr4vk_download(self):
         """Downloads the fsr4vk files in the background, then re-runs the capability check so the

@@ -6,8 +6,10 @@
 
 fsr4vk (https://github.com/dvj5411/fsr4vk, GPLv3; its AMD shader and model data are MIT) is a Vulkan
 FFX provider for the INT8 FSR 4.1.1 model. The port loads its DLL at run time (vk_fsr4vk.cpp) and
-does not ship it: this script fetches the pinned upstream release zip, checks its SHA-256, extracts
-the provider DLL and licenses, and checks the DLL's SHA-256. Resumable (HTTP Range into a .part
+does not ship it: this script fetches the pinned zip, checks its SHA-256, extracts the provider DLL
+and licenses, and checks the DLL's SHA-256. The zip is fsr4vk v0.4.3 plus one patch for AMD's Windows
+driver (upstream's DLL fails there), attached to this port's own GitHub release. A folder that holds
+the original upstream DLL does not verify, so `fetch` replaces it. Resumable (HTTP Range into a .part
 file), stdlib only, so the launcher can import `fetch` or run it as a process.
 
 DIR defaults to BB_FSR4VK_DIR, else the `fsr4vk` folder next to bb-probe.exe (bin/ in a package, else out/),
@@ -24,17 +26,20 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-RELEASE = 'v0.4.3'
+RELEASE = 'v0.4.3 with the AMD fix'
 SOURCE_URL = 'https://github.com/dvj5411/fsr4vk/tree/7c04e511195bf4420a060d64df84d625a37457e0'
-ZIP_NAME = f'fsr4vk-{RELEASE}.zip'
-ZIP_URL = f'https://github.com/dvj5411/fsr4vk/releases/download/{RELEASE}/{ZIP_NAME}'
-ZIP_SIZE = 20452070
-ZIP_SHA256 = '3dd2fe7a6b14a1d045c23aa51b63cb45a53576d64eba5f96cb0e334e55ce9827'
+ISSUE_URL = 'https://github.com/dvj5411/fsr4vk/issues/1'
+RELEASE_URL = 'https://github.com/AdrianCsT/bloodborne_pc/releases/download/windows-v1.7.0-beta.2'
+ZIP_NAME = 'fsr4vk-v0.4.3-amdfix.zip'
+ZIP_URL = f'{RELEASE_URL}/{ZIP_NAME}'
+SOURCE_ZIP_URL = f'{RELEASE_URL}/fsr4vk-v0.4.3-amdfix-src.zip'
+ZIP_SIZE = 14142136
+ZIP_SHA256 = '049e81577dd0836fd6fb24a2d7fb07d1276951987519d11251905b9e60456ebb'
 
 # (name inside the zip, name in DIR, size, SHA-256)
 FILES = (
-    ('OptiScaler/amd_fidelityfx_upscaler_vk.dll', 'amd_fidelityfx_upscaler_vk.dll', 18034864,
-     '25025f9a6acef5636d49ca9ae8d87ebeb77f8891083d9657ca64deec1a12a440'),
+    ('amd_fidelityfx_upscaler_vk.dll', 'amd_fidelityfx_upscaler_vk.dll', 17603072,
+     '60a90b24f6789cd52c467471d5a66a0fa6d04e1b8af41095242f50367904f8b2'),
     ('LICENSES/GPL-3.0.txt', 'LICENSES/GPL-3.0.txt', 35149,
      '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986'),
     ('LICENSES/AMD-FidelityFX-SDK-MIT.md', 'LICENSES/AMD-FidelityFX-SDK-MIT.md', 1119,
@@ -42,12 +47,19 @@ FILES = (
     ('LICENSES/Zstandard-BSD.txt', 'LICENSES/Zstandard-BSD.txt', 1549,
      '7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8'),
 )
+EXTRA = ('PATCH.md',)  # unpacked when the zip holds it; files_ok does not look at it
 SOURCE_NOTE = (
     'fsr4vk ' + RELEASE + ' (GPLv3 provider, MIT AMD FidelityFX data).\n'
+    'This is fsr4vk v0.4.3 (upstream tag v0.4.3, commit 7c04e511195bf4420a060d64df84d625a37457e0) with '
+    'one patch: it drops the variable descriptor count flag '
+    '(VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT) from its three heap bindings, which AMD\'s '
+    'Windows driver does not accept. PATCH.md describes it.\n'
     'Downloaded from ' + ZIP_URL + '\n'
-    'Source code of this release: ' + SOURCE_URL + '\n'
-    'Licenses: LICENSES/. The Bloodborne port loads the DLL as a separate program and does not '
-    'include its code.\n')
+    'Source code of the patched build: ' + SOURCE_ZIP_URL + '\n'
+    'Source code of upstream v0.4.3: ' + SOURCE_URL + '\n'
+    'Upstream issue about the AMD failure: ' + ISSUE_URL + '\n'
+    'Licenses: LICENSES/ (GPLv3 for the provider). The Bloodborne port loads the DLL as a separate '
+    'program and does not include its code.\n')
 CHUNK = 1 << 20
 
 
@@ -149,6 +161,9 @@ def fetch(target: Path, progress=None) -> None:
                 temporary = destination.with_name(destination.name + '.tmp')
                 temporary.write_bytes(data)
                 os.replace(temporary, destination)
+            for name in EXTRA:
+                if name in archive.namelist():
+                    (target / name).write_bytes(archive.read(name))
     except zipfile.BadZipFile as error:
         raise FetchError(f'the zip is damaged: {error}')
     (target / 'SOURCE.txt').write_text(SOURCE_NOTE, encoding='utf-8')
