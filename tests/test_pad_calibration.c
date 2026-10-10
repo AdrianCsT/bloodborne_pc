@@ -21,6 +21,14 @@
 
 static int capture;
 int bbgpu_overlay_captures_input(void) { return capture; }
+/* The mouse is tested apart (test_mouse_camera.c); here the window has none. */
+void bbgpu_mouse_enable(int enabled) { (void)enabled; }
+void bbgpu_mouse_set_direct(void (*turn)(float, float), void (*drop)(void)) { (void)turn; (void)drop; }
+int bbgpu_mouse_take(float *dx, float *dy, float *wheel, uint32_t *buttons) { *dx=*dy=*wheel=0; *buttons=0; return 0; }
+int runtime_camhook_install(int no_auto_rotation, const char **why) { (void)no_auto_rotation; *why="test"; return 0; }
+int runtime_camhook_active(void) { return 0; }
+void runtime_camhook_turn(float pitch, float yaw) { (void)pitch; (void)yaw; }
+void runtime_camhook_drop(void) {}
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
