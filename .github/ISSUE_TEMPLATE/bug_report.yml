@@ -1,0 +1,55 @@
+name: Bug report
+description: Something does not work in the game or the launcher.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The file that helps most is `user\last_run.log` in your game folder: it lists your graphics card, driver and settings, and how the game ran. Please attach it below.
+  - type: input
+    id: version
+    attributes:
+      label: Port version
+      description: Shown at the top of the launcher, for example v1.7.1.
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card and driver
+      placeholder: AMD Radeon RX 6600, driver 26.8.1
+    validations:
+      required: true
+  - type: dropdown
+    id: upscaler
+    attributes:
+      label: Upscaler
+      options:
+        - DLSS
+        - FSR 4
+        - FSR 4.1.1 (experimental)
+        - FSR 3.1
+        - XeSS
+        - TAA
+        - Off
+        - Not sure
+  - type: dropdown
+    id: frame-generation
+    attributes:
+      label: Frame generation
+      options:
+        - "Off"
+        - "On"
+        - Not sure
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. Say where in the game, if it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: last_run.log
+      description: Drag `user\last_run.log` into this box, or paste its contents.
