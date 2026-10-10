@@ -20,92 +20,47 @@
 > This project is not related to shadPS4. Please send questions about it to
 > [our Discord server](https://discord.gg/KYZRKk9CB), not to the shadPS4 server.
 
-## Table of contents
+**Players:** [What this is](#what-this-is) · [What you need](#what-you-need) · [Install](#install) · [Update](#update) · [First launch and key settings](#first-launch-and-key-settings) · [Controls](#controls) · [Troubleshooting and FAQ](#troubleshooting-and-faq)
 
-**1.** [**About**](#about)  
-**2.** [**Features**](#features)  
-**3.** [**Download and install**](#download-and-install)  
-**4.** [**Requirements**](#requirements)  
-**5.** [**Controls**](#controls)  
-**6.** [**FAQ and troubleshooting**](#faq-and-troubleshooting)  
-**7.** [**How it works**](#how-it-works)  
-**8.** [**Building from source**](#building-from-source)  
-**9.** [**Settings and environment variables**](#settings-and-environment-variables)  
-**10.** [**Project layout and roadmap**](#project-layout-and-roadmap)  
-**11.** [**Credits and licenses**](#credits-and-licenses)
+**Developers:** [For developers](#for-developers)
 
-## About
+## What this is
 
-Bloodborne PC runs *Bloodborne* for PlayStation 4 (CUSA03173, game version 1.09) on a Windows 10 or 11 PC. The Linux version of the port is in the upstream project. There is no emulator in the middle. The game's own x86-64 code runs on your CPU, and its graphics are translated to Vulkan by a renderer derived from [shadPS4](https://github.com/shadps4-emu/shadPS4).
+Bloodborne PC lets you play *Bloodborne* for PlayStation 4 on a Windows 10 or 11 PC, using your own copy of the game. It is not an emulator. The game's own code runs on your processor, and a graphics layer turns the PS4's drawing commands into Vulkan, the graphics interface your video card driver provides.
+
+You set everything up in a small program called the launcher: pick your game, pick a few options, press **PLAY**. You can play with a controller or with a keyboard and mouse.
 
 **Status: experimental, playable.** The game boots, loads saves and plays with sound, gamepad and saving. The Hunter's Dream and several areas of Yharnam were played with it. A full play-through has not been verified.
 
 > [!IMPORTANT]
-> **No game files are included.** You need your own dump of Bloodborne (CUSA03173, version 1.09), or the PS4 `.pkg` files for it. This project is not affiliated with Sony Interactive Entertainment, FromSoftware, AMD or NVIDIA.
+> **No game files are included.** You need your own copy of Bloodborne for PS4 (CUSA03173, version 1.09), either as a game folder or as the PS4 `.pkg` files. This project is not affiliated with Sony Interactive Entertainment, FromSoftware, AMD or NVIDIA.
 
-### What this fork combines
+## What you need
 
-This fork brings together the work of several people and adds a few things of its own.
-
-| Source | What it brings |
+| | |
 |---|---|
-| [deadinside28](https://github.com/deadinside28/bloodborne_pc), port release 0.4 | The original project: the native Linux port and the renderer work behind it |
-| [Supermedo](https://github.com/Supermedo/bloodborne_pc), Windows port v1.5 | The Windows port, a launcher in 13 languages, NVIDIA DLSS (RTX 20 series and newer), AMD FSR 3.1 and FSR 4 |
-| This fork | Support for *The Old Hunters* DLC license (experimental) |
-| This fork | A redesigned launcher with Simple and Advanced modes and animations |
-| This fork | Install from PKG: the launcher installs the game from your PS4 `.pkg` files (base game, update and DLC) |
-| This fork | Frame generation: AMD FidelityFX frame interpolation on top of any upscaler (FSR 4, FSR 3.1, DLSS or XeSS), about twice the frames on screen from a 60 FPS base, with the HUD kept sharp |
-| This fork | Intel XeSS 3.0.2 as an upscaler for any GPU, and a launcher that greys out the upscalers a GPU cannot run, with the reason |
-| This fork | ReShade 6.8 with two Bloodborne presets (Natural and Vivid), switched on from the launcher |
-| This fork | Shaders compiled ahead of the frame on the draw-preparation threads, and the driver's pipeline cache saved between runs: fewer first-time stutters |
-| This fork | Object motion vectors on AMD GPUs under Windows: their driver lost the device on the raw-pointer stores, so the motion buffers are now storage-buffer bindings (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)) |
-| This fork | A fix for the crash when you are attacked on Intel 12th gen and newer CPUs (red-zone protection, from Supermedo [PR #2](https://github.com/Supermedo/bloodborne_pc/pull/2)) |
-| This fork | A live VRAM budget on Windows |
+| **Windows** | Windows 10 (1903 or later) or Windows 11, 64-bit |
+| **Graphics card** | A card with Vulkan 1.3 and a current driver. DLSS needs an NVIDIA GeForce RTX 20 series or newer. |
+| **Memory** | About 6 GB of free memory (RAM plus page file). 10 GB for 1440p or 4K output. |
+| **The game** | Your own copy of Bloodborne CUSA03173, version 1.09: a decrypted game folder, or the PS4 `.pkg` files |
+| **Disk space** | To install from `.pkg` files, about 1.1 times the size of the files must be free (the game package is about 31 GB). |
 
-## Features
+Version 1.09 is the one to use. The community patches (60, 90 and unlocked FPS, resolution, effects) are made for it, and other versions run at 30 FPS.
 
-- **One launcher for every setting**, in 13 languages: English, Arabic, Russian, Spanish, Portuguese, French, German, Italian, Polish, Turkish, Chinese, Japanese, Korean.
-- **Self-updating.** When a new version is out, the launcher tells you, and **Update** installs it. Your saves, settings and mods are kept.
-- **Upscaling** with NVIDIA DLSS, AMD FSR 3.1 and FSR 4, or native-resolution TAA (see the table below).
-- **Unlocked frame rate** with a frame cap (up to 120 by default), or fixed 30, 60 or 90 FPS.
-- **Output resolutions** from 720p to 4K, with presets from Native AA to Ultra Performance.
-- **Cheats page**: never die, stealth, silent footsteps, Rally that never fades, enemy control.
-- **Gameplay tweaks**: camera distance, no camera auto-rotation, easier running, ragdoll physics.
-- **Game effects** on and off, from the launcher or the in-game menu.
-- **Mods and third-party patches** load without changing your game files.
-- **`Bloodborne.exe`** starts the game straight away with your saved settings. Use it for a desktop shortcut or Steam.
-- **Controller and keyboard**, an in-game settings menu, name entry on screen, a desktop shortcut and a button to clear the shader cache.
+The game folder is the one with `eboot.bin`, `sce_module`, `sce_sys` and `dvdroot_ps4` inside. Tested on an NVIDIA RTX 5080 (FSR 3.1 and FSR 4, game versions 1.00 and 1.09).
 
-### Supported upscalers and GPUs
+You do not need a compiler, Python or an emulator. Everything else is in the zip.
 
-| Upscaler | GPUs | Notes |
-|---|---|---|
-| **DLSS** | NVIDIA GeForce RTX 20 series and newer | Needs a current driver. Greyed out on other GPUs. |
-| **FSR 3.1** | Every Vulkan 1.3 GPU | The fallback for everything else. |
-| **FSR 4** (INT8, model v07) | GPUs with the required Vulkan shader features, RDNA2 and RDNA3 included | The assets are in the Windows package. GPUs without the features fall back to FSR 3.1 by themselves. |
-| **FSR 4.1.1** | INT8 on any GPU with the required shader features, FP8 on AMD RDNA4 (RX 9000) | Linux: built from your own AMD DLL. See [FSR 4.1.1](#fsr-411-from-your-own-dll). Windows (experimental): through the fsr4vk provider, see [below](#fsr-411-on-windows-experimental). |
-| **TAA** | Every GPU | Native-resolution temporal AA. Works without an FSR model. |
-
-| GPU | What to know |
-|---|---|
-| **NVIDIA** | DLSS on RTX 20 series and newer. The *New memory and translation model* is unavailable: the driver cannot map the game's memory as needed. |
-| **AMD** | FSR 3.1 and FSR 4. The only GPUs where the experimental *New memory and translation model* works. On Windows, object motion is off by default for stability. Some AMD cards still crash when the game world loads. |
-| **Intel** | FSR 3.1 and TAA, plus FSR 4 where the GPU has the shader features. The *New memory and translation model* is untested. |
-
-## Download and install
+## Install
 
 **[Download the latest release](https://github.com/0xCydral/bloodborne_pc/releases/latest)** (`bbport-windows.zip`) · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
 
-1. Unzip `bbport-windows.zip` anywhere.
-2. Open `Bloodborne.exe`. The first time, the launcher opens. Choose the folder of your own Bloodborne dump (the one with `eboot.bin`) and press **PLAY**. If you have PS4 `.pkg` files instead, use **Install from PKG**.
-3. After that, `Bloodborne.exe` starts the game straight away. Open `BLauncher.exe` whenever you want to change settings.
+1. Download `bbport-windows.zip` and unzip it anywhere.
+2. Open `Bloodborne.exe`. The first time, it opens the launcher.
+3. Tell the launcher where your game is. Press **Browse...** and choose the game folder, the one with `eboot.bin` in it. If you have `.pkg` files instead, press **Install from PKG...** (see below).
+4. Press **PLAY**.
 
-You need nothing else: no compiler, no Python, no emulator. Everything the game needs is in the zip.
-
-> [!NOTE]
-> **Install from PKG** is being added to the launcher. If you do not see the button in your release yet, use a dumped game folder.
-
-### What is in the zip
+After that, `Bloodborne.exe` starts the game straight away with your saved settings. Open `BLauncher.exe` whenever you want to change settings.
 
 | File | What it does |
 |---|---|
@@ -113,34 +68,88 @@ You need nothing else: no compiler, no Python, no emulator. Everything the game 
 | `BLauncher.exe` | The settings launcher. `BLauncher.exe --play` starts the game like `Bloodborne.exe`. |
 | `user\` | Your saves and shader caches, next to the executables. The launcher can pick another folder. |
 
-The launcher updates itself from this fork's releases. Settings are in `bbport.ini` next to `BLauncher.exe`, and launcher options are in `%APPDATA%\bbport-launcher`.
+<details>
+<summary><b>Installing from .pkg files</b></summary>
 
-### Screenshots
+**Install from PKG...** is on the Play page and on **Game & effects**. It opens one window.
 
-| Simple mode | Advanced mode |
+1. Press **Choose PKG files...** and pick the game `.pkg` (about 31 GB), the version 1.09 update `.pkg` and the DLC `.pkg` of Bloodborne. Or press **Scan a folder...** to look for `.pkg` files in a folder and its subfolders (3 levels deep). Both dialogs open in the folder you used last, or in Downloads.
+2. The window lists each file with what it is (game, update version, DLC) and ticks the best game, the highest update and the DLC for you. Files that are not Bloodborne are listed with the reason and cannot be ticked.
+3. Check **Install into**. It defaults to a `game` folder next to `BLauncher.exe`. **Install** stays off until about 1.1 times the size of the files is free.
+4. Press **Install**. The launcher extracts the game, applies the update over it, sets the game folder and runs the ready check. The game takes 15 to 30 minutes. The launcher stays usable, and **Stop** cancels.
+
+The launcher accepts Bloodborne packages (CUSA03173, CUSA00900, CUSA00207, CUSA01363, CUSA03023) and nothing else. An update other than 01.09 is accepted with a warning. A package that PkgTool cannot read (encrypted, unsupported) is reported with PkgTool's own message. PkgTool needs the .NET Framework 4, which Windows 10 and 11 include.
+
+The DLC `.pkg` holds nothing but the license. Its label (`SPEXPANSIONDLC03`, The Old Hunters) is saved and shown under **Game & effects > DLC**, which also has a **Clear** button.
+
+</details>
+
+## Update
+
+When you open the launcher, it checks for a new version. A card at the top right says so. **Update** downloads and installs the new version and opens the launcher again. Your saves, settings and mods are kept.
+
+To check by hand, use **Advanced > Check for updates**. The launcher offers stable releases. Beta releases are tested less. The launcher offers them when **Advanced > Beta versions** is on (from 1.6.17). A beta build starts with that switch on.
+
+## First launch and key settings
+
+The launcher opens in the **Simple** view (the screenshot at the top of this page), with the settings most players need. The **Advanced** switch at the top right adds tabs: Graphics, Display & FPS, Controls, Game & effects, Cheats, Mods & patches, Advanced and Log.
+
+The **Ready check** box on the Play page tells you if the game version is right (01.09), where your saves go, which graphics card was found and whether the FSR 4 files are there.
+
+Here is the Advanced view on the Graphics tab:
+
+![The launcher in Advanced view on the Graphics tab, with the upscaler, preset and output size](docs/screenshots/launcher-advanced.png)
+
+The in-game menu changes some of the same settings while you play: upscaler, preset, sharpness, output resolution and game effects. Open it with **Insert** (or **L3+R3** on a controller; Numpad 0 with Num Lock off also works).
+
+### Upscaler
+
+An upscaler draws the game at a lower resolution and then enlarges the picture to your screen size. You get more frames per second for a small loss of sharpness. Pick one in **Upscaler**:
+
+| Your graphics card | What to pick |
 |---|---|
-| ![Simple mode](docs/screenshots/launcher-simple.png) | ![Advanced mode](docs/screenshots/launcher-advanced.png) |
+| NVIDIA GeForce RTX 20 series or newer | **DLSS**. It needs a current driver. |
+| AMD Radeon RX 7000 and newer | **FSR 4** |
+| AMD Radeon RX 6000 and older | **XeSS** or **FSR 3.1**. FSR 4 runs on Radeon RX 5000 and 6000 too, but it costs more frames there. |
+| NVIDIA cards without DLSS | **FSR 3.1**, which works on every card, or **XeSS** on cards with DP4a support |
+| Intel | **FSR 3.1** or **XeSS**. FSR 4 runs where the card has the shader features it needs. |
+| Any card | **TAA** draws at your screen's resolution with anti-aliasing and no upscaling. |
 
-## Requirements
+You can leave the default. The launcher checks your card when it opens and greys out the upscalers it cannot run, with the reason. If your saved choice cannot run, the launcher switches to DLSS (RTX cards) or FSR 3.1 and tells you once. FSR 4 needs its files in `fsr4_shaders\` (they are in the zip, or **Graphics > Download FSR 4 assets**). Without them, or on a card that lacks the shader features, the game falls back to FSR 3.1 by itself.
 
-| | |
-|---|---|
-| **OS** | Windows 10 (1903 or later) or Windows 11, 64-bit |
-| **GPU** | A graphics card with Vulkan 1.3 and a current driver. DLSS needs an NVIDIA GeForce RTX 20 series or newer. |
-| **Memory** | About 6 GB of free memory (RAM + page file). 10 GB for 1440p or 4K output. |
-| **Game** | Your own decrypted dump of Bloodborne CUSA03173, version 1.09, or the PS4 `.pkg` files |
+### Preset and output
 
-Version 1.09 is needed for the community patches (60, 90 and unlocked FPS, resolution, effects). Other versions run at 30 FPS.
+**Output** is the size of the picture the game gives your screen, from 1280 x 720 (the Steam Deck) to 3840 x 2160 (4K). 1440p and 4K need about 10 GB of free memory.
 
-The game folder is the one with `eboot.bin`, `sce_module`, `sce_sys` and `dvdroot_ps4`. Tested on an NVIDIA RTX 5080 (FSR 3.1 and FSR 4, game versions 1.00 and 1.09).
+**Preset** says how much lower than the output size the game draws before the upscaler enlarges it: Native AA (x1.0), Quality (x1.5), Balanced (x1.7), Performance (x2) and Ultra Performance (x3). The number is the scale on each side. A lower-quality preset gives more FPS.
+
+In the in-game menu, a change of output or preset can ask you to **Apply and restart the game**. The **Live resolution changes** setting (Graphics tab, Auto by default) lets a strong graphics card switch without a restart, at a cost in frame rate.
+
+### Frame rate
+
+**Unlocked** lets the game run as fast as your PC allows. **60 FPS**, **90 FPS** and **30 FPS (as on PS4)** fix the rate instead. Above about 120 FPS the game's movement slows down, which is a limit of the game itself, so keep the cap at 120 or lower. **Advanced > Display & FPS** has a frame cap list: Auto, 60, 90, 120, 144, 165, 240 (these three are marked with a warning) or No limit. **Auto** applies no cap, unless frame generation is on (see below).
+
+### Frame generation
+
+Frame generation shows an extra, computed picture between every two real frames. A game running at 60 FPS appears as 120 on your screen, and the HUD stays sharp. It is AMD's frame interpolation, and it works on top of any upscaler (FSR 4, FSR 4.1.1, FSR 3.1, DLSS, XeSS or TAA). Picking it does not change your upscaler. It is off by default. Turn it on with the **Frame generation** switch in Simple view, in **Graphics**, or in the in-game menu.
+
+It costs a little input lag, because the real frame appears about half a frame later. It works best when the game already runs at 60 FPS or more. With frame generation on, the launcher caps the game at half of your screen's refresh rate (at most 120 FPS), so every game frame has room for its extra picture. Simple view shows the result, for example "Up to 72 game FPS, 144 on your 144 Hz screen." On a screen under 100 Hz it helps little. It switches itself off when the upscaler is Off or HDR output is on.
+
+### Other settings
+
+- **Fullscreen**, **Game language** (English, Russian, Japanese, French, Spanish, German or Italian) and **Launcher language** (English, Arabic, Russian, Spanish, Portuguese, French, German, Italian, Polish, Turkish, Chinese, Japanese or Korean; the default is your Windows language).
+- **ReShade look** (Off, Natural or Vivid) changes colors, contrast and sharpness on top of the game. ReShade is inside the zip, and nothing is installed on your system. Press **Home** in the game to open its menu.
+- **Cheats** page: never die, enemies do not see or hear you, Rally never fades, control the targeted enemy. It also has gameplay tweaks: camera distance, no camera auto-rotation, running with less stick tilt and ragdoll physics.
+- **Game & effects** page: turn the game's own effects on or off. You can also do this in the in-game menu.
+- **Mods & patches** page: turn mods and third-party patches on and off, and set their order. The game files are never changed.
+- **Advanced > Desktop shortcut** puts Bloodborne on your desktop. The **Add to Steam** button on the Play page adds `Bloodborne.exe` to your Steam library (close Steam first).
+- **Display & FPS > Monitor** (shown when you have more than one monitor) picks the monitor the game opens on.
 
 ## Controls
 
-In the game, **Insert** (or **L3+R3** on a controller) opens the port's menu: upscaler, preset, sharpness, output resolution and game effects.
+The default keys follow the Dark Souls III layout. Controller and keyboard work at the same time. Remap either one in the launcher under **Controls**, a tab of the Advanced view.
 
-The default keys are the Dark Souls III layout.
-
-| Keyboard and mouse | Controller |
+| Keyboard and mouse | PS4 button or action |
 |---|---|
 | W A S D | Move |
 | Mouse, I J K L | Camera |
@@ -156,39 +165,46 @@ The default keys are the Dark Souls III layout.
 
 There is no walk input, so Left Alt (walk in Dark Souls III) is not bound.
 
-The keyboard also works next to a connected gamepad, and both can be remapped in the launcher under **Controls**. When several controllers are connected, **Controls > Controller** picks one. In the Windows launcher, **Controls** is a tab of the Advanced view (the **Advanced** switch at the top right); each input has **Change** and **Add** for keys and mouse buttons and a drop-down for the gamepad button. The character name is typed on the keyboard in a box over the game.
+![The launcher's Controls tab: mouse settings and the button assignments list](docs/screenshots/launcher-controls.png)
 
-**Mouse.** While the game window has focus and the port's menu is closed, the mouse turns the camera (game version 1.09; on another version it acts as the right stick, and the log says which one is in use). **Insert** (the port's menu) or **Alt+Tab** lets go of the mouse. In the launcher, **Controls > Mouse** has the switch, the sensitivity, *Invert vertical look* and *Camera turns only by the mouse while walking* (the game then stops turning the camera by itself as the character walks; off by default so a gamepad keeps its camera). Mouse buttons and the wheel are inputs like keys: **Change** and **Add** take a click or a wheel step, and holding Shift, Ctrl or Alt first makes a combination such as Shift + left button.
+The mouse turns the camera while the game window has focus and the port's menu is closed. Press **Insert** or **Alt+Tab** to let go of it. **Controls > Mouse** has the on and off switch, the sensitivity, *Invert vertical look* and *Camera turns only by the mouse while walking*.
 
-The **Dark Souls III layout** button (Controls > Button assignments) asks, then sets the keyboard and mouse bindings back to those defaults and leaves the gamepad bindings alone; *Reset all* does the same for every setting.
+To change keys, open **Controls > Button assignments**. Each input has **Change** and **Add** for keys, mouse buttons and the wheel, and a drop-down for the controller button. Hold Shift, Ctrl or Alt first to make a combination such as Shift + left button. The **Dark Souls III layout** button asks first, then sets the keyboard and mouse back to the defaults. If several controllers are connected, **Controls > Controller** picks one.
 
-**Button icons.** The game draws PlayStation buttons. *Controls > Button icons* (`button_icons` in `bbport.ini`) changes them: *Automatic* (the default) picks Xbox icons for a connected Xbox or other controller, PlayStation icons for a PlayStation one, and keycaps and mouse icons when none is connected; *PlayStation*, *Xbox* and *Keyboard and mouse* force a set. The keyboard icons show the first key bound to each input (Space as "Spc", the left stick as WASD, a mouse button as a mouse with that button lit). The icons are chosen when the game starts, so changing controllers in the game keeps them until the next start. They are redrawn from your own copy of the game (`menu/common.tpf.dcx`) into `out/icons` next to the launcher, which the game reads instead of its own file; nothing in the game folder changes and the port ships no game art. A mod with its own `menu/common.tpf.dcx` keeps priority, and the log says the icons are off for that run. The big prompt images baked into the menu atlases (for example the circle, cross and L3 in the item pickup prompt) are redrawn too.
+The game draws PlayStation buttons. **Controls > Button icons** changes them. *Automatic* (the default) shows Xbox icons for an Xbox or other controller, PlayStation icons for a PlayStation one, and keys and mouse icons when no controller is connected. The launcher redraws the icons from your own copy of the game, and nothing in the game folder changes.
 
-The settings are lines of `bbport.ini`: `mouse_camera`, `mouse_sensitivity` (0.022 degrees of turn per mouse count x the value, 0.01 to 20), `mouse_invert_y`, `mouse_no_auto_rotation`. A binding line takes `Mouse Left`, `Mouse Right`, `Mouse Middle`, `Mouse X1`, `Mouse X2`, `Wheel Up`, `Wheel Down`, each optionally after `Shift+`, `Ctrl+` or `Alt+` (for example `key.r2=Shift+Mouse Left`).
+You type the character name on the keyboard, in a box over the game.
 
-## FAQ and troubleshooting
+## Troubleshooting and FAQ
 
 > [!TIP]
-> For any bug report, attach `user\last_run.log` from the game folder, and say which graphics card you use and what happened.
+> For any bug report, attach `user\last_run.log` (next to `BLauncher.exe`, or in the saves folder you chose). Say which graphics card you use and what happened. The log starts with your graphics card model, memory and driver.
 
 <details>
-<summary><b>The game shows only a black screen.</b></summary>
+<summary><b>The launcher says it cannot find my game.</b></summary>
+
+The Ready check shows "No eboot.bin in the game folder". Press **Browse...** and choose the folder that has `eboot.bin` in it, next to `sce_module`, `sce_sys` and `dvdroot_ps4`. If you have `.pkg` files, use **Install from PKG...** instead. `Bloodborne.exe` opens the launcher instead of the game until a game folder is set.
+
+</details>
+
+<details>
+<summary><b>Which game version do I need?</b></summary>
+
+Version 1.09 (CUSA03173). Other versions run at 30 FPS on Windows, because the community patches are made for 1.09. If you have the update as a separate folder, copy it over the base game and replace the files. The launcher checks the executable and says what is missing.
+
+</details>
+
+<details>
+<summary><b>The game stays on a black screen.</b></summary>
 
 Open the launcher and use **Advanced > Clear shader cache**, then start again. The first minutes stutter while the cache is rebuilt.
 
 </details>
 
 <details>
-<summary><b>The character preview on the character creation screen is empty.</b></summary>
-
-This is a known issue. The character is created correctly.
-
-</details>
-
-<details>
 <summary><b>The game crashes when the world loads on an AMD card.</b></summary>
 
-Before 1.6.10 the object motion feature made AMD cards on Windows lose the device right after a save loaded (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)). This fork fixed it; an RX 6700 XT and an RX 6600 confirmed it. Update from the launcher. If it still crashes, switch off **Object motion vectors** in the launcher's Graphics tab and report it with your `last_run.log` from the saves folder.
+Update from the launcher first. The earlier cause, object motion vectors, was fixed in 1.6.10, and an RX 6700 XT and an RX 6600 confirmed it (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)). Since 1.6.15, object motion vectors stay off on AMD cards under Windows. Check that **Advanced > Experimental features** and the AMD object motion vectors switch in the Graphics tab are off. If it still crashes, send `user\last_run.log` as described above.
 
 </details>
 
@@ -200,59 +216,135 @@ Above about 120 FPS the movement slows down. This is a limit of the game itself.
 </details>
 
 <details>
-<summary><b>Which game version do I need?</b></summary>
+<summary><b>An upscaler is greyed out, or the game picked another one.</b></summary>
 
-Version 1.09 (CUSA03173). Other versions run at 30 FPS on Windows, because the community patches target 1.09. On Linux, the base game alone (1.00) crashes at start. A dumped update is a separate folder: copy it over the base game, replacing files. The launcher checks the executable and says what is missing.
+The launcher checked your graphics card and the option cannot run on it, and it says why. DLSS needs an NVIDIA GeForce RTX 20 series or newer. FSR 3.1 works on every card. FSR 4 needs its files in `fsr4_shaders\` (in the zip, or **Graphics > Download FSR 4 assets**). A card that lacks the shader features falls back to FSR 3.1 by itself.
+
+</details>
+
+<details>
+<summary><b>How do I use FSR 4.1.1 on Windows?</b></summary>
+
+It is experimental, off until you opt in, and not in the zip. The built-in FSR 4.1.1 needs a Vulkan extension that no Windows driver offers yet. On Windows the game can load [fsr4vk](https://github.com/dvj5411/fsr4vk) instead, a separate program that runs the same AMD model. It was checked on a GeForce RTX 4070 and a Radeon RX 6600.
+
+1. **Advanced > Performance**: turn on **Experimental features**.
+2. **Graphics > FSR 4.1.1 (experimental)**: press **Download FSR 4.1.1** (about 14 MB, once).
+3. **Graphics > Upscaler**: choose **FSR 4.1.1 (experimental)**.
+
+If you downloaded it with an earlier version, the same place offers **Update FSR 4.1.1**. The new build makes it work on AMD cards. The download goes to the `fsr4vk` folder next to `BLauncher.exe`, and launcher updates leave that folder alone.
+
+</details>
+
+<details>
+<summary><b>Frame generation does not seem to run.</b></summary>
+
+It is off by default, and it switches itself off when the upscaler is Off or HDR output is on. While the game runs faster than half of your screen's refresh rate, there is no room for the extra picture, so it pauses and returns when the rate falls. Set **Frame cap** to Auto and the launcher picks a cap that fits your screen. On a 144 Hz screen, for example, it works up to about 65 FPS of the game.
+
+</details>
+
+<details>
+<summary><b>The mouse does not turn the camera, or I cannot reach my desktop.</b></summary>
+
+The mouse turns the camera while the game window has focus and the port's menu is closed. Press **Insert** or **Alt+Tab** to let go of the mouse. On game version 1.09 the camera follows the mouse with no stick lag. On another version the mouse acts as the right stick. Check **Controls > Mouse** if it is switched off.
 
 </details>
 
 <details>
 <summary><b>Where are my saves and settings?</b></summary>
 
-Saves and shader caches are in `user\` next to `BLauncher.exe`. Settings are in `bbport.ini` next to it. Generated files (the prepared game image and patches) are in `out\`.
-
-</details>
-
-<details>
-<summary><b>Do DLSS and FSR 4 work on my card?</b></summary>
-
-DLSS needs an NVIDIA GeForce RTX 20 series or newer. FSR 3.1 works on every GPU. FSR 4 needs its assets in `fsr4_shaders\` (included in the package, or **Graphics > Download FSR 4 assets**). GPUs without the required shader features fall back to FSR 3.1 by themselves.
+Saves and shader caches are in `user\` next to `BLauncher.exe`. Settings are in `bbport.ini` next to it, and launcher options are in `%APPDATA%\bbport-launcher`. Generated files (the prepared game image and patches) are in `out\`. Updates keep your saves, settings and mods.
 
 </details>
 
 <details>
 <summary><b>Does The Old Hunters DLC work?</b></summary>
 
-Support for the DLC license is experimental. The license is reported to the game with `BB_ADDCONT=SPEXPANSIONDLC03`. That is The Old Hunters, whose areas ship with the v1.09 data.
+Support for the DLC license is experimental. The areas of The Old Hunters ship with the v1.09 data, and the port reports the license to the game. Installing the DLC `.pkg` with **Install from PKG...** turns it on: the launcher saves the license label, and it shows under **Game & effects > DLC**. Without that `.pkg`, set the environment variable `BB_ADDCONT=SPEXPANSIONDLC03` yourself: run `setx BB_ADDCONT SPEXPANSIONDLC03` once in a command window, then start the game.
+
+</details>
+
+<details>
+<summary><b>The character preview on the character creation screen is empty.</b></summary>
+
+This was fixed in 1.6.13. Update from the launcher. If you still see it on a current version, report it with your `user\last_run.log`. The character itself is created as normal.
 
 </details>
 
 <details>
 <summary><b>How do I use mods and patches?</b></summary>
 
-Put each mod in its own folder under `mods\` (`dvdroot_ps4\...`, or `chr\`, `parts\` and so on directly). Enable them and set their order on **Mods & patches**. The game files are never changed. Without Windows Developer Mode, the port links folders with junctions and files with hard links. When the game is on another drive, the temporary mod view is made next to the game folder.
-
-Third-party patches are shadPS4 or GoldHEN XML files for 1.09 in `patches\`. See [mods and patches](docs/MODS.md).
+Put each mod in its own folder under `mods\` (`dvdroot_ps4\...`, or `chr\`, `parts\` and so on placed straight in the mod folder). Enable them and set their order on **Mods & patches**. The game files are never changed. Third-party patches are shadPS4 or GoldHEN XML files for 1.09 in `patches\`. See [mods and patches](docs/MODS.md).
 
 </details>
 
 <details>
 <summary><b>How do I put Bloodborne on the desktop or in Steam?</b></summary>
 
-Use **Advanced > Desktop shortcut**, or point a shortcut or Steam (*Add a Non-Steam Game*) at `Bloodborne.exe`. Set things up once in `BLauncher.exe` first. If no game folder is chosen yet, `Bloodborne.exe` opens the launcher.
-
-</details>
-
-<details>
-<summary><b>How do I update?</b></summary>
-
-The launcher shows a new version in a card at the top right. **Update** downloads and installs it and opens the launcher again. **Advanced > Check for updates** checks by hand. Saves, settings and mods are kept. The launcher offers stable releases only, unless **Advanced > Beta versions** is on (from 1.6.17): then it offers betas too, which are tested less. A beta build starts with the switch on.
+Use **Advanced > Desktop shortcut**, or point a shortcut or Steam (*Add a Non-Steam Game*) at `Bloodborne.exe`. The **Add to Steam** button on the Play page does the Steam part for you. Set things up once in `BLauncher.exe` first. If no game folder is chosen yet, `Bloodborne.exe` opens the launcher.
 
 </details>
 
 Still stuck? Ask on the [Discord server](https://discord.gg/yTMG8c4Bqm) or open an [issue](https://github.com/0xCydral/bloodborne_pc/issues).
 
-## How it works
+---
+
+## For developers
+
+Everything below is reference material: what this fork adds to the projects it is built on, how the port works, how to build it, its settings, and its credits. Players do not need it.
+
+The Linux version of the port is in the upstream project. The game's own x86-64 code runs on the CPU, and its graphics are translated to Vulkan by a renderer derived from [shadPS4](https://github.com/shadps4-emu/shadPS4).
+
+[What this fork combines](#what-this-fork-combines) · [Upscalers and GPUs](#upscalers-and-gpus) · [Controls reference](#controls-reference) · [How it works](#how-it-works) · [Building from source](#building-from-source) · [Settings and environment variables](#settings-and-environment-variables) · [Project layout and roadmap](#project-layout-and-roadmap) · [Credits and licenses](#credits-and-licenses)
+
+### What this fork combines
+
+This fork brings together the work of several people and adds a few things of its own.
+
+| Source | What it brings |
+|---|---|
+| [deadinside28](https://github.com/deadinside28/bloodborne_pc), port release 0.4 | The original project: the native Linux port and the renderer work behind it |
+| [Supermedo](https://github.com/Supermedo/bloodborne_pc), Windows port v1.5 | The Windows port, a launcher in 13 languages, NVIDIA DLSS (RTX 20 series and newer), AMD FSR 3.1 and FSR 4 |
+| This fork | Support for *The Old Hunters* DLC license (experimental) |
+| This fork | A redesigned launcher with Simple and Advanced modes and animations |
+| This fork | Install from PKG: the launcher installs the game from your PS4 `.pkg` files (base game, update and DLC) |
+| This fork | Frame generation: AMD FidelityFX frame interpolation on top of any upscaler (FSR 4, FSR 3.1, DLSS or XeSS), about twice the frames on screen from a 60 FPS base, with the HUD kept sharp |
+| This fork | Intel XeSS (SDK 3.0.2) as an upscaler for AMD, Intel and NVIDIA GPUs with DP4a support, and a launcher that greys out the upscalers a GPU cannot run, with the reason |
+| This fork | ReShade 6.8 with two Bloodborne presets (Natural and Vivid), switched on from the launcher |
+| This fork | Shaders compiled ahead of the frame on the draw-preparation threads, and the driver's pipeline cache saved between runs: fewer first-time stutters |
+| This fork | Object motion vectors on AMD GPUs under Windows: their driver lost the device on the raw-pointer stores, so the motion buffers are now storage-buffer bindings (upstream [issue #39](https://github.com/deadinside28/bloodborne_pc/issues/39)) |
+| This fork | A fix for the crash when you are attacked on Intel 12th gen and newer CPUs (red-zone protection, from Supermedo [PR #2](https://github.com/Supermedo/bloodborne_pc/pull/2)) |
+| This fork | A live VRAM budget on Windows |
+
+### Upscalers and GPUs
+
+| Upscaler | GPUs | Notes |
+|---|---|---|
+| **DLSS** | NVIDIA GeForce RTX 20 series and newer | Needs a current driver. Greyed out on other GPUs. |
+| **FSR 3.1** | Every Vulkan 1.3 GPU | The fallback for everything else. |
+| **FSR 4** (INT8, model v07) | GPUs with the required Vulkan shader features, RDNA2 and RDNA3 included | The assets are in the Windows package. GPUs without the features fall back to FSR 3.1 by themselves. |
+| **FSR 4.1.1** | INT8 on any GPU with the required shader features, FP8 on AMD RDNA4 (RX 9000) | Linux: built from your own AMD DLL. See [FSR 4.1.1](#fsr-411-from-your-own-dll). Windows (experimental): through the fsr4vk provider, see [below](#fsr-411-on-windows-experimental). |
+| **XeSS** (Intel XeSS Super Resolution 2.0.2, from the XeSS SDK 3.0.2, `bin\libxess.dll`) | AMD, Intel and NVIDIA GPUs with DP4a support | A good choice where FSR 4 is slow or missing, for example Radeon RX 6000. It has no sharpener of its own: the Sharpness setting adds one. |
+| **TAA** | Every GPU | Native-resolution temporal AA. Works without an FSR model. |
+
+| GPU | What to know |
+|---|---|
+| **NVIDIA** | DLSS on RTX 20 series and newer. The *New memory and translation model* is unavailable: the driver cannot map the game's memory as needed. |
+| **AMD** | FSR 3.1 and FSR 4. The only GPUs where the experimental *New memory and translation model* works. On Windows, object motion is off by default for stability (an experimental switch turns it on). Some AMD cards still crash when the game world loads. |
+| **Intel** | FSR 3.1 and TAA, plus FSR 4 where the GPU has the shader features. The *New memory and translation model* is untested. |
+
+### Controls reference
+
+The player view of the controls is [above](#controls). These are the details.
+
+**Mouse.** While the game window has focus and the port's menu is closed, the mouse turns the camera (game version 1.09; on another version it acts as the right stick, and the log says which one is in use). **Insert** (the port's menu) or **Alt+Tab** lets go of the mouse. In the launcher, **Controls > Mouse** has the switch, the sensitivity, *Invert vertical look* and *Camera turns only by the mouse while walking* (the game then stops turning the camera by itself as the character walks; off by default so a gamepad keeps its camera). Mouse buttons and the wheel are inputs like keys: **Change** and **Add** take a click or a wheel step, and holding Shift, Ctrl or Alt first makes a combination such as Shift + left button.
+
+The **Dark Souls III layout** button (Controls > Button assignments) asks, then sets the keyboard and mouse bindings back to those defaults and leaves the gamepad bindings alone; *Reset all* does the same for every setting.
+
+**Button icons.** The game draws PlayStation buttons. *Controls > Button icons* (`button_icons` in `bbport.ini`) changes them: *Automatic* (the default) picks Xbox icons for a connected Xbox or other controller, PlayStation icons for a PlayStation one, and keycaps and mouse icons when none is connected; *PlayStation*, *Xbox* and *Keyboard and mouse* force a set. The keyboard icons show the first key bound to each input (Space as "Spc", the left stick as WASD, a mouse button as a mouse with that button lit). The icons are chosen when the game starts, so changing controllers in the game keeps them until the next start. They are redrawn from your own copy of the game (`menu/common.tpf.dcx`) into `out/icons` next to the launcher, which the game reads instead of its own file; nothing in the game folder changes and the port ships no game art. A mod with its own `menu/common.tpf.dcx` keeps priority, and the log says the icons are off for that run. The big prompt images baked into the menu atlases (for example the circle, cross and L3 in the item pickup prompt) are redrawn too.
+
+The settings are lines of `bbport.ini`: `mouse_camera`, `mouse_sensitivity` (0.022 degrees of turn per mouse count x the value, 0.01 to 20), `mouse_invert_y`, `mouse_no_auto_rotation`. A binding line takes `Mouse Left`, `Mouse Right`, `Mouse Middle`, `Mouse X1`, `Mouse X2`, `Wheel Up`, `Wheel Down`, each optionally after `Shift+`, `Ctrl+` or `Alt+` (for example `key.r2=Shift+Mouse Left`).
+
+### How it works
 
 <details>
 <summary><b>Overview: Wine and DXVK for one game</b></summary>
@@ -315,7 +407,7 @@ Without shadPS4 there would be no bbport: its renderer and shader recompiler are
 <details>
 <summary><b>Resolution, presets and TAA</b></summary>
 
-**Resolution and preset changes.** For outputs other than 1080p (720p on the Steam Deck, 1440p, 4K) the whole game renders at the preset's resolution, set by a patch at start. This is the fastest path. Changing the output or the preset in the in-game menu then needs *Apply and restart the game*. The *Live resolution changes* setting (launcher, in-game menu, `bbport.ini` `live_resolution=0|1|auto`; **off by default**) instead keeps the game at 1080p internally and scales its render targets at run time, so 720p, 1080p, 1440p and 4K and the presets switch without a restart. It costs more: the game then believes it renders 1080p and draws more (for example about 8 times more small lights), and some targets are copied between sizes. Use it on strong desktop GPUs only (`auto` turns it on for discrete GPUs with 8+ GB that are not pre-Turing NVIDIA). 1080p output and TAA always use the live path.
+**Resolution and preset changes.** For outputs other than 1080p (720p on the Steam Deck, 1440p, 4K) the whole game renders at the preset's resolution, set by a patch at start. This is the fastest path. Changing the output or the preset in the in-game menu then needs *Apply and restart the game*. The *Live resolution changes* setting (launcher, in-game menu, `bbport.ini` `live_resolution=0|1|auto`; **off by default**, but the Windows launcher starts at `auto`) instead keeps the game at 1080p internally and scales its render targets at run time, so 720p, 1080p, 1440p and 4K and the presets switch without a restart. It costs more: the game then believes it renders 1080p and draws more (for example about 8 times more small lights), and some targets are copied between sizes. Use it on strong desktop GPUs only (`auto` turns it on for discrete GPUs with 8+ GB that are not pre-Turing NVIDIA). 1080p output and TAA always use the live path.
 
 **TAA.** A separate native-resolution temporal AA mode in the launcher and overlay, switchable live without an FSR model. The saved FSR preset is restored when returning to FSR. FSR Native AA adds reconstruction on top of full-resolution rendering and can be slower than disabling AA. TAA also adds work compared with no temporal AA. The RCAS switch and the 0 to 2 sharpness control also work with TAA. Sharpening runs after temporal accumulation and leaves its history and HUD unchanged.
 
@@ -324,11 +416,11 @@ Without shadPS4 there would be no bbport: its renderer and shader recompiler are
 <details>
 <summary><b>Mods, free camera and the game debug menu</b></summary>
 
-**Mods.** The launcher accepts separate loose-file mod folders (with `dvdroot_ps4/`, an extra wrapper folder, or the game folders such as `chr/` directly; file name case does not matter), with enable switches and load order. A sibling `CUSA03173-mods/` overlay also works. The original game is preserved, and later mods override conflicting files.
+**Mods.** The launcher accepts separate loose-file mod folders (with `dvdroot_ps4/`, an extra wrapper folder, or the game folders such as `chr/` directly; file name case does not matter), with enable switches and load order. A sibling `CUSA03173-mods/` overlay also works. The original game is preserved, and later mods override conflicting files. Without Windows Developer Mode, the port links folders with junctions and files with hard links. When the game is on another drive, the temporary mod view is made next to the game folder.
 
 **Third-party patches.** shadPS4-format XML patch files in the data directory's `patches/`, switched on and off in the launcher. See [mods and patches](docs/MODS.md).
 
-**Launcher language.** The Windows launcher has 13 languages (see [Features](#features)). The Linux GTK4 launcher offers Russian, English or Brazilian Portuguese and follows the system language by default.
+**Launcher language.** The Windows launcher has 13 languages (see [First launch and key settings](#first-launch-and-key-settings)). The Linux GTK4 launcher offers Russian, English or Brazilian Portuguese and follows the system language by default.
 
 **Free camera and game debug menu** (v1.09). Enable the corresponding switches in the launcher or in-game menu and restart. Free camera uses Lance McDonald's [GoldHEN patch](https://github.com/GoldHEN/GoldHEN_Patch_Repository/blob/main/patches/xml/Bloodborne-Orbis.xml). Hold Cross and press L3 to cycle modes (keyboard: hold E and press C). It needs no fonts and conflicts with *Enemy Control*.
 
@@ -340,11 +432,11 @@ GPU occlusion queries still use synthetic pixel counters (`PixelPipeStatDump`), 
 
 </details>
 
-## Building from source
+### Building from source
 
 Players do not need this section. The Windows package is built from this repository.
 
-### Windows
+#### Windows
 
 Build in an MSYS2 CLANG64 shell (Windows 10 1903+ or 11, 64-bit):
 
@@ -356,7 +448,7 @@ bash packaging/windows/build_dlss.sh    # builds the DLSS bridge, separately
 
 You can also run from source with `python run.py` or the Tkinter launcher (`launcher/bbport_launcher_win.py`). Players of the packaged build need no Python. Details and the differences from Linux (TLS, guest memory, exceptions) are in [packaging/windows/README.md](packaging/windows/README.md).
 
-### Linux
+#### Linux
 
 <a id="linux-requirements"></a>
 
@@ -443,7 +535,7 @@ A user reported successful startup with FSR 3 on a GTX 1060 6GB (Fedora 44, NVID
 
 </details>
 
-## Settings and environment variables
+### Settings and environment variables
 
 Most players never need these. Everything here is also reachable from the launcher or the in-game menu where it makes sense.
 
@@ -489,7 +581,7 @@ More in [docs/](docs). Recent changes: [docs/CHANGES_0.4.md](docs/CHANGES_0.4.md
 
 </details>
 
-## Project layout and roadmap
+### Project layout and roadmap
 
 <details>
 <summary><b>Repository layout</b></summary>
@@ -517,14 +609,14 @@ Tests: `bash build.sh --test`, `python3 -m unittest discover -s tests`, and `nin
 - Shaders translated ahead of time, at install, not during play.
 - More CPU parallelism in GPU command processing (split the draw-recording stage further), scaling to all hardware threads. This matters most for the Steam Deck.
 - Async compute for the upscaler (the frame is GPU-bound at 4K).
-- XeSS (super resolution) and XeFG frame generation through a Wine helper sharing Vulkan memory (a memory-bridge prototype is in `tools/bridge_helper`). DLSS for NVIDIA users. Inputs exposed so that OptiScaler-style mapping works.
-- Frame generation (FSR 3.1 FG first), reactive and transparency masks for particles and fog.
+- XeFG frame generation through a Wine helper sharing Vulkan memory (a memory-bridge prototype is in `tools/bridge_helper`). Inputs exposed so that OptiScaler-style mapping works. DLSS and XeSS super resolution already run in the Windows build (XeSS frame generation needs DirectX 12 and is left out there).
+- Reactive and transparency masks for particles and fog. Frame generation (AMD frame interpolation) is in the Windows build since 1.6.12.
 - Fix the races in AMD's FSR 4.1.1 shaders at output widths that are not multiples of 64 (for example 1600x900), as already done for the left-edge race in FSR 4 v07 at 1080p.
 - Steam Deck validation of the AppImage, and HDR output.
 
 </details>
 
-## Credits and licenses
+### Credits and licenses
 
 Bloodborne PC is licensed under the **GNU GPL v2 or later** ([LICENSE](LICENSE)). It contains code from shadPS4 (GPL-2.0-or-later). Third-party components keep their licenses.
 
