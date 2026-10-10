@@ -128,7 +128,29 @@ static int list_displays(void) {
 
 /* --read-input key|pad: a small window; prints "key <SDL key name>" or "pad <SDL button name>"
  * (lefttrigger/righttrigger for the triggers) for the first key or gamepad button pressed, the
- * names bbport.ini's key.* and pad.* lines take. Escape, closing it or 15 s: nothing. */
+ * names bbport.ini's key.* and pad.* lines take. A mouse button or a wheel step in the window is a
+ * key too ("key Mouse Left", "key Wheel Up", see src/runtime_pad.c), with "Shift+", "Ctrl+" or
+ * "Alt+" in front while one of them is held: a modifier key is taken when it is let go, so that it
+ * can be pressed first for such a combination. Escape, closing it or 15 s: nothing. */
+static int is_modifier(SDL_Scancode code) {
+    return code == SDL_SCANCODE_LSHIFT || code == SDL_SCANCODE_RSHIFT || code == SDL_SCANCODE_LCTRL ||
+           code == SDL_SCANCODE_RCTRL || code == SDL_SCANCODE_LALT || code == SDL_SCANCODE_RALT;
+}
+static const char *mouse_button_name(int button) {
+    switch (button) {
+    case SDL_BUTTON_LEFT: return "Mouse Left";
+    case SDL_BUTTON_RIGHT: return "Mouse Right";
+    case SDL_BUTTON_MIDDLE: return "Mouse Middle";
+    case SDL_BUTTON_X1: return "Mouse X1";
+    case SDL_BUTTON_X2: return "Mouse X2";
+    default: return NULL;
+    }
+}
+static void print_mouse_input(const char *name) {
+    const SDL_Keymod mods = SDL_GetModState();
+    printf("key %s%s%s%s\n", mods & SDL_KMOD_SHIFT ? "Shift+" : "", mods & SDL_KMOD_CTRL ? "Ctrl+" : "",
+           mods & SDL_KMOD_ALT ? "Alt+" : "", name);
+}
 static int read_input(const char *kind) {
     const int want_key = strcmp(kind, "pad") != 0, want_pad = strcmp(kind, "key") != 0;
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
@@ -151,6 +173,7 @@ static int read_input(const char *kind) {
     SDL_free(ids);
     const Uint64 end = SDL_GetTicks() + 15000;
     int done = 0;
+    SDL_Scancode pending_modifier = SDL_SCANCODE_UNKNOWN; // pressed, not yet let go
     while (!done && SDL_GetTicks() < end) {
         SDL_SetRenderDrawColor(renderer, 24, 24, 28, 255);
         SDL_RenderClear(renderer);
@@ -171,8 +194,28 @@ static int read_input(const char *kind) {
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.scancode == SDL_SCANCODE_ESCAPE) {
                     done = 1;
+                } else if (want_key && is_modifier(e.key.scancode)) {
+                    pending_modifier = e.key.scancode;
                 } else if (want_key) {
                     printf("key %s\n", SDL_GetScancodeName(e.key.scancode));
+                    done = 1;
+                }
+                break;
+            case SDL_EVENT_KEY_UP:
+                if (want_key && e.key.scancode == pending_modifier) {
+                    printf("key %s\n", SDL_GetScancodeName(pending_modifier));
+                    done = 1;
+                }
+                break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                if (want_key && mouse_button_name(e.button.button)) {
+                    print_mouse_input(mouse_button_name(e.button.button));
+                    done = 1;
+                }
+                break;
+            case SDL_EVENT_MOUSE_WHEEL:
+                if (want_key && e.wheel.y != 0) {
+                    print_mouse_input((e.wheel.y > 0) == (e.wheel.direction == SDL_MOUSEWHEEL_NORMAL) ? "Wheel Up" : "Wheel Down");
                     done = 1;
                 }
                 break;

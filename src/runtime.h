@@ -91,6 +91,15 @@ uintptr_t runtime_audio_resolve(const char *name);
 void runtime_audio_report(void);
 uintptr_t runtime_pad_resolve(const char *name);
 void runtime_pad_report(void);
+/* The game image (set by probe.c) and the PC mouse camera (runtime_camhook.c): a hook in the game's
+ * camera update that turns it by exact angles (radians, the game's pitch and yaw), taken once per
+ * frame. install returns 0 and says why in *why when the hook cannot be installed. */
+extern uintptr_t runtime_image_start;
+extern uint64_t runtime_image_size;
+int runtime_camhook_install(int no_auto_rotation, const char **why);
+int runtime_camhook_active(void);
+void runtime_camhook_turn(float pitch, float yaw);
+void runtime_camhook_drop(void);
 uintptr_t runtime_rtc_resolve(const char *name);
 const char *runtime_file_user_dir(void);
 void runtime_savedata_configure(const char *title);

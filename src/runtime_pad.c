@@ -1,11 +1,18 @@
-/* libScePad on SDL3 gamepads and the keyboard. SDL events are pumped by the window thread
- * (gpu/shim/window.cpp); here state is only sampled.
+/* libScePad on SDL3 gamepads, the keyboard and the mouse. SDL events are pumped by the window
+ * thread (gpu/shim/window.cpp); here state is only sampled.
  *
  * Keyboard layout (also with a gamepad connected: both drive the game):
  *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
  *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
  *   Enter Options, Tab left touchpad, Backspace right touchpad,
  *   IJKL d-pad (I up, K down, J left, L right).
+ *
+ * Mouse (issue #5; the camera hook and the stick fallback follow Ryansousa10/bloodborne_windows_mouse_and_keyboard,
+ * commit c650c2e, GPL-2.0-or-later): while the game window has focus and the settings menu and the text
+ * dialog are closed, the window holds the mouse in relative mode (gpu/shim/window.cpp). Its motion turns the
+ * camera through a hook in the game's own camera code (runtime_camhook.c), by exact angles as PC games do;
+ * without the hook (another game version, not Windows) it acts as the right stick. Its buttons and wheel are
+ * inputs of key.<input>= lines, next to keys (see parse_input).
  *
  * Stick neutral: SDL exposes no way to read a pad's calibration and some clones report a
  * biased neutral (a Switch-style pad was seen returning both sticks at a constant ~ +/-16380).
@@ -31,6 +38,7 @@
 #define _GNU_SOURCE
 #include "runtime.h"
 #include "gpu/bbgpu.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -296,7 +304,18 @@ static void report_guest_heap(void) {
  * (right). Gamepad names as SDL's: a b x y back start leftstick rightstick leftshoulder
  * rightshoulder dpup dpdown dpleft dpright touchpad misc1 paddle1-4, plus lefttrigger and
  * righttrigger. The keyboard works next to a gamepad (the Steam Deck always has one): its buttons
- * add to the gamepad's, a held move/look key moves the stick all the way. */
+ * add to the gamepad's, a held move/look key moves the stick all the way.
+ *
+ * Each name in a key.<input>= line is a keyboard key (an SDL scancode name: "E", "Left Ctrl", "Space"),
+ * or a mouse input: "Mouse Left", "Mouse Right", "Mouse Middle", "Mouse X1", "Mouse X2" (held while the
+ * button is) or "Wheel Up", "Wheel Down" (a 60 ms press per step). Any of them may start with
+ * "Shift+", "Ctrl+" or "Alt+" (either side's key): then it counts only while that modifier is held, and a
+ * plain input yields to a combination on the same key or button that is held, so "Mouse Left" is R1
+ * alone and "Shift+Mouse Left" R2 alone. Other lines of the file: mouse_camera (1), mouse_sensitivity
+ * (1.0: 0.022 degrees a count, the scale of Source games), mouse_invert_y (0), mouse_no_auto_rotation
+ * (0; 1: while the camera hook is installed the game does not turn the camera by itself as the
+ * character walks. Off by default: the hook is installed for every player, and gamepad players
+ * keep the game's own camera). */
 enum {
     IN_CROSS, IN_CIRCLE, IN_SQUARE, IN_TRIANGLE, IN_L1, IN_R1, IN_L2, IN_R2, IN_L3, IN_R3,
     IN_OPTIONS, IN_TOUCHPAD, IN_TOUCHPAD_RIGHT, IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT,
@@ -314,9 +333,17 @@ static const uint32_t input_buttons[IN_COUNT]={
 };
 #define MAX_BIND 4
 enum { PAD_LEFT_TRIGGER=SDL_GAMEPAD_BUTTON_COUNT, PAD_RIGHT_TRIGGER }; /* triggers as buttons */
-typedef struct { int key_count, pad_count; SDL_Scancode keys[MAX_BIND]; int pad[MAX_BIND]; } Binding;
+/* A keyboard key, a mouse button or a wheel step, with the modifiers that must be held. */
+enum { KIND_KEY, KIND_MOUSE, KIND_WHEEL };
+enum { BIND_SHIFT=1, BIND_CTRL=2, BIND_ALT=4 };
+typedef struct { uint8_t kind, mods; int16_t code; } KeyInput; /* SDL scancode, SDL button, wheel step +1 up / -1 down */
+typedef struct { int key_count, pad_count; KeyInput keys[MAX_BIND]; int pad[MAX_BIND]; } Binding;
 static Binding bindings[IN_COUNT];
 static int bindings_ready;
+/* The mouse settings of bbport.ini (see the comment above). */
+typedef struct { int mouse_camera, invert_y, no_auto_rotation; float sensitivity; } MouseSettings;
+static const MouseSettings mouse_defaults={1,0,0,1.0f};
+static MouseSettings kbm={1,0,0,1.0f};
 
 static void bind_defaults(void) {
     static const struct { int input; SDL_Scancode key; } keys[]={
@@ -343,8 +370,9 @@ static void bind_defaults(void) {
     };
     memset(bindings,0,sizeof bindings);
     for (size_t i=0;i<sizeof(keys)/sizeof(*keys);++i) {
-        Binding *b=&bindings[keys[i].input]; b->keys[b->key_count++]=keys[i].key;
+        Binding *b=&bindings[keys[i].input]; b->keys[b->key_count++]=(KeyInput){KIND_KEY,0,(int16_t)keys[i].key};
     }
+    kbm=mouse_defaults;
     for (size_t i=0;i<sizeof(pads)/sizeof(*pads);++i) {
         Binding *b=&bindings[pads[i].input]; b->pad[b->pad_count++]=pads[i].button;
     }
@@ -355,7 +383,37 @@ static int pad_button_from_name(const char *name) {
     const SDL_GamepadButton b=SDL_GetGamepadButtonFromString(name);
     return b==SDL_GAMEPAD_BUTTON_INVALID ? -1 : (int)b;
 }
-/* key.<input>= / pad.<input>= lines of the settings file. */
+/* One name of a key.<input>= line: [Shift+][Ctrl+][Alt+] and then a mouse input or an SDL key name. */
+static int parse_input(const char *s, KeyInput *in) {
+    in->mods=0;
+    for (;;) {
+        if (!SDL_strncasecmp(s,"shift+",6)) { in->mods|=BIND_SHIFT; s+=6; }
+        else if (!SDL_strncasecmp(s,"ctrl+",5)) { in->mods|=BIND_CTRL; s+=5; }
+        else if (!SDL_strncasecmp(s,"alt+",4)) { in->mods|=BIND_ALT; s+=4; }
+        else break;
+    }
+    static const struct { const char *name; uint8_t kind; int16_t code; } mouse[]={
+        {"Mouse Left",KIND_MOUSE,SDL_BUTTON_LEFT}, {"Mouse Right",KIND_MOUSE,SDL_BUTTON_RIGHT},
+        {"Mouse Middle",KIND_MOUSE,SDL_BUTTON_MIDDLE}, {"Mouse X1",KIND_MOUSE,SDL_BUTTON_X1},
+        {"Mouse X2",KIND_MOUSE,SDL_BUTTON_X2}, {"Wheel Up",KIND_WHEEL,1}, {"Wheel Down",KIND_WHEEL,-1},
+    };
+    for (size_t i=0;i<sizeof(mouse)/sizeof(*mouse);++i)
+        if (!SDL_strcasecmp(s,mouse[i].name)) { in->kind=mouse[i].kind; in->code=mouse[i].code; return 1; }
+    const SDL_Scancode code=SDL_GetScancodeFromName(s);
+    if (code==SDL_SCANCODE_UNKNOWN) return 0;
+    in->kind=KIND_KEY; in->code=(int16_t)code;
+    return 1;
+}
+static float clamp_setting(float v, float low, float high) { return v<low ? low : v>high ? high : v; }
+/* mouse_camera / mouse_sensitivity / mouse_invert_y / mouse_no_auto_rotation. */
+static void load_mouse_setting(const char *key, const char *value) {
+    const float v=(float)atof(value);
+    if (!strcmp(key,"mouse_camera")) kbm.mouse_camera=v!=0;
+    else if (!strcmp(key,"mouse_sensitivity")) kbm.sensitivity=clamp_setting(v,0.01f,20.0f);
+    else if (!strcmp(key,"mouse_invert_y")) kbm.invert_y=v!=0;
+    else if (!strcmp(key,"mouse_no_auto_rotation")) kbm.no_auto_rotation=v!=0;
+}
+/* key.<input>= / pad.<input>= lines of the settings file, and the mouse_* settings. */
 static void load_bindings(void) {
     bind_defaults();
     const char *path=getenv("BB_CONFIG");
@@ -365,7 +423,12 @@ static void load_bindings(void) {
     while (fgets(line,sizeof line,f)) {
         const int keyboard=!strncmp(line,"key.",4), pad=!strncmp(line,"pad.",4);
         char *eq=strchr(line,'=');
-        if ((!keyboard && !pad) || !eq) continue;
+        if (!eq) continue;
+        if (!keyboard && !pad) {
+            *eq=0;
+            load_mouse_setting(line,eq+1);
+            continue;
+        }
         *eq=0;
         int input=-1;
         for (int i=0;i<IN_COUNT;++i) if (!strcmp(line+4,input_names[i])) input=i;
@@ -377,9 +440,9 @@ static void load_bindings(void) {
             for (char *end=name+strlen(name); end>name && end[-1]==' ';) *--end=0;
             if (!*name) continue;
             if (keyboard) {
-                const SDL_Scancode s=SDL_GetScancodeFromName(name);
-                if (s==SDL_SCANCODE_UNKNOWN) printf("Runtime: controls: unknown key \"%s\" for %s\n",name,line+4);
-                else if (b->key_count<MAX_BIND) b->keys[b->key_count++]=s;
+                KeyInput in;
+                if (!parse_input(name,&in)) printf("Runtime: controls: unknown key \"%s\" for %s\n",name,line+4);
+                else if (b->key_count<MAX_BIND) b->keys[b->key_count++]=in;
             } else {
                 const int button=pad_button_from_name(name);
                 if (button<0) printf("Runtime: controls: unknown gamepad button \"%s\" for %s\n",name,line+4);
@@ -389,9 +452,67 @@ static void load_bindings(void) {
     }
     fclose(f);
 }
-static int key_down(const bool *k, int input) {
-    for (int i=0;i<bindings[input].key_count;++i) if (k[bindings[input].keys[i]]) return 1;
+static void ensure_bindings(void) {
+    if (bindings_ready) return;
+    load_bindings();
+    bindings_ready=1;
+}
+/* A mouse button or the wheel is bound to some input. */
+static int mouse_inputs_bound(void) {
+    for (int a=0;a<IN_COUNT;++a) for (int i=0;i<bindings[a].key_count;++i)
+        if (bindings[a].keys[i].kind!=KIND_KEY) return 1;
     return 0;
+}
+
+/* The mouse buttons held or clicked since the last read (SDL_BUTTON_MASK), set by sample_host. */
+static uint32_t mouse_buttons;
+static int held_mods(const bool *k) {
+    if (!k) return 0;
+    return (k[SDL_SCANCODE_LSHIFT] || k[SDL_SCANCODE_RSHIFT] ? BIND_SHIFT : 0) |
+           (k[SDL_SCANCODE_LCTRL] || k[SDL_SCANCODE_RCTRL] ? BIND_CTRL : 0) |
+           (k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT] ? BIND_ALT : 0);
+}
+/* The input's modifiers are held and no held combination on the same key or button takes
+ * precedence over it: with Shift+Mouse Left bound, a click while Shift is down is not Mouse Left. */
+static int mods_match(const KeyInput *in, int mods) {
+    if ((in->mods & mods)!=in->mods) return 0;
+    for (int a=0;a<IN_COUNT;++a) for (int i=0;i<bindings[a].key_count;++i) {
+        const KeyInput *o=&bindings[a].keys[i];
+        if (o->kind==in->kind && o->code==in->code && o->mods!=in->mods &&
+            (o->mods & in->mods)==in->mods && (o->mods & mods)==o->mods) return 0;
+    }
+    return 1;
+}
+/* Wheel steps become short presses of their inputs, queued so that fast scrolling is not lost. */
+#define PULSE_ON_US 60000
+#define PULSE_GAP_US 50000
+#define PULSE_QUEUE 4
+static uint8_t pulse_queue[IN_COUNT];
+static uint64_t pulse_until[IN_COUNT];
+static void wheel_step(int direction, int mods) {
+    for (int a=0;a<IN_COUNT;++a) for (int i=0;i<bindings[a].key_count;++i) {
+        const KeyInput *in=&bindings[a].keys[i];
+        if (in->kind==KIND_WHEEL && in->code==direction && mods_match(in,mods)) {
+            if (pulse_queue[a]<PULSE_QUEUE) ++pulse_queue[a];
+            break;
+        }
+    }
+}
+static int pulse_held(int input, uint64_t now) {
+    if (now>=pulse_until[input] && pulse_queue[input]) {
+        --pulse_queue[input];
+        pulse_until[input]=now+PULSE_ON_US+PULSE_GAP_US;
+    }
+    return now+PULSE_GAP_US<pulse_until[input];
+}
+static int key_down(const bool *k, int input, uint64_t now) {
+    const int mods=held_mods(k);
+    for (int i=0;i<bindings[input].key_count;++i) {
+        const KeyInput *in=&bindings[input].keys[i];
+        if (in->kind==KIND_WHEEL || !mods_match(in,mods)) continue;
+        if (in->kind==KIND_KEY ? k && k[in->code] : (mouse_buttons & SDL_BUTTON_MASK(in->code))!=0) return 1;
+    }
+    return pulse_held(input,now);
 }
 /* The bound gamepad buttons' state; triggers as their analog value. */
 static int pad_value(SDL_Gamepad *g, int input) {
@@ -411,16 +532,91 @@ static uint8_t key_axis(uint8_t value, int negative, int positive) {
     return negative || positive ? (uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0)) : value;
 }
 static void apply_keyboard(PadData *d, const bool *k) {
+    int held[IN_COUNT];
+    const uint64_t now=now_us();
+    for (int i=0;i<IN_COUNT;++i) held[i]=key_down(k,i,now);
     for (int i=IN_CROSS;i<=IN_RIGHT;++i)
-        if (i!=IN_TOUCHPAD && i!=IN_TOUCHPAD_RIGHT && key_down(k,i)) d->buttons|=input_buttons[i];
-    if (key_down(k,IN_TOUCHPAD)) touch_click(d,0);
-    if (key_down(k,IN_TOUCHPAD_RIGHT)) touch_click(d,1);
-    if (key_down(k,IN_L2)) d->l2=255;
-    if (key_down(k,IN_R2)) d->r2=255;
-    d->left_x=key_axis(d->left_x,key_down(k,IN_MOVE_LEFT),key_down(k,IN_MOVE_RIGHT));
-    d->left_y=key_axis(d->left_y,key_down(k,IN_MOVE_UP),key_down(k,IN_MOVE_DOWN));
-    d->right_x=key_axis(d->right_x,key_down(k,IN_LOOK_LEFT),key_down(k,IN_LOOK_RIGHT));
-    d->right_y=key_axis(d->right_y,key_down(k,IN_LOOK_UP),key_down(k,IN_LOOK_DOWN));
+        if (i!=IN_TOUCHPAD && i!=IN_TOUCHPAD_RIGHT && held[i]) d->buttons|=input_buttons[i];
+    if (held[IN_TOUCHPAD]) touch_click(d,0);
+    if (held[IN_TOUCHPAD_RIGHT]) touch_click(d,1);
+    if (held[IN_L2]) d->l2=255;
+    if (held[IN_R2]) d->r2=255;
+    d->left_x=key_axis(d->left_x,held[IN_MOVE_LEFT],held[IN_MOVE_RIGHT]);
+    d->left_y=key_axis(d->left_y,held[IN_MOVE_UP],held[IN_MOVE_DOWN]);
+    d->right_x=key_axis(d->right_x,held[IN_LOOK_LEFT],held[IN_LOOK_RIGHT]);
+    d->right_y=key_axis(d->right_y,held[IN_LOOK_UP],held[IN_LOOK_DOWN]);
+}
+
+/* The mouse camera. With the hook (runtime_camhook.c) the window thread turns the camera at once,
+ * by 0.022 degrees a count x mouse_sensitivity (the scale of Source games, so their sensitivity
+ * carries over); the game's pitch grows looking down. */
+#define HOOK_RADIANS_PER_COUNT (0.022*3.14159265358979323846/180.0)
+static void mouse_turn(float dx, float dy, float *pitch, float *yaw) {
+    const double k=kbm.sensitivity*HOOK_RADIANS_PER_COUNT;
+    *yaw=(float)(dx*k);
+    *pitch=(float)(dy*k*(kbm.invert_y ? -1 : 1));
+}
+static void mouse_direct_turn(float dx, float dy) {
+    float pitch, yaw;
+    mouse_turn(dx,dy,&pitch,&yaw);
+    runtime_camhook_turn(pitch,yaw);
+}
+/* The stick fallback, when the camera hook cannot be installed (another game version, not
+ * Windows): the mouse as the right stick. The game turns the camera by the tilt, so the tilt
+ * follows the mouse speed (MOUSE_FULL_COUNTS_S counts a second at sensitivity 1 tilts it fully),
+ * averaged over MOUSE_SMOOTHING_MS because the game and the mouse sample at different rates
+ * and divided by the time between pad reads, so the frame rate does not change it. Tilts start
+ * at the game's deadzone (MOUSE_DEADZONE) so that the smallest motion still turns the camera. */
+#define MOUSE_FULL_COUNTS_S 500.0f
+#define MOUSE_SMOOTHING_MS 8.0f
+#define MOUSE_DEADZONE 0.25f
+typedef struct { float vx, vy; uint64_t last; } MouseStick; /* counts a second, smoothed; time of the last read */
+static uint8_t stick_byte(float v) {
+    const int x=128+(int)lroundf(v*(v<0 ? 128.0f : 127.0f));
+    return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x);
+}
+static void mouse_stick_step(MouseStick *s, PadData *d, float dx, float dy, uint64_t now) {
+    float dt=s->last ? (float)(now-s->last)*1e-6f : 0.016f;
+    s->last=now;
+    dt=dt<0.0005f ? 0.0005f : dt>0.1f ? 0.1f : dt;
+    const float blend=1.0f-expf(-dt*1000.0f/MOUSE_SMOOTHING_MS);
+    s->vx+=(dx/dt-s->vx)*blend;
+    s->vy+=(dy/dt-s->vy)*blend;
+    const float sx=s->vx*kbm.sensitivity/MOUSE_FULL_COUNTS_S;
+    const float sy=s->vy*kbm.sensitivity/MOUSE_FULL_COUNTS_S*(kbm.invert_y ? -1.0f : 1.0f);
+    const float m=sqrtf(sx*sx+sy*sy);
+    if (m<0.02f) return;
+    const float tilt=MOUSE_DEADZONE+(1.0f-MOUSE_DEADZONE)*(m>1.0f ? 1.0f : m);
+    d->right_x=stick_byte(sx*tilt/m);
+    d->right_y=stick_byte(sy*tilt/m);
+}
+static void mouse_camera_start(void) {
+    if (!kbm.mouse_camera) { puts("Runtime: Mouse camera: off (mouse_camera=0)"); return; }
+    const char *why="";
+    if (runtime_camhook_install(kbm.no_auto_rotation,&why)) {
+        bbgpu_mouse_set_direct(mouse_direct_turn,runtime_camhook_drop);
+        puts("Runtime: Mouse camera: hook installed");
+    } else printf("Runtime: Mouse camera: stick fallback: %s\n",why);
+}
+/* What the window collected since the last read: the buttons, the wheel as short presses, and
+ * the motion that the stick fallback turns into tilt (the hook has had it from the window already). */
+static float mouse_dx, mouse_dy;
+static int mouse_captured;
+static void read_mouse(const bool *k) {
+    float wheel=0;
+    static float wheel_rest;
+    bbgpu_mouse_enable(kbm.mouse_camera || mouse_inputs_bound()); /* the window may open after the pad */
+    mouse_captured=bbgpu_mouse_take(&mouse_dx,&mouse_dy,&wheel,&mouse_buttons);
+    if (!mouse_captured) mouse_buttons=0;
+    wheel_rest=mouse_captured ? wheel_rest+wheel : 0;
+    const int mods=held_mods(k);
+    for (;wheel_rest>=1.0f;wheel_rest-=1.0f) wheel_step(1,mods);
+    for (;wheel_rest<=-1.0f;wheel_rest+=1.0f) wheel_step(-1,mods);
+}
+static void apply_mouse_stick(PadData *d, uint64_t now) {
+    static MouseStick stick;
+    if (mouse_captured && kbm.mouse_camera && !runtime_camhook_active()) mouse_stick_step(&stick,d,mouse_dx,mouse_dy,now);
+    else stick=(MouseStick){0}; /* the hook gets the motion from the window */
 }
 
 static void sample_host(PadData *d) {
@@ -431,7 +627,7 @@ static void sample_host(PadData *d) {
     d->connected=1; d->connected_count=connected_count ? connected_count : 1;
     d->timestamp=now_us();
     SDL_Gamepad *g=current_gamepad();
-    if (!bindings_ready) { load_bindings(); bindings_ready=1; }
+    ensure_bindings();
     if (bbgpu_overlay_captures_input()) return; /* settings menu open: neutral input */
     const bool *k=SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetKeyboardState(NULL) : NULL;
     if (g) {
@@ -467,7 +663,9 @@ static void sample_host(PadData *d) {
         if ((d->buttons & BTN_TOUCHPAD) && !d->touch_count) touch_click(d,0);
         if (touch_right) touch_click(d,1);
     }
+    read_mouse(k);
     if (k) apply_keyboard(d,k);
+    apply_mouse_stick(d,d->timestamp);
 }
 
 /* BB_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated
@@ -638,7 +836,11 @@ static ABI int32_t pad_open(int32_t user, int32_t type, int32_t index, const voi
     int already=opened; opened=1;
     pthread_mutex_unlock(&lock);
     if (already) return ERR_ALREADY_OPENED;
-    puts("Runtime: pad opened for user 1 (SDL gamepad or keyboard)");
+    pthread_mutex_lock(&lock);
+    ensure_bindings();
+    pthread_mutex_unlock(&lock);
+    mouse_camera_start(); /* before the game's camera first runs */
+    puts("Runtime: pad opened for user 1 (SDL gamepad, keyboard and mouse)");
     return PAD_HANDLE;
 }
 static ABI int32_t pad_close(int32_t handle) {

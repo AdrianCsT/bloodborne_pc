@@ -284,7 +284,7 @@ extern "C" int bbgpu_init(const BbGpuConfig* config) {
         }
         g_window_cv.notify_all();
         while (window->PollEvents()) {
-            SDL_Delay(2);
+            SDL_WaitEventTimeout(nullptr, 2); // wakes at once for input (the mouse camera)
         }
         LOG_INFO(Frontend, "Window closed by user");
         // The process ends here without destructors: caches that save at shutdown run now.
@@ -397,6 +397,23 @@ ScreenshotRequests ConsumeScreenshotRequests() { return {}; }
 
 extern "C" int bbgpu_overlay_captures_input(void) {
     return BbOverlay::CapturesInput() ? 1 : 0;
+}
+
+extern "C" void bbgpu_mouse_set_direct(void (*turn)(float dx, float dy), void (*drop)(void)) {
+    Frontend::WindowSDL::mouse_drop.store(drop, std::memory_order_release);
+    Frontend::WindowSDL::mouse_turn.store(turn, std::memory_order_release);
+}
+
+extern "C" void bbgpu_mouse_enable(int enabled) {
+    if (g_window) g_window->SetMouseEnabled(enabled != 0);
+}
+
+extern "C" int bbgpu_mouse_take(float* dx, float* dy, float* wheel, uint32_t* buttons) {
+    *dx = *dy = *wheel = 0.0f;
+    u32 held = 0;
+    const bool captured = g_window && g_window->TakeMouse(*dx, *dy, *wheel, held);
+    *buttons = held;
+    return captured ? 1 : 0;
 }
 
 extern "C" int bbgpu_text_input_begin(const char* initial, const char* prompt) {

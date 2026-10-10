@@ -250,6 +250,12 @@ if (WIN32)
     target_compile_options(pad-calibration-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
     target_include_directories(pad-calibration-test PRIVATE .. ../src)
     target_link_libraries(pad-calibration-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
+    # Mouse inputs, wheel steps, the stick fallback and the camera hook's turn (no window, no game).
+    add_executable(mouse-camera-test EXCLUDE_FROM_ALL ../tests/test_mouse_camera.c ../src/compat_win.c)
+    set_target_properties(mouse-camera-test PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    target_compile_options(mouse-camera-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+    target_include_directories(mouse-camera-test PRIVATE .. ../src)
+    target_link_libraries(mouse-camera-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
 endif()
 
 add_executable(motion-history-test EXCLUDE_FROM_ALL ../tests/test_motion_history.cpp)

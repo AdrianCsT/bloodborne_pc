@@ -34,8 +34,23 @@ public:
     void BeginTextInput(const std::string& initial, const std::string& prompt);
     /// 0 while typing, 1 confirmed (Enter), 2 cancelled (Escape); text is UTF-8.
     int PollTextInput(std::string& text);
+    /// Mouse for the game (runtime_pad.c). While enabled, the window holds the mouse in relative
+    /// mode whenever it has focus and neither the settings menu nor the text entry is shown.
+    void SetMouseEnabled(bool enabled) { mouse_enabled.store(enabled, std::memory_order_relaxed); }
+    /// Motion (counts) and wheel steps since the last call, and the buttons held or clicked
+    /// meanwhile (SDL_BUTTON_MASK); true while the mouse is held.
+    bool TakeMouse(float& dx, float& dy, float& wheel, u32& buttons);
+    /// The native mouse camera: motion goes to `turn` at once, from the window thread, instead of
+    /// TakeMouse, and `drop` runs whenever the mouse is let go or taken. Null turn: off.
+    static inline std::atomic<void (*)(float dx, float dy)> mouse_turn{nullptr};
+    static inline std::atomic<void (*)()> mouse_drop{nullptr};
 
 private:
+    std::atomic<bool> mouse_enabled{false}, mouse_captured{false};
+    std::mutex mouse_mutex;
+    float mouse_dx{}, mouse_dy{}, mouse_wheel{};
+    u32 mouse_held{}, mouse_clicked{}; ///< clicked: pressed since the last TakeMouse
+    void UpdateMouseCapture();
     std::atomic<s32> width, height;
     std::atomic<bool> is_open{true};
     std::mutex text_mutex;

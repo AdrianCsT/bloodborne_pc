@@ -30,6 +30,17 @@ int bbgpu_text_input_begin(const char *initial_utf8, const char *prompt_utf8);
 int bbgpu_text_input_poll(char *out_utf8, uint64_t size);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int bbgpu_overlay_captures_input(void);
+/* Mouse for the game (runtime_pad.c). enable asks the window to hold the mouse in relative mode
+ * while the game window has focus and neither the settings menu nor the text dialog is open.
+ * take returns the motion (counts), wheel steps and buttons (SDL_BUTTON_MASK, held or clicked)
+ * since the last call, and 1 while the mouse is held. Leaving or entering that mode drops what
+ * has not been taken. */
+void bbgpu_mouse_enable(int enabled);
+int bbgpu_mouse_take(float *dx, float *dy, float *wheel, uint32_t *buttons);
+/* The native mouse camera: motion (counts) goes to `turn` at once, from the window thread,
+ * instead of to bbgpu_mouse_take, and `drop` is called whenever the mouse is let go. Null turn:
+ * off. */
+void bbgpu_mouse_set_direct(void (*turn)(float dx, float dy), void (*drop)(void));
 /* Patches the loaded image before the game runs (image still writable): libGnm entry hooks. */
 void bbgpu_patch_image(unsigned char *image, uint64_t size);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

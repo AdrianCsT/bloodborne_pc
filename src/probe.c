@@ -641,6 +641,8 @@ int main(int argc, char **argv) {
     }
     image = allocate(round_page(size));
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
+    runtime_image_start = (uintptr_t)image;
+    runtime_image_size = size;
     fclose(f);
     if (!cpu_only) {
         char title[128]="Bloodborne", serial[16]="UNKNOWN", sfo[4096];
