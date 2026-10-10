@@ -544,7 +544,7 @@ static uint8_t key_axis(uint8_t value, int negative, int positive) {
     return negative || positive ? (uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0)) : value;
 }
 /* The left stick from the movement keys. Keys on both axes (a diagonal) put the stick on the circle a real
- * stick travels, 45 degrees at 90 counts a side (127 * sqrt(1/2)), not in the square's corner (0,0), 1.41
+ * stick travels, 45 degrees at 90 counts a side (127 * sqrt(1/2)), not in a corner of the square ((0,0) for W+A), 1.41
  * times a full push: letting go of one key then dropped the push from 1.41 to 1.0 in one frame, which the
  * game may read as the stick being let go (the sprint ends). Keys on one axis only, or opposing keys, and
  * a gamepad's stick otherwise, keep key_axis. */

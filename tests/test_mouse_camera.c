@@ -222,7 +222,7 @@ static void defaults(void) {
 /* Sprinting on the keyboard: W + A (or D) + Space, then one of the two direction keys is let go. The pad
  * state the game reads must stay continuous: Circle held and the left stick at a full push in every poll. A
  * diagonal sits on the stick's circle (about 90 counts a side, 45 degrees) like a real stick's, not in the
- * square's corner (0,0), 1.41 times a full push: letting go of one key then dropped the push to 1.0 at once. */
+ * square's corner ((0,0) for W+A, (255,0) for W+D), 1.41 times a full push: letting go of one key then dropped the push to 1.0 at once. */
 static float stick_push(const PadData *d) { return hypotf((float)d->left_x-128.0f,(float)d->left_y-128.0f); }
 static void sprint_poll(const bool *keys, int side_key, const char *step, int expect_x, int expect_y) {
     PadData d;
