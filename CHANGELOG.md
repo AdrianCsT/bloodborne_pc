@@ -4,7 +4,7 @@ All notable changes to the Windows fork of the Bloodborne PS4 port. The format f
 
 The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags remain, and this file replaces their notes. Version 1.6.9 is folded into 1.6.10 (see there).
 
-## [Unreleased]
+## [1.7.0-beta.2] - 2026-10-10
 
 ### Added
 
@@ -19,6 +19,8 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 ### Fixed
 
 - FSR 4.1.1 works on AMD cards. On AMD's Windows driver, fsr4vk v0.4.3 stopped at "descriptor binding exceeds queried layout size" and the game fell back to FSR 3.1. The launcher now downloads fsr4vk v0.4.3 with a fix for that driver, built by this port and hosted on its release next to its source, and offers it as "Update FSR 4.1.1" to anyone who has the original. Checked on a Radeon RX 6600 (driver 26.8.1) and a GeForce RTX 4070; reported upstream as [dvj5411/fsr4vk#1](https://github.com/dvj5411/fsr4vk/issues/1).
+- The frame rate fell low and unsteady while another window had the focus. The game now asks Windows not to throttle it in the background (its clocks and its 1 ms timer). Not yet confirmed on the PC that showed it.
+- Numpad 0 with Num Lock off opens the in-game menu, like Insert. Keyboards without a separate Insert key could only open it with L3+R3.
 - In a window, an output above 1920x1080 was rendered at full size and then shrunk into a 1920x1080 window, and frame generation ran at 1920x1080. The window now opens at the output size, or maximized when that size does not fit the screen.
 - The FSR 4.1.1 entry could stay gray after you turned on Experimental features or downloaded the files, because the launcher kept a GPU check made while they were off. It now ignores that result and checks again when the switch goes on.
 - With object motion vectors on, some still objects got vectors from history that was not theirs: in a test, bushes behind the Hunter's Dream workshop moved 100 to 650 pixels a frame, and FSR and frame generation smeared them. Where an object's vector differs from the camera's by more than 5% of the frame width (85 pixels at 1706x960, at least 32), the camera's vector is used. At the same moment of the test route, the worst frames went from 2.8% of the picture with such vectors to none in 24 frames.
