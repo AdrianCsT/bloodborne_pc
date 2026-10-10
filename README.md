@@ -10,15 +10,15 @@
 <a href="https://github.com/0xCydral/bloodborne_pc/releases"><img src="https://img.shields.io/github/downloads/0xCydral/bloodborne_pc/total?style=for-the-badge&logo=github&logoColor=white&label=Downloads" alt="Total downloads"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue?style=for-the-badge" alt="License GPL-2.0"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform Windows 10/11">
-<a href="https://discord.gg/yTMG8c4Bqm"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+<a href="https://discord.gg/KYZRKk9CB"><img src="https://img.shields.io/badge/Discord-Original%20project-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord of the original project"></a>
 
 ![The launcher in Simple mode](docs/screenshots/launcher-simple.png)
 
 </div>
 
 > [!NOTE]
-> This project is not related to shadPS4. Please send questions about it to
-> [our Discord server](https://discord.gg/KYZRKk9CB), not to the shadPS4 server.
+> This project is not related to shadPS4. Please ask questions about it on the
+> [original project's Discord server](https://discord.gg/KYZRKk9CB), not on the shadPS4 server.
 
 **Players:** [What this is](#what-this-is) · [What you need](#what-you-need) · [Install](#install) · [Update](#update) · [First launch and key settings](#first-launch-and-key-settings) · [Controls](#controls) · [Troubleshooting and FAQ](#troubleshooting-and-faq)
 
@@ -53,7 +53,7 @@ You do not need a compiler, Python or an emulator. Everything else is in the zip
 
 ## Install
 
-**[Download the latest release](https://github.com/0xCydral/bloodborne_pc/releases/latest)** (`bbport-windows.zip`) · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
+**[Download the latest release](https://github.com/0xCydral/bloodborne_pc/releases/latest)** (`bbport-windows.zip`) · **[Discord of the original project](https://discord.gg/KYZRKk9CB)**
 
 1. Download `bbport-windows.zip` and unzip it anywhere.
 2. Open `Bloodborne.exe`. The first time, it opens the launcher.
@@ -284,7 +284,7 @@ Use **Advanced > Desktop shortcut**, or point a shortcut or Steam (*Add a Non-St
 
 </details>
 
-Still stuck? Ask on the [Discord server](https://discord.gg/yTMG8c4Bqm) or open an [issue](https://github.com/0xCydral/bloodborne_pc/issues).
+Still stuck? Ask on the original project's [Discord server](https://discord.gg/KYZRKk9CB) or open an [issue](https://github.com/0xCydral/bloodborne_pc/issues). If the Discord invite has expired, the [original project's README](https://github.com/deadinside28/bloodborne_pc#readme) has the current one.
 
 ---
 
@@ -650,6 +650,6 @@ The Bloodborne-style icon is original artwork, not taken from the game.
 
 <div align="center">
 
-[Releases](https://github.com/0xCydral/bloodborne_pc/releases) · [Discord](https://discord.gg/yTMG8c4Bqm) · [Original project](https://github.com/deadinside28/bloodborne_pc) · [Windows port](https://github.com/Supermedo/bloodborne_pc)
+[Releases](https://github.com/0xCydral/bloodborne_pc/releases) · [Discord of the original project](https://discord.gg/KYZRKk9CB) · [Original project](https://github.com/deadinside28/bloodborne_pc) · [Windows port](https://github.com/Supermedo/bloodborne_pc)
 
 </div>
