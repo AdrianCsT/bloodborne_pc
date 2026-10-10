@@ -23,7 +23,7 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 - Numpad 0 with Num Lock off opens the in-game menu, like Insert. Keyboards without a separate Insert key could only open it with L3+R3.
 - In a window, an output above 1920x1080 was rendered at full size and then shrunk into a 1920x1080 window, and frame generation ran at 1920x1080. The window now opens at the output size, or maximized when that size does not fit the screen.
 - The FSR 4.1.1 entry could stay gray after you turned on Experimental features or downloaded the files, because the launcher kept a GPU check made while they were off. It now ignores that result and checks again when the switch goes on.
-- With object motion vectors on, some still objects got vectors from history that was not theirs: in a test, bushes behind the Hunter's Dream workshop moved 100 to 650 pixels a frame, and FSR and frame generation smeared them. Where an object's vector differs from the camera's by more than 5% of the frame width (85 pixels at 1706x960, at least 32), the camera's vector is used. At the same moment of the test route, the worst frames went from 2.8% of the picture with such vectors to none in 24 frames.
+- With object motion vectors on, some still objects got wrong vectors: in a test, bushes behind the Hunter's Dream workshop moved 100 to 650 pixels a frame, and FSR and frame generation smeared them. Where an object's vector differs from the camera's by more than 5% of the frame width (85 pixels at 1706x960, at least 32), the camera's vector is used. At the same moment of the test route, the worst frames went from 2.8% of the picture with such vectors to none in 24 frames.
 
 ## [1.7.0-beta.1] - 2026-10-09
 
