@@ -7,11 +7,13 @@ import ast
 import ctypes
 import os
 import queue
+import struct
 import re
 import sys
 import tempfile
 import types
 import unittest
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -575,6 +577,7 @@ class ButtonIconLaunchTests(unittest.TestCase):
         self.settings = {**launcher.APP_DEFAULTS, 'game_dir': str(self.game), 'mods_dir': str(self.root / 'mods')}
         self.pads = []
         self.ensure = mock.Mock(return_value=(self.layer, True))
+        self.real_ensure = self.icons.ensure_layer
         for patch in (mock.patch.object(launcher, 'DATA_DIR', self.root),
                       mock.patch.object(launcher, 'list_gamepads', lambda: self.pads),
                       mock.patch.object(self.icons, 'ensure_layer', self.ensure)):
@@ -639,6 +642,25 @@ class ButtonIconLaunchTests(unittest.TestCase):
         env = self.environment('xbox')
         self.assertNotIn('BB_ICONS_DIR', env)
         self.assertIn('KG_OK is missing', env['BB_ICONS_NOTE'])
+
+    def test_whatever_goes_wrong_making_the_icons_the_game_still_starts(self):
+        for error in (IndexError('x'), KeyError('x'), struct.error('bad header'), zlib.error('bad data'),
+                      RuntimeError('anything')):
+            self.ensure.side_effect = error
+            env = self.environment('xbox')
+            self.assertNotIn('BB_ICONS_DIR', env, error)
+            self.assertIn('off', env['BB_ICONS_NOTE'], error)
+            self.assertIn(str(error), env['BB_ICONS_NOTE'])
+
+    def test_a_corrupt_game_file_through_the_real_layer_code_turns_the_icons_off(self):
+        import bbport_icons
+        source = self.game / 'dvdroot_ps4/menu/common.tpf.dcx'
+        for data in (b'x', b'DCX\0' + b'\0' * 100, bbport_icons.dcx_pack(b'TPF\0' + b'\xff' * 40)):
+            source.write_bytes(data)
+            with mock.patch.object(self.icons, 'ensure_layer', self.real_ensure):
+                env = self.environment('xbox')
+            self.assertNotIn('BB_ICONS_DIR', env)
+            self.assertIn('Button icons are off', env['BB_ICONS_NOTE'])
 
     def test_a_game_folder_without_the_file_adds_nothing(self):
         (self.game / 'dvdroot_ps4/menu/common.tpf.dcx').unlink()

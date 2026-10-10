@@ -839,7 +839,7 @@ def icons_environment(s, ini):
         if note:
             return {'BB_ICONS_NOTE': note}
         folder, built = bbport_icons.ensure_layer(game, DATA_DIR / 'out', icon_set, ini)
-    except (bbport_icons.IconError, OSError, ValueError) as error:
+    except Exception as error:  # nothing about the icons may stop the game from starting
         return {'BB_ICONS_NOTE': f'Button icons are off for this run: {error}'}
     return {'BB_ICONS_DIR': str(folder), 'BB_ICONS_NOTE': f'Button icons: {icon_set} ({"made" if built else "from the cache"})'}
 

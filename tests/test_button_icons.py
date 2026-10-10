@@ -98,11 +98,13 @@ class TpfTests(unittest.TestCase):
         self.assertIn('KG_L1', refused(wrong_format))
         self.assertIn('PS4', refused(layout, platform=3))
 
-    def test_a_texture_pointing_past_the_end_is_refused(self):
-        tpf = bytearray(make_tpf(real_layout()))
-        struct.pack_into('<I', tpf, 16, len(tpf) - 100)  # the first entry's data offset
-        with self.assertRaises(icons.IconError):
+    def test_a_texture_pointing_past_the_end_is_refused_as_outside_the_file(self):
+        layout = real_layout([('MENU_Common_00001', 32, 32, 98, bytes(1024))])  # not a glyph: only the bounds apply
+        tpf = bytearray(make_tpf(layout))
+        struct.pack_into('<I', tpf, 16 + 36 * (len(layout) - 1), len(tpf) - 100)  # its data offset: 1024 bytes will not fit
+        with self.assertRaises(icons.IconError) as caught:
             icons.check_layout(bytes(tpf))
+        self.assertIn('MENU_Common_00001 lies outside', str(caught.exception))
 
     def test_patching_a_texture_keeps_the_file_the_same_size_and_the_rest_untouched(self):
         tpf = make_tpf(real_layout())
@@ -198,6 +200,20 @@ class Bc7Tests(unittest.TestCase):
             pixels = [one if rng.random() < 0.5 else two for _ in range(16)]
             decoded = icons.bc7_decode_block(icons.bc7_encode_block(pixels))
             self.assertLessEqual(max_error(pixels, decoded), 1, (one, two))
+
+    def test_a_block_whose_colours_differ_but_whose_channel_sum_is_constant_still_encodes(self):
+        """Red next to green: R+G+B+A is the same for both, so the spread is orthogonal to (1, 1, 1, 1), where the
+        search for the main axis used to start, and the axis came out empty."""
+        rng = random.Random(5)
+        red, green = (255, 0, 0, 255), (0, 255, 0, 255)
+        for _ in range(20):
+            pixels = [red if rng.random() < 0.5 else green for _ in range(16)]
+            pixels[0], pixels[1] = red, green
+            decoded = icons.bc7_decode_block(icons.bc7_encode_block(pixels))
+            self.assertLessEqual(max_error(pixels, decoded), 1)
+        ramp = [(round(255 * i / 15), round(255 - 255 * i / 15), 0, 255) for i in range(16)]
+        decoded = icons.bc7_decode_block(icons.bc7_encode_block(ramp))
+        self.assertLessEqual(max_error(ramp, decoded), 6)
 
     def test_a_gradient_stays_close(self):
         """A smooth ramp between two colours (a lit edge of a key) is what the 16 palette steps are for."""
@@ -498,6 +514,23 @@ class LayerTests(unittest.TestCase):
             self.layer()
         self.assertIn('KG_OK', str(caught.exception))
         self.assertFalse((self.cache / 'icons').exists() and list((self.cache / 'icons').iterdir()))
+
+    def test_a_corrupt_file_is_refused_by_the_real_layer_code_with_an_icon_error(self):
+        good = icons.dcx_pack(make_tpf(real_layout()))
+        broken = bytearray(good)
+        broken[0x60:0x80] = b'\xff' * 32  # inside the zlib data
+        for data in (bytes(broken), good[:0x50], b'DCX\0' + b'\0' * 100, icons.dcx_pack(b'TPF\0' + b'\xff' * 40)):
+            self.source.write_bytes(data)
+            with self.assertRaises(icons.IconError):
+                self.layer()
+        self.assertFalse((self.cache / 'icons').exists() and list((self.cache / 'icons').iterdir()))
+
+    def test_an_unexpected_failure_while_reading_the_file_is_an_icon_error_too(self):
+        from unittest import mock
+        for error in (IndexError('x'), KeyError('x'), struct.error('x'), zlib.error('x')):
+            with mock.patch.object(icons, 'check_layout', side_effect=error):
+                with self.assertRaises(icons.IconError):
+                    self.layer()
 
     def test_a_game_without_the_file_is_refused(self):
         self.source.unlink()

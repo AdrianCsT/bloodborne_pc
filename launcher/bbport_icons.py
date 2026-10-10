@@ -10,6 +10,7 @@ named KG_* of 32x32 pixels, BC7 without a GNF header, one 8x8-block micro tile e
 trademark marks, left alone). The big atlases (MENU_Common_00091 and 00092) tile as 1D thin: micro tiles in
 raster order, Morton order inside each. The pixels are re-encoded as BC7 mode 6 by a pure Python encoder: this
 module needs the standard library and Pillow only (no numpy, which the frozen launcher does not carry).
+The module has no --selftest: its checks are tests/test_button_icons.py, which need no game files.
 
 Run `python launcher/bbport_icons.py <common.tpf.dcx> <out folder> [xbox|keyboard ...]` to write each variant
 under <out folder>/<set>/ with PNGs of its KG_* glyphs (also scaled x4), for a look at the art; the tests
@@ -124,13 +125,13 @@ def check_layout(tpf):
                 or texture.dxgi != DXGI_BC7:
             raise IconError(f'{name} is {texture.width}x{texture.height}, {texture.size} bytes, format '
                             f'{texture.dxgi}: expected 32x32 BC7 of {GLYPH_BYTES} bytes')
+    for texture in textures:
+        if texture.offset < ENTRY_AT + ENTRY_SIZE * len(textures) or texture.offset + texture.size > len(tpf):
+            raise IconError(f'{texture.name} lies outside common.tpf')
     run = sorted((t for t in textures if t.name.startswith('KG_')), key=lambda t: t.offset)
     for before, after in zip(run, run[1:]):
         if before.offset + before.size != after.offset:
             raise IconError(f'{before.name} and {after.name} are not next to each other in common.tpf')
-    for texture in textures:
-        if texture.offset < ENTRY_AT + ENTRY_SIZE * len(textures) or texture.offset + texture.size > len(tpf):
-            raise IconError(f'{texture.name} lies outside common.tpf')
     return {name: by_name[name] for name in GLYPH_NAMES}
 
 
@@ -263,7 +264,14 @@ def principal_axis(pixels):
     """The direction along which the 16 RGBA pixels spread most (None when they are all alike)."""
     mean = [sum(p[c] for p in pixels) / 16 for c in range(4)]
     cov = [[sum((p[i] - mean[i]) * (p[j] - mean[j]) for p in pixels) for j in range(4)] for i in range(4)]
-    axis = [1.0, 1.0, 1.0, 1.0]
+    # Start from the widest pair of colours: it cannot be orthogonal to the spread, where a fixed start such as
+    # (1, 1, 1, 1) is for red next to green (the power iteration then never leaves zero).
+    one, two = max(((a, b) for a in pixels for b in pixels), key=lambda ab: sum((ab[0][c] - ab[1][c]) ** 2 for c in range(4)))
+    axis = [float(one[c] - two[c]) for c in range(4)]
+    length = sum(v * v for v in axis) ** 0.5
+    if length < 1e-9:
+        return None
+    axis = [v / length for v in axis]
     for _ in range(10):
         nxt = [sum(cov[i][j] * axis[j] for j in range(4)) for i in range(4)]
         norm = sum(v * v for v in nxt) ** 0.5
@@ -915,12 +923,16 @@ def generate(source, destination, icon_set, ini):
     says what differs); the source file is only read. Returns the SHA-256 of the source."""
     import os
     digest = source_hash(source)
-    with open(source, 'rb') as handle:
-        tpf = dcx_unpack(handle.read())
-    check_layout(tpf)
-    glyphs = build_glyphs(icon_set, ini)
-    patched = bytearray(patch_glyphs(tpf, glyphs))
-    patch_atlases(patched, glyphs)
+    try:
+        with open(source, 'rb') as handle:
+            tpf = dcx_unpack(handle.read())
+        check_layout(tpf)
+        glyphs = build_glyphs(icon_set, ini)
+        patched = bytearray(patch_glyphs(tpf, glyphs))
+        patch_atlases(patched, glyphs)
+    except (struct.error, IndexError, KeyError, ValueError, OverflowError, zlib.error) as error:
+        # A damaged file fails in many ways below the format checks; to the caller it is one: not usable.
+        raise IconError(f'{COMMON_TPF} cannot be read ({type(error).__name__}: {error})') from None
     destination = os.fspath(destination)
     os.makedirs(os.path.dirname(destination) or '.', exist_ok=True)
     temporary = destination + '.tmp'
@@ -974,7 +986,7 @@ def ensure_layer(game_dir, out_dir, icon_set, ini):
 def main(argv):
     import os
     if len(argv) < 3:
-        print(__doc__.split('Run `')[1].split('`')[0] if '`' in __doc__ else 'usage: bbport_icons.py SOURCE OUT [SET ...]')
+        print('usage: bbport_icons.py <common.tpf.dcx> <out folder> [xbox|keyboard ...]')
         return 2
     source, out = argv[1], argv[2]
     for icon_set in argv[3:] or ['xbox', 'keyboard']:
