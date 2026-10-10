@@ -69,11 +69,12 @@ int main() {
         cmd.pipelineBarrier2({.memoryBarrierCount=1,.pMemoryBarriers=&b},d);
     };
     const auto run=[&](const char* label,float depth,float translation,float rotation,
-                       float object_depth,u32 mode,float expected,bool jitter=false) {
+                       float object_depth,u32 mode,float expected,bool jitter=false,
+                       float object_x=2.f) {
         auto* pixels=static_cast<float*>(ai.pMappedData);
         for (u32 p=0;p<N;++p) {
             pixels[p*4]=depth;
-            pixels[N*4+p*4]=2.f; pixels[N*4+p*4+1]=0.f;
+            pixels[N*4+p*4]=object_x; pixels[N*4+p*4+1]=0.f;
             pixels[N*4+p*4+2]=1.f; pixels[N*4+p*4+3]=object_depth;
         }
         const auto cmd=scheduler.CommandBuffer();
@@ -131,5 +132,8 @@ int main() {
     run("static camera cancels jitter",distant,0,0,0,0,0,true);
     run("matching object vector",distant,0,0,distant,1,2);
     run("stale distant object vector",distant,0,0,0.9999f,1,0);
+    // History that is not the object's: far from the camera vector, which stays.
+    run("object vector far from the camera's",distant,0,0,distant,1,0,false,100.f);
+    run("moving object within the bound",distant,0,0,distant,1,30,false,30.f);
     vmaDestroyBuffer(instance.GetAllocator(),staging,allocation);
 }

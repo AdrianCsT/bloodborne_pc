@@ -95,9 +95,16 @@ void main() {
         // Both depths are full precision. Do not accept an old foreground vector merely
         // because perspective depth compresses distant surfaces into a small interval.
         float depth_threshold = max(2e-7, (proj.z - depth) * 0.01);
+        // bbport: an object vector far from the camera's at the same pixel read history that is
+        // not this object's: still bushes behind the Hunter's Dream workshop got 100-650 px a
+        // frame while the camera vectors around them were right. Real object motion beyond 5% of
+        // the frame width per frame (32 px at low render sizes) is rarer than such history, so
+        // the camera vector stays then.
+        const float max_object_delta = max(0.05 * size.x, 32.0);
         if (object_motion.b > 0.99 && abs(object_motion.a - depth) < depth_threshold &&
             !any(isnan(object_motion.rg)) &&
-            !any(isinf(object_motion.rg))) {
+            !any(isinf(object_motion.rg)) &&
+            distance(object_motion.rg, motion) < max_object_delta) {
             result = object_motion.rg;
         }
     }
