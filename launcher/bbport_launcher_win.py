@@ -221,7 +221,7 @@ EFFECTS = [
 ]
 EXTRAS = [
     ('skip_intro', ('Skip the intro logos and movie', 'Пропуск заставок при запуске'), False),
-    ('debug_camera', ('Free camera (hold Cross + L3; keyboard Space + Z)', 'Свободная камера (Cross + L3 / Space + Z)'), False),
+    ('debug_camera', ('Free camera (hold Cross + L3; keyboard E + C)', 'Свободная камера (Cross + L3 / E + C)'), False),
     ('debug_menu', ('Game debug menu (left touchpad / Tab; needs the debug fonts)',
                     'Debug menu (левый touchpad / Tab; нужны шрифты)'), False),
 ]

@@ -328,7 +328,7 @@ Without shadPS4 there would be no bbport: its renderer and shader recompiler are
 
 **Launcher language.** The Windows launcher has 13 languages (see [Features](#features)). The Linux GTK4 launcher offers Russian, English or Brazilian Portuguese and follows the system language by default.
 
-**Free camera and game debug menu** (v1.09). Enable the corresponding switches in the launcher or in-game menu and restart. Free camera uses Lance McDonald's [GoldHEN patch](https://github.com/GoldHEN/GoldHEN_Patch_Repository/blob/main/patches/xml/Bloodborne-Orbis.xml). Hold Cross and press L3 to cycle modes (keyboard: hold Space and press Z). It needs no fonts and conflicts with *Enemy Control*.
+**Free camera and game debug menu** (v1.09). Enable the corresponding switches in the launcher or in-game menu and restart. Free camera uses Lance McDonald's [GoldHEN patch](https://github.com/GoldHEN/GoldHEN_Patch_Repository/blob/main/patches/xml/Bloodborne-Orbis.xml). Hold Cross and press L3 to cycle modes (keyboard: hold E and press C). It needs no fonts and conflicts with *Enemy Control*.
 
 For the game debug menu, install `DbgFont14h.ccm` and `DbgFont14h.tpf` from [Debug Menu and XML Patch](https://www.nexusmods.com/bloodborne/mods/253) into the game's `dvdroot_ps4/font/` first. Startup rejects missing or empty font files instead of launching the unsafe patch. Open it with the left touchpad / Tab (with the debug menu on, the left half no longer opens the gestures). Backspace is the right touchpad. Touch coordinates are forwarded from SDL gamepads, and Back/Select emulates a left click on pads without a touch surface. The port's settings menu remains Insert / L3+R3.
 

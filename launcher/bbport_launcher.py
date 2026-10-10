@@ -91,7 +91,7 @@ EFFECTS = [
     ("effect_dynamic_shadows", "Тени от динамических источников", True),
     ("effect_ssr", "Отражения SSR (не было в игре)", False),
     ("skip_intro", "Пропуск заставок при запуске", False),
-    ("debug_camera", "Свободная камера (Cross + L3 / Space + Z)", False),
+    ("debug_camera", "Свободная камера (Cross + L3 / E + C)", False),
     ("debug_menu", "Debug menu (левый touchpad / Tab; нужны шрифты)", False),
 ]
 MODEL_LOD = [("Как в игре", "0"), ("Максимальная (-2)", "-2"), ("Ниже (1)", "1"),

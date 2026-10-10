@@ -199,7 +199,7 @@ EN = {
     "Тени от динамических источников": "Dynamic light shadows",
     "Отражения SSR (не было в игре)": "SSR reflections (not in the original game)",
     "Пропуск заставок при запуске": "Skip the intro videos",
-    "Свободная камера (Cross + L3 / Space + Z)": "Free camera (Cross + L3 / Space + Z)",
+    "Свободная камера (Cross + L3 / E + C)": "Free camera (Cross + L3 / E + C)",
     "Debug menu (левый touchpad / Tab; нужны шрифты)": "Debug menu (left touchpad / Tab; needs fonts)",
     "Установите DbgFont14h.ccm и DbgFont14h.tpf в dvdroot_ps4/font из мода Nexus #253":
         "Install DbgFont14h.ccm and DbgFont14h.tpf into dvdroot_ps4/font from Nexus mod #253",
@@ -417,7 +417,7 @@ PT_BR = {
     "Тени от динамических источников": "Sombras de luzes dinâmicas",
     "Отражения SSR (не было в игре)": "Reflexos SSR (não existiam no jogo original)",
     "Пропуск заставок при запуске": "Pular vídeos de introdução",
-    "Свободная камера (Cross + L3 / Space + Z)": "Câmera livre (Cross + L3 / Space + Z)",
+    "Свободная камера (Cross + L3 / E + C)": "Câmera livre (Cross + L3 / E + C)",
     "Debug menu (левый touchpad / Tab; нужны шрифты)": "Menu de depuração (touchpad esquerdo / Tab; requer fontes)",
     "Установите DbgFont14h.ccm и DbgFont14h.tpf в dvdroot_ps4/font из мода Nexus #253":
         "Instale DbgFont14h.ccm e DbgFont14h.tpf em dvdroot_ps4/font a partir do mod #253 do Nexus",
