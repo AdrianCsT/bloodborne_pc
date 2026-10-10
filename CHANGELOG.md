@@ -8,11 +8,12 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 
 ### Changed
 
-- The default keyboard keys follow Dark Souls III better: Esc opens the menu (equipment, items; it was Tab), Tab and G both open the gestures (Tab is new), and Space alone is Circle (dodge, hold to sprint; Esc is no longer Circle). Saved bindings in `bbport.ini` are not touched.
+- The default keyboard keys follow Dark Souls III better: Esc opens the menu (equipment, items; it was Tab), Tab and G both open the gestures (Tab is new), and Space alone is Circle (dodge, hold to sprint; Esc is no longer Circle). Saved bindings in `bbport.ini` are not touched, so a key you saved for another input and that is now a default (Esc for Options, Tab for the left touchpad) presses both inputs; rebind one of them in the Controls tab.
 - Keyboard diagonals (W with A or D) now push the left stick as far as a real stick's full push, along the circle, instead of into the square's corner, which is about 1.4 times as far. Letting go of one of the two keys no longer drops the push in one step, which may fix sprinting ending when a diagonal key is released. Not confirmed in game yet.
 
 ### Fixed
 
+- The in-game menu (Insert) could not save its settings to `bbport.ini` on Windows: the save renamed a temporary file over the existing one, which Windows refuses, and the log said `Settings: cannot write`. Found by building the settings tests on Windows; not yet seen in the game.
 - The launcher found its updates through the GitHub account name, which changed from AdrianCsT to 0xCydral. GitHub forwards the old name only until someone else takes it and creates a repository of the same name, and from then on that person's releases would have been offered as updates. The launcher now looks releases up by the repository's id, which no rename changes, and downloads FSR 4.1.1 from the new address.
 - A release can hold more than one zip (beta.2 also carries the fsr4vk build and its source). The launcher took the first zip GitHub listed; it now takes `bbport-windows.zip` by name, and for a release without it, Update opens the release page.
 

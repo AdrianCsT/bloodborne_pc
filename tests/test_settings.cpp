@@ -9,6 +9,16 @@
 #include <unistd.h>
 #include "gpu/shim/bbport_settings.h"
 
+#ifdef _WIN32
+// Windows has no /tmp, setenv or unsetenv: the file goes in the working directory.
+#define TEST_TMP ""
+static int setenv(const char* name, const char* value, int) {
+    return _putenv_s(name, value);
+}
+#else
+#define TEST_TMP "/tmp/"
+#endif
+
 static std::string Read(const char* path) {
     std::ifstream file(path);
     std::stringstream text;
@@ -17,7 +27,7 @@ static std::string Read(const char* path) {
 }
 
 int main() {
-    char path[] = "/tmp/bbport-settings-test-XXXXXX";
+    char path[] = TEST_TMP "bbport-settings-test-XXXXXX";
     const int fd = mkstemp(path);
     assert(fd >= 0);
     const char ini[] = "# launcher\nupscaler=fsr3\nkey.cross=X, Space\npad.circle=a\nshow_fps=0\n"
