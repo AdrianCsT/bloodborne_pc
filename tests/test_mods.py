@@ -342,3 +342,89 @@ class WindowsLinkTests(unittest.TestCase):
         self.assertTrue(calls)
         self.assertTrue((overlay / 'dvdroot_ps4' / 'map').is_symlink())
         self.assertEqual((overlay / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'mod')
+
+
+class IconLayerTests(unittest.TestCase):
+    """The button icons are a layer under the player's mods: alone they still make an overlay, and a mod that
+    supplies the same file wins."""
+    COMMON = 'dvdroot_ps4/menu/common.tpf.dcx'
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.game = self.root / 'CUSA03173'
+        (self.game / 'dvdroot_ps4/menu').mkdir(parents=True)
+        (self.game / 'dvdroot_ps4/menu/common.tpf.dcx').write_bytes(b'game icons')
+        (self.game / 'dvdroot_ps4/menu/other.dcx').write_bytes(b'other')
+        (self.game / 'eboot.bin').write_bytes(b'exe')
+        self.moddir = self.root / 'mods'
+        self.icons = self.root / 'icons-cache'
+        (self.icons / 'dvdroot_ps4/menu').mkdir(parents=True)
+        (self.icons / 'dvdroot_ps4/menu/common.tpf.dcx').write_bytes(b'generated icons')
+
+    def user_mod(self, name, file='common.tpf.dcx'):
+        folder = self.moddir / name / 'dvdroot_ps4/menu'
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / file).write_bytes(name.encode())
+
+    def overlay(self, layers):
+        return mods.build_overlay(self.game, self.root / 'out', layers)
+
+    def test_icons_alone_make_an_overlay_with_the_generated_file(self):
+        layers, note = mods.mod_layers(self.game, self.moddir, None, '1', self.icons)
+        self.assertEqual([name for name, _ in layers], ['button icons'])
+        self.assertIsNone(note)
+        result = self.overlay(layers)
+        self.assertEqual((result / self.COMMON).read_bytes(), b'generated icons')
+        self.assertEqual((result / 'dvdroot_ps4/menu/other.dcx').read_bytes(), b'other')
+        self.assertEqual((self.game / self.COMMON).read_bytes(), b'game icons')
+        self.assertFalse([p for p in [result, *result.rglob('*')] if p.is_symlink()])
+
+    def test_the_icons_go_under_the_mods_and_other_mods_still_apply(self):
+        self.user_mod('Other', 'other.dcx')
+        layers, note = mods.mod_layers(self.game, self.moddir, None, '1', self.icons)
+        self.assertEqual([name for name, _ in layers], ['button icons', 'Other'])
+        self.assertIsNone(note)
+        result = self.overlay(layers)
+        self.assertEqual((result / self.COMMON).read_bytes(), b'generated icons')
+        self.assertEqual((result / 'dvdroot_ps4/menu/other.dcx').read_bytes(), b'Other')
+
+    def test_a_mod_that_supplies_the_file_wins_and_the_icons_are_dropped_with_a_note(self):
+        self.user_mod('Mine')
+        layers, note = mods.mod_layers(self.game, self.moddir, None, '1', self.icons)
+        self.assertEqual([name for name, _ in layers], ['Mine'])
+        self.assertIn('Mine', note)
+        self.assertIn('off', note)
+        self.assertEqual((self.overlay(layers) / self.COMMON).read_bytes(), b'Mine')
+
+    def test_a_disabled_mod_does_not_count_and_the_sibling_mods_folder_does(self):
+        self.user_mod('Mine')
+        config = self.root / 'mods.json'
+        config.write_text(json.dumps({'disabled': ['Mine']}))
+        layers, note = mods.mod_layers(self.game, self.moddir, config, '1', self.icons)
+        self.assertEqual([name for name, _ in layers], ['button icons'])
+        legacy = Path(str(self.game) + '-mods/dvdroot_ps4/menu')
+        legacy.mkdir(parents=True)
+        (legacy / 'COMMON.TPF.DCX').write_bytes(b'legacy')  # another case spells the same file
+        layers, note = mods.mod_layers(self.game, self.moddir, config, '1', self.icons)
+        self.assertEqual([name for name, _ in layers], [self.game.name + '-mods'])
+        self.assertIn('-mods', note)
+
+    def test_mods_switched_off_leave_the_icons(self):
+        self.user_mod('Mine')
+        layers, note = mods.mod_layers(self.game, self.moddir, None, '0', self.icons)
+        self.assertEqual([name for name, _ in layers], ['button icons'])
+        self.assertIsNone(note)
+
+    def test_without_icons_the_layers_are_the_mods_alone(self):
+        self.user_mod('Mine')
+        layers, note = mods.mod_layers(self.game, self.moddir, None, '1', None)
+        self.assertEqual([name for name, _ in layers], ['Mine'])
+        self.assertIsNone(note)
+
+    def test_the_script_takes_the_icons_layer(self):
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/mods.py'), str(self.game),
+                                 '--out', str(self.root / 'out'), '--mods-dir', str(self.moddir),
+                                 '--icons-layer', str(self.icons)], capture_output=True, text=True, check=True)
+        self.assertEqual((Path(result.stdout.strip()) / self.COMMON).read_bytes(), b'generated icons')

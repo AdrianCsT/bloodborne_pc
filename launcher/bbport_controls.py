@@ -258,3 +258,48 @@ def apply_ds3(ini):
     """A copy of ini without the saved key.* lines: the layout is the default, so the keyboard and mouse bindings
     fall back to it. The pad.* lines stay."""
     return {key: value for key, value in ini.items() if not (key.startswith("key.") and key[4:] in DS3_KEYS)}
+
+
+# --- button icons --------------------------------------------------------------------------------------------
+# The game draws PlayStation glyphs; the launcher redraws them at Play (bbport_icons.py). button_icons in
+# bbport.ini: auto picks from the pad the game would use, the others force a set (playstation leaves the game's own).
+ICON_CHOICES = [('auto', ('Automatic (from the controller)', 'Автоматически (по контроллеру)')),
+                ('playstation', ('PlayStation (as in the game)', 'PlayStation (как в игре)')),
+                ('xbox', ('Xbox', 'Xbox')),
+                ('keyboard', ('Keyboard and mouse', 'Клавиатура и мышь'))]
+ICON_DEFAULT = 'auto'
+# Vendors in an SDL GUID (bytes 4 and 5 of the vendor field, little endian): Microsoft and Sony.
+PAD_VENDORS = {0x045E: 'xbox', 0x054C: 'playstation'}
+PLAYSTATION_NAMES = ('dualsense', 'dualshock', 'playstation', 'ps3', 'ps4', 'ps5', 'sony', 'wireless controller')
+XBOX_NAMES = ('xbox', 'x-box', 'xinput', 'microsoft')
+
+
+def pad_family(guid, name):
+    """'xbox' or 'playstation': the family of a gamepad from its SDL GUID (vendor) or else its name. A pad that is
+    neither (8BitDo, Logitech, ...) names its buttons as an Xbox pad does, so it gets the Xbox icons."""
+    text = (guid or '').strip().lower()
+    if len(text) == 32:
+        try:
+            vendor = int(text[10:12] + text[8:10], 16)
+        except ValueError:
+            vendor = 0
+        if vendor in PAD_VENDORS:
+            return PAD_VENDORS[vendor]
+    lowered = (name or '').lower()
+    if any(word in lowered for word in PLAYSTATION_NAMES):
+        return 'playstation'
+    return 'xbox'
+
+
+def resolve_icon_set(choice, pads, chosen=''):
+    """The icon set of a Play: 'playstation', 'xbox' or 'keyboard'. choice is button_icons; pads the connected
+    gamepads [(GUID, name)] (None when the list could not be read, which leaves the game's own icons); chosen the GUID
+    the player picked on the Controls page ('' the first connected one, as the game does)."""
+    if choice in ('playstation', 'xbox', 'keyboard'):
+        return choice
+    if pads is None:
+        return 'playstation'
+    if not pads:
+        return 'keyboard'
+    guid, name = next((pad for pad in pads if chosen and pad[0] == chosen), pads[0])
+    return pad_family(guid, name)
