@@ -576,7 +576,7 @@ class ButtonIconLaunchTests(unittest.TestCase):
         self.layer = self.root / 'out/icons/layer'
         self.settings = {**launcher.APP_DEFAULTS, 'game_dir': str(self.game), 'mods_dir': str(self.root / 'mods')}
         self.pads = []
-        self.ensure = mock.Mock(return_value=(self.layer, True))
+        self.ensure = mock.Mock(return_value=(self.layer, True, 0))
         self.real_ensure = self.icons.ensure_layer
         for patch in (mock.patch.object(launcher, 'DATA_DIR', self.root),
                       mock.patch.object(launcher, 'list_gamepads', lambda: self.pads),
@@ -661,6 +661,12 @@ class ButtonIconLaunchTests(unittest.TestCase):
                 env = self.environment('xbox')
             self.assertNotIn('BB_ICONS_DIR', env)
             self.assertIn('Button icons are off', env['BB_ICONS_NOTE'])
+
+    def test_the_log_says_how_many_baked_buttons_kept_the_playstation_art(self):
+        self.ensure.return_value = (self.layer, True, 2)
+        self.assertIn('2 baked buttons kept their PlayStation art', self.environment('xbox')['BB_ICONS_NOTE'])
+        self.ensure.return_value = (self.layer, False, 0)
+        self.assertNotIn('kept', self.environment('xbox')['BB_ICONS_NOTE'])
 
     def test_a_game_folder_without_the_file_adds_nothing(self):
         (self.game / 'dvdroot_ps4/menu/common.tpf.dcx').unlink()

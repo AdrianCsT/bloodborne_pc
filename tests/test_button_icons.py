@@ -447,7 +447,16 @@ class LayerTests(unittest.TestCase):
         self.cache = self.root / 'out'
 
     def layer(self, icon_set='keyboard', ini=None):
-        return icons.ensure_layer(self.game, self.cache, icon_set, ini or {})
+        return icons.ensure_layer(self.game, self.cache, icon_set, ini or {})[:2]
+
+    def test_the_layer_reports_the_baked_buttons_that_kept_their_art_also_from_the_cache(self):
+        self.source.write_bytes(icons.dcx_pack(make_tpf(real_layout([('MENU_Common_00091', 512, 256, 98,
+                                                                       icons.encode_image(Image.new('RGBA', (512, 256))))]))))
+        count = len(icons.ATLAS_ICONS['MENU_Common_00091'])
+        _folder, built, kept = icons.ensure_layer(self.game, self.cache, 'xbox', {})
+        self.assertEqual((built, kept), (True, count))
+        _folder, built, kept = icons.ensure_layer(self.game, self.cache, 'xbox', {})
+        self.assertEqual((built, kept), (False, count))
 
     def test_the_layer_holds_the_generated_file_under_the_games_own_path(self):
         folder, built = self.layer()
@@ -525,6 +534,18 @@ class LayerTests(unittest.TestCase):
                 self.layer()
         self.assertFalse((self.cache / 'icons').exists() and list((self.cache / 'icons').iterdir()))
 
+    def test_a_failure_in_the_drawing_is_not_blamed_on_the_game_file(self):
+        from unittest import mock
+        with mock.patch.object(icons, 'build_glyphs', side_effect=KeyError('drawing bug')):
+            with self.assertRaises(icons.IconError) as caught:
+                self.layer()
+        self.assertIn('could not draw the icons', str(caught.exception))
+        self.assertNotIn('cannot be read', str(caught.exception))
+        with mock.patch.object(icons, 'check_layout', side_effect=IndexError('x')):
+            with self.assertRaises(icons.IconError) as caught:
+                self.layer()
+        self.assertIn("could not read or check the game's", str(caught.exception))
+
     def test_an_unexpected_failure_while_reading_the_file_is_an_icon_error_too(self):
         from unittest import mock
         for error in (IndexError('x'), KeyError('x'), struct.error('x'), zlib.error('x')):
@@ -563,14 +584,8 @@ class AtlasTests(unittest.TestCase):
         cls.atlas = icons.encode_image(atlas_image(cls.entries, (1024, 512)))  # slow in pure Python: once
         cls.noisy = icons.encode_image(atlas_image(cls.entries, (1024, 512), margin_noise=True))
         cls.blank = icons.encode_image(Image.new('RGBA', (1024, 512), (0, 0, 0, 0)))
+        cls.small = icons.encode_image(Image.new('RGBA', (512, 256), (0, 0, 0, 0)))  # another edition's smaller atlas
         cls.tpf = make_tpf(real_layout([(cls.NAME, 1024, 512, 98, cls.atlas)]))
-
-    def patched(self, icon_set='xbox', tpf=None):
-        tpf = tpf or self.tpf
-        glyphs = icons.build_glyphs(icon_set, {})
-        out = icons.patch_glyphs(tpf, glyphs)
-        report = icons.patch_atlases(out, glyphs)
-        return report
 
     def atlas_of(self, tpf):
         texture = next(t for t in icons.parse_tpf(tpf) if t.name == self.NAME)
@@ -637,6 +652,26 @@ class AtlasTests(unittest.TestCase):
         report = icons.patch_atlases(patched, icons.build_glyphs('keyboard', {}))
         self.assertEqual({done for _n, _r, done in report}, {False})
         self.assertEqual(bytes(patched), tpf)
+
+    def test_a_rectangle_that_does_not_fit_the_atlas_is_skipped_not_fatal(self):
+        tpf = make_tpf(real_layout([(self.NAME, 512, 256, 98, self.small)]))
+        patched = bytearray(tpf)
+        report = icons.patch_atlases(patched, icons.build_glyphs('xbox', {}))
+        self.assertEqual(len(report), len(self.entries))
+        self.assertEqual({done for _n, _r, done in report}, {False})
+        self.assertEqual(bytes(patched), tpf)
+
+    def test_generate_says_how_many_baked_buttons_kept_their_art(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'common.tpf.dcx'
+            source.write_bytes(icons.dcx_pack(make_tpf(real_layout([(self.NAME, 512, 256, 98, self.small)]))))
+            result = icons.generate(source, Path(folder) / 'out/common.tpf.dcx', 'xbox', {})
+            self.assertEqual(result.skipped, len(self.entries))
+            source.write_bytes(icons.dcx_pack(self.tpf))
+            self.assertEqual(icons.generate(source, Path(folder) / 'out/common.tpf.dcx', 'xbox', {}).skipped, 0)
+            source.write_bytes(icons.dcx_pack(make_tpf(real_layout())))
+            self.assertEqual(icons.generate(source, Path(folder) / 'out/common.tpf.dcx', 'xbox', {}).skipped, 0)
 
     def test_a_file_without_the_atlases_is_fine(self):
         patched = bytearray(make_tpf(real_layout()))

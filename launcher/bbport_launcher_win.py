@@ -838,10 +838,13 @@ def icons_environment(s, ini):
                                                 '1' if s['mods_enabled'] else '0'))
         if note:
             return {'BB_ICONS_NOTE': note}
-        folder, built = bbport_icons.ensure_layer(game, DATA_DIR / 'out', icon_set, ini)
+        folder, built, kept = bbport_icons.ensure_layer(game, DATA_DIR / 'out', icon_set, ini)
     except Exception as error:  # nothing about the icons may stop the game from starting
         return {'BB_ICONS_NOTE': f'Button icons are off for this run: {error}'}
-    return {'BB_ICONS_DIR': str(folder), 'BB_ICONS_NOTE': f'Button icons: {icon_set} ({"made" if built else "from the cache"})'}
+    note = f'Button icons: {icon_set} ({"made" if built else "from the cache"})'
+    if kept:
+        note += f'; {kept} baked buttons kept their PlayStation art'
+    return {'BB_ICONS_DIR': str(folder), 'BB_ICONS_NOTE': note}
 
 
 def game_environment(s, frame_generation=None):
