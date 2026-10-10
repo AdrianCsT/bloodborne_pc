@@ -15,7 +15,7 @@ The stable release of the 1.7.0 betas below, plus these changes from their testi
 ### Changed
 
 - The default keyboard keys follow Dark Souls III better: Esc opens the menu (equipment, items; it was Tab), Tab and G both open the gestures (Tab is new), and Space alone is Circle (dodge, hold to sprint; Esc is no longer Circle). Saved bindings in `bbport.ini` are not touched, so a key you saved for another input and that is now a default (Esc for Options, Tab for the left touchpad) presses both inputs; rebind one of them in the Controls tab.
-- Keyboard diagonals (W with A or D) now push the left stick as far as a real stick's full push, along the circle, instead of into the square's corner, which is about 1.4 times as far. Letting go of one of the two keys no longer drops the push in one step, which may fix sprinting ending when a diagonal key is released. Not confirmed in game yet.
+- Keyboard diagonals (W with A or D) now push the left stick as far as a real stick's full push, along the circle, instead of into the square's corner, which is about 1.4 times as far. Letting go of one of the two keys no longer drops the push in one step. A replay in the game showed that the old corner value does not end a sprint either (the stamina bar kept draining through the change), so sprinting that ends when a diagonal key is let go has another cause, not found yet.
 
 ### Fixed
 
