@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <SDL3/SDL.h>
 #include "bbport_settings.h"
@@ -814,6 +815,33 @@ bool MenuOpen() {
 bool CapturesInput() {
     // The text dialog too: keys typed into it (Backspace is the touchpad) stay out of the game.
     return menu_open || prompt_active;
+}
+
+void TestTick() {
+    static std::vector<double> times = [] {
+        std::vector<double> parsed;
+        const char* env = std::getenv("BB_TEST_OVERLAY_AT");
+        for (const char* at = env; at && *at;) {
+            char* end = nullptr;
+            const double seconds = std::strtod(at, &end);
+            if (end == at) {
+                break;
+            }
+            parsed.push_back(seconds);
+            at = *end == ',' ? end + 1 : end;
+        }
+        return parsed;
+    }();
+    static const auto start = std::chrono::steady_clock::now();
+    if (times.empty() || !initialized) {
+        return;
+    }
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    while (!times.empty() && now >= times.front()) {
+        times.erase(times.begin());
+        SetOpen(!menu_open);
+        std::printf("Overlay: test toggle at %.1f s, menu %s\n", now, menu_open ? "open" : "closed");
+    }
 }
 
 void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {

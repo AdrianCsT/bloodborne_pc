@@ -41,4 +41,8 @@ bool MenuOpen();
 /// Window thread: the game's text dialog (ImeDialog) state, drawn as a box over the frame.
 void SetTextPrompt(bool active, const std::string& prompt, const std::string& text);
 
+/// Window thread, test knob: BB_TEST_OVERLAY_AT=<seconds>[,<seconds>...] toggles the menu that many
+/// seconds after the first call, so a harness run can open and close it without sending input.
+void TestTick();
+
 } // namespace BbOverlay
