@@ -9,8 +9,11 @@ GUI-free so the tests can import it anywhere.
 
 Two ideas of the Controls page of Ryansousa10/bloodborne_windows_mouse_and_keyboard (launcher/bbport_controls.py,
 commit c650c2e, GPL-2.0-or-later) are used here: Tk's key code names the physical key whatever Shift does, and
-Insert, which opens the port's menu in the game, is refused as a binding. Its keybinds.ini and mouse bindings
-are a different runtime format and are not ported."""
+Insert, which opens the port's menu in the game, is refused as a binding. Its keybinds.ini is a different runtime
+format and is not ported. Mouse buttons and the wheel are names in the same key.<input>= lines ("Mouse Left",
+"Wheel Up", see parse_input in src/runtime_pad.c), each optionally after "Shift+", "Ctrl+" or "Alt+"; the Dark
+Souls III layout of the reference (its docs/KEYBOARD_MOUSE.md) is DS3_KEYS, and the mouse_* lines of bbport.ini
+are MOUSE_DEFAULTS."""
 
 # input, label (Russian: the key of the GTK launcher's translations), default keyboard keys, default
 # gamepad buttons (SDL names; "" none, None: the input has no gamepad binding). bbport.ini
@@ -197,3 +200,71 @@ def tk_key_to_sdl(keysym, keycode=0, scan_of=None, down=None):
     if len(keysym) == 1 and keysym.isascii() and keysym.isalnum():
         return keysym.upper()
     return KEYSYM_CHARS.get(keysym)
+
+
+# --- the mouse -----------------------------------------------------------------------------------------
+# What a key.<input>= line takes besides keys: the names parse_input in src/runtime_pad.c knows, and the
+# text the launcher shows for them.
+MOUSE_INPUTS = [
+    ("Mouse Left", "Left button"), ("Mouse Right", "Right button"), ("Mouse Middle", "Wheel click"),
+    ("Mouse X1", "Side button 1"), ("Mouse X2", "Side button 2"), ("Wheel Up", "Wheel up"), ("Wheel Down", "Wheel down"),
+]
+_TK_BUTTONS = {1: "Mouse Left", 2: "Mouse Middle", 3: "Mouse Right"}
+
+
+def mouse_button_to_sdl(number):
+    """The runtime's name of Tk's mouse button 1 (left), 2 (middle) or 3 (right); None for others."""
+    return _TK_BUTTONS.get(number)
+
+
+def wheel_to_sdl(delta):
+    """'Wheel Up' / 'Wheel Down' for a Tk <MouseWheel> delta (positive: away from the user), None for 0."""
+    return "Wheel Up" if delta > 0 else "Wheel Down" if delta < 0 else None
+
+
+def with_modifiers(name, shift=False, ctrl=False, alt=False):
+    """'Shift+Mouse Left': the runtime counts such an input only while that modifier is held."""
+    return "".join(prefix for prefix, held in (("Shift+", shift), ("Ctrl+", ctrl), ("Alt+", alt)) if held) + name
+
+
+def held_modifiers(down):
+    """(shift, ctrl, alt) from down(virtual key), either side of each: GetAsyncKeyState's view of the keyboard."""
+    return tuple(any(down(vk) for vk in _SIDES[base]) for base in ("Shift", "Control", "Alt"))
+
+
+def is_modifier_keysym(keysym):
+    """True for the Shift, Ctrl and Alt keys: pressed first for a combination, so a capture waits for their release."""
+    return keysym.partition("_")[0] in _SIDES and keysym[-2:] in ("_L", "_R")
+
+
+# bbport.ini lines of the mouse camera (runtime_pad.c reads them; no line keeps the default, but the launcher
+# writes them like its other settings). The sensitivity is 0.022 degrees of turn per mouse count x the value.
+MOUSE_DEFAULTS = {"mouse_camera": "1", "mouse_sensitivity": "1.00", "mouse_invert_y": "0", "mouse_no_auto_rotation": "0"}
+MOUSE_SENSITIVITY_RANGE = (0.01, 20.0)  # what the runtime accepts; the launcher's slider covers 0.1 to 5
+
+# The Dark Souls III keyboard and mouse layout (the reference's docs/KEYBOARD_MOUSE.md). The runtime has no walk
+# input, so Left Alt (walk in Dark Souls III) is not bound.
+DS3_KEYS = {
+    "cross": "E", "circle": "Space", "square": "R", "triangle": "F",
+    "l1": "Mouse Right", "r1": "Mouse Left", "l2": "Left Ctrl", "r2": "Shift+Mouse Left",
+    "l3": "C", "r3": "Q, Mouse Middle", "options": "Tab", "touchpad": "G", "touchpad_right": "Backspace",
+    "up": "Up, Wheel Up", "down": "Down, Wheel Down", "left": "Left", "right": "Right",
+    "move_up": "W", "move_down": "S", "move_left": "A", "move_right": "D",
+    "look_up": "I", "look_down": "K", "look_left": "J", "look_right": "L",
+}
+
+
+def ds3_updates():
+    """{bbport.ini key: value} of the layout: key lines only, the gamepad has none."""
+    return {f"key.{name}": value for name, value in DS3_KEYS.items()}
+
+
+def apply_ds3(ini):
+    """A copy of ini with the layout's keyboard and mouse bindings; a binding equal to the default needs no line."""
+    ini = dict(ini)
+    for name, value in DS3_KEYS.items():
+        if split_binding(value) == split_binding(default_binding("key", name)):
+            ini.pop(f"key.{name}", None)
+        else:
+            ini[f"key.{name}"] = value
+    return ini

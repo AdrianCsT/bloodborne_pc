@@ -239,11 +239,13 @@ TWEAKS = [
     ('tweak_ragdoll', ('Dark Souls-style ragdoll physics (corpses fly further)',
                        'Физика тел как в Dark Souls (тела отлетают дальше)'), False),
 ]
-INI_FLAGS = {'sharpen', 'object_motion', 'frame_generation', 'show_fps', *(k for k, _t, _o in EFFECTS + EXTRAS + CHEATS + TWEAKS)}
+INI_FLAGS = {'sharpen', 'object_motion', 'frame_generation', 'show_fps', 'mouse_camera', 'mouse_invert_y',
+             'mouse_no_auto_rotation', *(k for k, _t, _o in EFFECTS + EXTRAS + CHEATS + TWEAKS)}
+INI_FLOATS = {'sharpness', 'mouse_sensitivity'}  # written with two decimals
 INI_DEFAULTS = {'upscaler': 'fsr4', 'preset': '1', 'sharpen': '1', 'sharpness': '0.50',
                 'object_motion': '1', 'frame_generation': '0', 'show_fps': '1',
                 'output_res': '1920x1080', 'model_lod': '0',
-                'live_resolution': 'auto',
+                'live_resolution': 'auto', **bbport_controls.MOUSE_DEFAULTS,
                 **{key: '1' if on else '0' for key, _t, on in EFFECTS + EXTRAS + CHEATS + TWEAKS}}
 APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'), 'user_dir': '',
                 'mods_dir': '', 'mods_enabled': True, 'patches_dir': '', 'language': '1',
@@ -256,6 +258,8 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'beta_versions': is_prerelease(VERSION),  # a beta user keeps getting betas unless they say no
                 'experimental': False, 'object_motion_amd': False, 'monitor': '',  # monitor: a name from --displays; '' is the primary
                 'gamepad': '', 'gamepad_name': ''}  # gamepad: a GUID from --gamepads (BB_GAMEPAD); '' takes the first one
+
+SIDE_BUTTONS = [(0x05, 'Mouse X1'), (0x06, 'Mouse X2')]  # virtual keys of the mouse's side buttons
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
@@ -1977,6 +1981,9 @@ class Launcher:
         # Controls page: the row waiting for a key, the rows' widgets, the gamepads SDL listed (None: not asked or
         # the tool could not run), and the message under the card.
         self.capturing, self.control_rows, self.gamepads, self.listing_gamepads = None, {}, None, False
+        # A Shift, Ctrl or Alt pressed while an input waits: bound when it is let go, unless a mouse input comes
+        # first (then it is the combination's modifier); the side buttons held when the wait began.
+        self.pending_modifier, self.side_buttons_down = None, set()
         self.controls_message = None
         root.title('Bloodborne — bbport')
         root.configure(bg=BG)
@@ -2083,8 +2090,11 @@ class Launcher:
                 value = self.ini.get(key, INI_DEFAULTS[key])
                 if key in INI_FLAGS:
                     v = tk.BooleanVar(value=value == '1')
-                elif key == 'sharpness':
-                    v = tk.DoubleVar(value=float(value or 0.5))
+                elif key in INI_FLOATS:
+                    try:
+                        v = tk.DoubleVar(value=float(value))
+                    except ValueError:
+                        v = tk.DoubleVar(value=float(INI_DEFAULTS[key]))
                 else:
                     v = tk.StringVar(value=value)
             else:
@@ -2826,14 +2836,44 @@ class Launcher:
         self.gamepad_values = ['']  # the value of each entry of the dropdown
         self.apply_gamepads(None)
 
+        f = self.card(page, _('Mouse', 'Мышь'))
+        self.check(f, 'mouse_camera', 'ini', _('Mouse controls the camera', 'Мышь управляет камерой'),
+                   _('While the game window has focus, the mouse turns the camera and its buttons and wheel can be '
+                     'bound below. Insert (the port menu) or Alt+Tab lets go of the mouse.',
+                     'Пока окно игры в фокусе, мышь поворачивает камеру, а её кнопки и колесо можно назначить ниже. '
+                     'Insert (меню порта) или Alt+Tab освобождают мышь.'))
+        holder = tk.Frame(f, bg=CARD)
+        Slider(self, holder, self.var('mouse_sensitivity', 'ini'), 0.1, 5.0, 300).pack(side='left')
+        value = self.label(holder, '', width=5)
+        value.pack(side='left', padx=px(10))
+        show = lambda *_a: value.configure(text=self.mouse_sensitivity_text())
+        self.vars['mouse_sensitivity'].trace_add('write', show)
+        show()
+        self.row(f, _('Mouse sensitivity', 'Чувствительность мыши'), holder)
+        self.check(f, 'mouse_invert_y', 'ini', _('Invert vertical look', 'Инвертировать вертикаль'))
+        self.check(f, 'mouse_no_auto_rotation', 'ini',
+                   _('Camera turns only by the mouse while walking', 'Камера поворачивается только мышью при ходьбе'),
+                   _('The game stops turning the camera by itself as the character walks. Leave it off to keep the '
+                     'gamepad camera as it was.',
+                     'Игра перестаёт сама поворачивать камеру при ходьбе. Оставьте выключенным, чтобы камера '
+                     'геймпада работала как раньше.'))
+
         f = self.card(page, _('Button assignments', 'Назначение кнопок'))
-        self.controls_hint = _('Press Change, then the key you want. Add gives the input a second key. '
-                               'Applied when the game starts.',
-                               'Нажмите «Изменить», затем нужную клавишу. «Добавить» назначает входу вторую клавишу. '
-                               'Применяется при запуске игры.')
+        self.controls_hint = _('Press Change, then a key, a mouse button or the wheel. Add gives the input a second '
+                               'one. Applied when the game starts.',
+                               'Нажмите «Изменить», затем клавишу, кнопку мыши или колесо. «Добавить» назначает входу '
+                               'второе. Применяется при запуске игры.')
         self.controls_message = self.label(f, self.controls_hint, 'small', MUTED, wraplength=px(680), justify='left')
         self.controls_message.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(8), 0))
         self.controls_after = None
+        self.button(f, _('Dark Souls III layout', 'Раскладка Dark Souls III'), self.apply_ds3_layout).grid(
+            row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(12), 0))
+        self.note(f, _('Fills the keyboard and mouse bindings with the Dark Souls III layout: WASD to move, the mouse '
+                       'to look, left button R1, Shift + left button R2, right button L1, Left Ctrl L2, Space dodge, '
+                       'E interact. Gamepad bindings are not changed.',
+                       'Заполняет назначения клавиатуры и мыши раскладкой Dark Souls III: WASD — движение, мышь — '
+                       'камера, левая кнопка R1, Shift + левая кнопка R2, правая кнопка L1, левый Ctrl L2, пробел — '
+                       'уклонение, E — действие. Назначения геймпада не меняются.'), top=4)
         grid = tk.Frame(f, bg=CARD)  # one grid for every row, so the columns line up
         grid.grid(row=self.next_row(f), column=0, columnspan=2, sticky='we', pady=(px(4), 0))
         self.label(grid, _('Keyboard', 'Клавиатура'), 'small', MUTED).grid(row=0, column=1, columnspan=3, sticky='w')
@@ -2860,6 +2900,9 @@ class Launcher:
         self.button(f, _('Reset all', 'Сбросить всё'), self.reset_all_controls).grid(
             row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(16), 0))
         self.root.bind('<KeyPress>', self.control_key, add='+')
+        self.root.bind('<KeyRelease>', self.control_key_release, add='+')
+        self.root.bind('<ButtonPress>', self.control_mouse, add='+')
+        self.root.bind('<MouseWheel>', self.control_mouse, add='+')
 
     def apply_gamepads(self, pads):
         """The controller dropdown, from the gamepads SDL listed (None: not asked yet; False: the list could not be read)."""
@@ -2954,13 +2997,20 @@ class Launcher:
         row['add' if add else 'change'].configure(text=_('Cancel', 'Отмена'))
         row['keys'].configure(text=_('Press a key…', 'Нажмите клавишу…'), fg=GOLD)
         self.capturing = (name, add)
+        self.pending_modifier = None
+        self.side_buttons_down = {button for vk, button in SIDE_BUTTONS if bbport_controls.windows_key_down(vk)}
+        self.say_controls(_('Press a key, a mouse button or the wheel; hold Shift, Ctrl or Alt first for a combination. '
+                            'For the left button, click the highlighted text.',
+                            'Нажмите клавишу, кнопку мыши или крутите колесо; для сочетания сначала зажмите Shift, '
+                            'Ctrl или Alt. Для левой кнопки щёлкните по выделенному тексту.'))
         self.root.focus_set()  # the key goes to the window, not to a button that would act on Space
+        self.root.after(50, self.poll_side_buttons)
 
     def stop_capture(self):
         if not self.capturing:
             return
         name, _add = self.capturing
-        self.capturing = None
+        self.capturing = self.pending_modifier = None
         row = self.control_rows[name]
         row['change'].configure(text=_('Change', 'Изменить'))
         row['add'].configure(text=_('Add', 'Добавить'))
@@ -2980,6 +3030,54 @@ class Launcher:
                               _('That key cannot be used in the game. Press another one.',
                                 'Игра не может использовать эту клавишу. Нажмите другую.'), BAD)
             return 'break'
+        if bbport_controls.is_modifier_keysym(event.keysym):
+            self.pending_modifier = key  # bound when let go; a mouse input first makes it the combination's modifier
+            return 'break'
+        self.assign_key(name, add, key)
+        return 'break'
+
+    def control_key_release(self, event):
+        """A Shift, Ctrl or Alt let go with nothing pressed meanwhile: that key is the binding."""
+        if self.capturing and self.pending_modifier and bbport_controls.is_modifier_keysym(event.keysym):
+            name, add = self.capturing
+            self.assign_key(name, add, self.pending_modifier)
+            return 'break'
+        return None
+
+    def control_mouse(self, event):
+        """A mouse button or wheel step while an input waits. The left button counts only when it hits the text of
+        the waiting row (it also presses the page's own buttons); the others and the wheel count anywhere."""
+        if not self.capturing:
+            return None
+        name, add = self.capturing
+        if event.type == self.tk.EventType.MouseWheel:
+            button = bbport_controls.wheel_to_sdl(event.delta)
+        else:
+            button = bbport_controls.mouse_button_to_sdl(event.num)
+            if button == 'Mouse Left' and event.widget is not self.control_rows[name]['keys']:
+                return None
+        if button is None:
+            return None
+        self.assign_key(name, add, bbport_controls.with_modifiers(
+            button, *bbport_controls.held_modifiers(bbport_controls.windows_key_down)))
+        return 'break'
+
+    def poll_side_buttons(self):
+        """Tk 8.6 reports no side buttons: while an input waits, the mouse's own state is read for them."""
+        if not self.capturing:
+            return
+        down = {button for vk, button in SIDE_BUTTONS if bbport_controls.windows_key_down(vk)}
+        pressed = down - self.side_buttons_down
+        self.side_buttons_down = down
+        if pressed and self.root.focus_displayof() is not None:
+            name, add = self.capturing
+            self.assign_key(name, add, bbport_controls.with_modifiers(
+                sorted(pressed)[0], *bbport_controls.held_modifiers(bbport_controls.windows_key_down)))
+            return
+        self.root.after(50, self.poll_side_buttons)
+
+    def assign_key(self, name, add, key):
+        """Gives the waiting input the captured key, button or wheel step (Add keeps the ones it has)."""
         parts = bbport_controls.current_binding(self.ini, 'key', name) if add else []
         if key not in parts:
             if len(parts) >= bbport_controls.MAX_BIND:
@@ -2988,7 +3086,26 @@ class Launcher:
             else:
                 self.write_control('key', name, parts + [key])
         self.stop_capture()
-        return 'break'
+
+    def apply_ds3_layout(self):
+        """Dark Souls III layout: after a confirmation every keyboard and mouse binding is replaced, the gamepad's stay."""
+        self.stop_capture()
+        if not self.messagebox.askokcancel('Bloodborne', _(
+                'Replace your keyboard and mouse bindings with the Dark Souls III layout? Gamepad bindings are not '
+                'changed.', 'Заменить ваши назначения клавиатуры и мыши раскладкой Dark Souls III? Назначения '
+                'геймпада не изменятся.')):
+            return
+        self.ini = bbport_controls.apply_ds3(self.ini)
+        for name in self.control_rows:
+            self.show_control(name)
+        self.say_controls(_('Dark Souls III layout applied. Reset all brings the defaults back.',
+                            'Раскладка Dark Souls III применена. «Сбросить всё» возвращает стандартные назначения.'))
+
+    def mouse_sensitivity_text(self):
+        try:
+            return f'{self.vars["mouse_sensitivity"].get():.2f}'
+        except self.tk.TclError:
+            return ''
 
     def build_game(self):
         page = self.scrolled_page('game', _('Game & effects', 'Игра и эффекты'),
@@ -3424,7 +3541,7 @@ class Launcher:
                 value = APP_DEFAULTS.get(key, INI_DEFAULTS.get(key))
             if var.store == 'ini':
                 self.ini[key] = ('1' if value else '0') if key in INI_FLAGS else \
-                    f'{float(value):.2f}' if key == 'sharpness' else str(value)
+                    f'{float(value):.2f}' if key in INI_FLOATS else str(value)
             else:
                 self.app[key] = value
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)

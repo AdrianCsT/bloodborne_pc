@@ -185,6 +185,104 @@ class KeyNameTests(unittest.TestCase):
         self.assertEqual(lib.SDL_GetScancodeFromName(controls.SCAN_NAMES[0x0B].encode()), 39)  # 0
 
 
+class MouseNameTests(unittest.TestCase):
+    """The mouse inputs of key.<input>= lines (issue #5, part 2): the launcher writes the names runtime_pad.c parses."""
+
+    def test_the_names_are_the_runtimes(self):
+        source = (ROOT / 'src' / 'runtime_pad.c').read_text(encoding='utf-8')
+        runtime = re.findall(r'\{"((?:Mouse|Wheel) [^"]+)",KIND_', source)
+        self.assertEqual(sorted(runtime), sorted(name for name, _label in controls.MOUSE_INPUTS))
+
+    def test_tk_buttons_and_wheel_steps_are_named(self):
+        self.assertEqual(controls.mouse_button_to_sdl(1), 'Mouse Left')
+        self.assertEqual(controls.mouse_button_to_sdl(2), 'Mouse Middle')
+        self.assertEqual(controls.mouse_button_to_sdl(3), 'Mouse Right')
+        self.assertIsNone(controls.mouse_button_to_sdl(7))
+        self.assertEqual(controls.wheel_to_sdl(120), 'Wheel Up')
+        self.assertEqual(controls.wheel_to_sdl(-240), 'Wheel Down')
+        self.assertIsNone(controls.wheel_to_sdl(0))
+
+    def test_modifiers_go_in_front_in_one_order(self):
+        self.assertEqual(controls.with_modifiers('Mouse Left'), 'Mouse Left')
+        self.assertEqual(controls.with_modifiers('Mouse Left', shift=True), 'Shift+Mouse Left')
+        self.assertEqual(controls.with_modifiers('Wheel Up', shift=True, ctrl=True, alt=True), 'Shift+Ctrl+Alt+Wheel Up')
+        self.assertEqual(controls.with_modifiers('Mouse Right', alt=True), 'Alt+Mouse Right')
+
+    def test_held_modifiers_are_read_from_the_keyboard_state(self):
+        self.assertEqual(controls.held_modifiers(lambda vk: False), (False, False, False))
+        self.assertEqual(controls.held_modifiers(lambda vk: vk == 0xA1), (True, False, False))   # right Shift
+        self.assertEqual(controls.held_modifiers(lambda vk: vk in (0xA2, 0xA5)), (False, True, True))
+
+    def test_a_modifier_key_is_told_from_the_rest(self):
+        for keysym in ('Shift_L', 'Shift_R', 'Control_L', 'Control_R', 'Alt_L', 'Alt_R'):
+            self.assertTrue(controls.is_modifier_keysym(keysym), keysym)
+        for keysym in ('a', 'space', 'Caps_Lock', 'Win_L', 'F1'):
+            self.assertFalse(controls.is_modifier_keysym(keysym), keysym)
+
+    def test_the_settings_defaults_are_the_runtimes(self):
+        source = (ROOT / 'src' / 'runtime_pad.c').read_text(encoding='utf-8')
+        camera, invert, auto, sensitivity = re.search(
+            r'mouse_defaults=\{(\d),(\d),(\d),([\d.]+)f\}', source).groups()
+        self.assertEqual(controls.MOUSE_DEFAULTS, {'mouse_camera': camera, 'mouse_sensitivity': f'{float(sensitivity):.2f}',
+                                                   'mouse_invert_y': invert, 'mouse_no_auto_rotation': auto})
+        self.assertEqual(set(controls.MOUSE_DEFAULTS), {'mouse_camera', 'mouse_sensitivity', 'mouse_invert_y',
+                                                        'mouse_no_auto_rotation'})
+        low, high = re.search(r'sensitivity=clamp_setting\(v,([\d.]+)f,([\d.]+)f\)', source).groups()
+        self.assertEqual(controls.MOUSE_SENSITIVITY_RANGE, (float(low), float(high)))
+
+
+class Ds3LayoutTests(unittest.TestCase):
+    """The Dark Souls III layout of the Controls page: keyboard and mouse only, the gamepad stays."""
+
+    def test_the_layout(self):
+        layout = controls.DS3_KEYS
+        self.assertEqual({k: layout[k] for k in ('r1', 'r2', 'l1', 'l2', 'circle', 'cross', 'square', 'triangle')},
+                         {'r1': 'Mouse Left', 'r2': 'Shift+Mouse Left', 'l1': 'Mouse Right', 'l2': 'Left Ctrl',
+                          'circle': 'Space', 'cross': 'E', 'square': 'R', 'triangle': 'F'})
+        self.assertEqual({k: layout[k] for k in ('r3', 'l3', 'up', 'down', 'left', 'right')},
+                         {'r3': 'Q, Mouse Middle', 'l3': 'C', 'up': 'Up, Wheel Up', 'down': 'Down, Wheel Down',
+                          'left': 'Left', 'right': 'Right'})
+        self.assertEqual({k: layout[k] for k in ('options', 'touchpad', 'touchpad_right')},
+                         {'options': 'Tab', 'touchpad': 'G', 'touchpad_right': 'Backspace'})
+        self.assertEqual([layout[k] for k in ('move_up', 'move_down', 'move_left', 'move_right')], list('WSAD'))
+        self.assertEqual([layout[k] for k in ('look_up', 'look_down', 'look_left', 'look_right')], list('IKJL'))
+
+    def test_it_covers_every_input_once_without_a_key_used_twice(self):
+        self.assertEqual(set(controls.DS3_KEYS), {row[0] for row in controls.CONTROLS})
+        used = [part for value in controls.DS3_KEYS.values() for part in controls.split_binding(value)]
+        self.assertEqual(len(used), len(set(used)), 'a key or button on two inputs')
+        for value in controls.DS3_KEYS.values():
+            self.assertLessEqual(len(controls.split_binding(value)), controls.MAX_BIND)
+
+    def test_every_name_is_one_the_runtime_parses(self):
+        lib = sdl()
+        mouse = {name for name, _label in controls.MOUSE_INPUTS}
+        for name, value in controls.DS3_KEYS.items():
+            for part in controls.split_binding(value):
+                bare = re.sub(r'^((?:shift|ctrl|alt)\+)+', '', part, flags=re.I)
+                if bare in mouse:
+                    continue
+                if lib:
+                    self.assertNotEqual(lib.SDL_GetScancodeFromName(bare.encode()), 0, f'{name}: {part}')
+
+    def test_the_updates_are_key_lines_only(self):
+        updates = controls.ds3_updates()
+        self.assertEqual(set(updates), {f'key.{row[0]}' for row in controls.CONTROLS})
+        self.assertFalse(any(key.startswith('pad.') for key in updates))
+        self.assertEqual(updates['key.r2'], 'Shift+Mouse Left')
+
+    def test_the_keys_that_match_the_defaults_write_no_line(self):
+        ini = controls.apply_ds3({'pad.cross': 'x', 'key.cross': 'F5', 'upscaler': 'fsr4'})
+        self.assertEqual(ini['pad.cross'], 'x')                       # the gamepad is left alone
+        self.assertEqual(ini['upscaler'], 'fsr4')
+        self.assertEqual(ini['key.cross'], 'E')
+        self.assertNotIn('key.move_up', ini)                          # W is the default already: no line
+        self.assertEqual(ini['key.look_up'], 'I')
+        for name in controls.DS3_KEYS:
+            self.assertEqual(controls.current_binding(ini, 'key', name), controls.split_binding(controls.DS3_KEYS[name]), name)
+        self.assertEqual(controls.current_binding(ini, 'pad', 'cross'), ['x'])
+
+
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class SettingsFileTests(unittest.TestCase):
     def setUp(self):
@@ -242,6 +340,30 @@ class SettingsFileTests(unittest.TestCase):
         self.save(ini, lines)
         self.assertEqual(self.path.read_text(encoding='utf-8'), first)
 
+    def test_the_mouse_settings_are_written_as_the_runtime_reads_them(self):
+        for key, value in controls.MOUSE_DEFAULTS.items():
+            self.assertEqual(launcher.INI_DEFAULTS[key], value, key)
+        ini, lines = launcher.load_ini()
+        ini['mouse_sensitivity'] = '2.50'
+        ini['mouse_invert_y'] = '1'
+        ini, lines = self.save(ini, lines)
+        text = self.path.read_text(encoding='utf-8').splitlines()
+        for line in ('mouse_camera=1', 'mouse_sensitivity=2.50', 'mouse_invert_y=1', 'mouse_no_auto_rotation=0'):
+            self.assertIn(line, text)
+        self.assertEqual({'mouse_camera', 'mouse_invert_y', 'mouse_no_auto_rotation'} - launcher.INI_FLAGS, set())
+        self.assertIn('mouse_sensitivity', launcher.INI_FLOATS)
+
+    def test_the_ds3_layout_is_written_as_key_lines_and_leaves_the_gamepad_alone(self):
+        self.path.write_text('pad.cross=x\nkey.cross=F5\n', encoding='utf-8')
+        ini, lines = launcher.load_ini()
+        ini, lines = self.save(controls.apply_ds3(ini), lines)
+        text = self.path.read_text(encoding='utf-8').splitlines()
+        for line in ('pad.cross=x', 'key.cross=E', 'key.r1=Mouse Left', 'key.r2=Shift+Mouse Left', 'key.r3=Q, Mouse Middle',
+                     'key.up=Up, Wheel Up', 'key.down=Down, Wheel Down', 'key.l2=Left Ctrl', 'key.look_left=J'):
+            self.assertIn(line, text)
+        self.assertEqual(sum(line.startswith('pad.') for line in text), 1)
+        self.assertNotIn('key.move_up=W', text)   # the default needs no line
+
     def test_a_value_with_an_equals_sign_survives(self):
         ini, lines = launcher.load_ini()
         ini['key.cross'] = '='  # the key SDL calls "="
@@ -296,6 +418,22 @@ class TranslationTests(unittest.TestCase):
             for language in self.LANGUAGES:
                 self.assertTrue(bbport_lang.table(language).get(text), f'{language}: {text}')
 
+    def test_the_mouse_texts_are_translated_everywhere(self):
+        texts = ['Mouse', 'Mouse controls the camera', 'Mouse sensitivity', 'Invert vertical look',
+                 'Camera turns only by the mouse while walking', 'Dark Souls III layout',
+                 'Press Change, then a key, a mouse button or the wheel. Add gives the input a second one. '
+                 'Applied when the game starts.',
+                 'Replace your keyboard and mouse bindings with the Dark Souls III layout? Gamepad bindings are not changed.',
+                 'Dark Souls III layout applied. Reset all brings the defaults back.']
+        for text in texts:
+            self.assertIn(text, bbport_lang.KEYS, text)
+            for language in self.LANGUAGES:
+                translated = bbport_lang.table(language).get(text)
+                self.assertTrue(translated, f'{language}: {text}')
+        # the layout is named the same in every language (a game title), and the old hint is gone
+        self.assertNotIn('Press Change, then the key you want. Add gives the input a second key. '
+                         'Applied when the game starts.', bbport_lang.KEYS)
+
     def test_the_file_keeps_its_windows_line_endings(self):
         data = (ROOT / 'launcher' / 'bbport_lang.py').read_bytes()
         self.assertEqual(data.count(b'\n'), data.count(b'\r\n'))
@@ -304,7 +442,8 @@ class TranslationTests(unittest.TestCase):
     def test_every_text_of_the_page_is_in_the_translations(self):
         tree = ast.parse((ROOT / 'launcher' / 'bbport_launcher_win.py').read_text(encoding='utf-8'))
         names = {'build_controls', 'apply_gamepads', 'show_control', 'start_capture', 'stop_capture',
-                 'control_key', 'gamepad_options'}
+                 'control_key', 'control_key_release', 'control_mouse', 'poll_side_buttons', 'assign_key',
+                 'apply_ds3_layout', 'gamepad_options'}
         pieces = [f for c in ast.walk(tree) if isinstance(c, (ast.ClassDef, ast.Module)) for f in c.body
                   if isinstance(f, ast.FunctionDef) and f.name in names]
         self.assertEqual({f.name for f in pieces}, names)

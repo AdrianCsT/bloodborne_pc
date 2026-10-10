@@ -153,7 +153,23 @@ In the game, **Insert** (or **L3+R3** on a controller) opens the port's menu: up
 | Enter | Options |
 | Tab | Touchpad |
 
-The keyboard also works next to a connected gamepad, and both can be remapped in the launcher under **Controls**. When several controllers are connected, **Controls > Controller** picks one. In the Windows launcher, **Controls** is a tab of the Advanced view (the **Advanced** switch at the top right); each input has **Change** and **Add** for keys and a drop-down for the gamepad button. The character name is typed on the keyboard in a box over the game.
+The keyboard also works next to a connected gamepad, and both can be remapped in the launcher under **Controls**. When several controllers are connected, **Controls > Controller** picks one. In the Windows launcher, **Controls** is a tab of the Advanced view (the **Advanced** switch at the top right); each input has **Change** and **Add** for keys and mouse buttons and a drop-down for the gamepad button. The character name is typed on the keyboard in a box over the game.
+
+**Mouse.** While the game window has focus and the port's menu is closed, the mouse turns the camera (game version 1.09; on another version it acts as the right stick, and the log says which one is in use). **Insert** (the port's menu) or **Alt+Tab** lets go of the mouse. In the launcher, **Controls > Mouse** has the switch, the sensitivity, *Invert vertical look* and *Camera turns only by the mouse while walking* (the game then stops turning the camera by itself as the character walks; off by default so a gamepad keeps its camera). Mouse buttons and the wheel are inputs like keys: **Change** and **Add** take a click or a wheel step, and holding Shift, Ctrl or Alt first makes a combination such as Shift + left button.
+
+The **Dark Souls III layout** button (Controls > Button assignments) asks, then replaces the keyboard and mouse bindings with this layout and leaves the gamepad bindings alone; *Reset all* brings the defaults back. There is no walk input, so Left Alt is not bound.
+
+| Dark Souls III layout | Controller |
+|---|---|
+| W A S D, mouse | Move, camera (I J K L also turn the camera) |
+| Left button / Shift + left button | R1 / R2 |
+| Right button / Left Ctrl | L1 / L2 |
+| Space / E / R / F | Circle (dodge, hold to sprint) / Cross / Square / Triangle |
+| Q or wheel click / C | R3 (lock on) / L3 |
+| Arrow keys, wheel up and down | D-pad (up and down also by the wheel) |
+| Tab / G / Backspace | Options / left touchpad / right touchpad |
+
+The settings are lines of `bbport.ini`: `mouse_camera`, `mouse_sensitivity` (0.022 degrees of turn per mouse count x the value, 0.01 to 20), `mouse_invert_y`, `mouse_no_auto_rotation`. A binding line takes `Mouse Left`, `Mouse Right`, `Mouse Middle`, `Mouse X1`, `Mouse X2`, `Wheel Up`, `Wheel Down`, each optionally after `Shift+`, `Ctrl+` or `Alt+` (for example `key.r2=Shift+Mouse Left`).
 
 ## FAQ and troubleshooting
 
@@ -374,7 +390,7 @@ Or use the launcher (pick the game folder, settings, *Start*):
 bash launcher/bb-launcher.sh         # launcher/install-desktop.sh adds it to the app menu
 ```
 
-By default the game folder is expected next to the repository (`../CUSA03173`). Saves and the shader cache go to `user/` (the launcher lets you choose another folder), and settings to `bbport.ini`. A gamepad is used through SDL3 (the launcher's *Controls > Controller* picks one when several are connected; `BB_GAMEPAD=<GUID or part of the name>`). The keyboard works too, also next to a connected gamepad (the Steam Deck always has one). Both are remapped in the launcher (*Controls*).
+By default the game folder is expected next to the repository (`../CUSA03173`). Saves and the shader cache go to `user/` (the launcher lets you choose another folder), and settings to `bbport.ini`. A gamepad is used through SDL3 (the launcher's *Controls > Controller* picks one when several are connected; `BB_GAMEPAD=<GUID or part of the name>`). The keyboard and the mouse work too, also next to a connected gamepad (the Steam Deck always has one). All are remapped in the launcher (*Controls*).
 
 </details>
 
