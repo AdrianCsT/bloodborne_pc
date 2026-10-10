@@ -286,7 +286,7 @@ class PlanTests(unittest.TestCase):
                                 ('KG_R2', 'righttrigger'), ('KG_L3', 'leftstick'), ('KG_R3', 'rightstick'),
                                 ('KG_Start', 'start'), ('KG_TP_L', 'back'), ('KG_L_U', 'dpup'), ('KG_L_D', 'dpdown')):
             self.assertEqual(plan[texture].tokens, [('pad', button)], texture)
-        self.assertEqual(plan['KG_TP_R'].tokens, [('none',)])  # nothing on the pad opens that half
+        self.assertEqual(plan['KG_TP_R'].tokens, [('pad', 'back')])  # nothing on the pad opens it: View, as the left half
         self.assertEqual(plan['KG_LS'].tokens, [('stick', 'left')])
         self.assertEqual(plan['KG_RS'].tokens, [('stick', 'right')])
         self.assertEqual(plan['KG_L_UDLR'].tokens, [('pad', 'dpup'), ('pad', 'dpleft'), ('pad', 'dpdown'),
@@ -295,7 +295,7 @@ class PlanTests(unittest.TestCase):
     def test_a_saved_pad_binding_moves_the_xbox_icon(self):
         plan = icons.plan('xbox', {'pad.cross': 'y, a', 'pad.options': ''})
         self.assertEqual(plan['KG_Cancel'].tokens, [('pad', 'y')])
-        self.assertEqual(plan['KG_Start'].tokens, [('none',)])
+        self.assertEqual(plan['KG_Start'].tokens, [('pad', 'start')])  # unbound: the default button, never blank
 
     def test_keyboard_icons_show_the_first_bound_key(self):
         plan = icons.plan('keyboard', {})
@@ -317,13 +317,42 @@ class PlanTests(unittest.TestCase):
         look = icons.plan('keyboard', {'mouse_camera': '0'})['KG_RS'].tokens
         self.assertEqual(look, [('key', (), 'I'), ('key', (), 'J'), ('key', (), 'K'), ('key', (), 'L')])
         moved = icons.plan('keyboard', {'key.move_up': 'Up', 'key.move_left': ''})['KG_LS'].tokens
-        self.assertEqual(moved[:2], [('key', (), 'Up'), ('none',)])
+        self.assertEqual(moved[:2], [('key', (), 'Up'), ('key', (), 'A')])  # an unbound one shows its default
 
-    def test_a_saved_key_binding_wins_and_an_empty_one_leaves_the_icon_blank(self):
+    def test_a_saved_key_binding_wins_and_an_empty_one_shows_the_default(self):
         plan = icons.plan('keyboard', {'key.cross': 'X, Return', 'key.circle': '', 'key.l3': 'Shift+Wheel Up'})
         self.assertEqual(plan['KG_Cancel'].tokens, [('key', (), 'X')])
-        self.assertEqual(plan['KG_OK'].tokens, [('none',)])
+        self.assertEqual(plan['KG_OK'].tokens, [('key', (), 'Space')])
         self.assertEqual(plan['KG_L3'].tokens, [('key', ('Shift',), 'Wheel Up')])
+
+    def test_no_glyph_is_ever_blank(self):
+        """The default bindings leave the right touchpad without a pad button, and a player can clear any binding:
+        every glyph of both sets still draws something (a fallback, never an empty box)."""
+        cleared = {f'{kind}.{name}': '' for name, *_rest in controls.CONTROLS for kind in ('key', 'pad')}
+        for icon_set in ('xbox', 'keyboard'):
+            for label, ini in (('defaults', {}), ('everything cleared', cleared)):
+                for texture, glyph in icons.plan(icon_set, ini).items():
+                    self.assertNotIn(('none',), glyph.tokens, (icon_set, label, texture))
+                    image = icons.render_glyph(icon_set, glyph)
+                    solid = sum(1 for pixel in flat(image) if pixel[3] > 128)
+                    bright = sum(1 for pixel in flat(image) if pixel[3] > 128 and max(pixel[:3]) > 150)
+                    self.assertGreater(solid, 100, (icon_set, label, texture))
+                    self.assertGreater(bright, 6, (icon_set, label, texture, 'no symbol, only a box'))
+
+    def test_the_xbox_right_touchpad_is_the_view_glyph_like_the_left_one(self):
+        glyphs = icons.build_glyphs('xbox', {})
+        self.assertEqual(flat(glyphs['KG_TP_R']), flat(glyphs['KG_TP_L']))
+
+    def test_the_keyboard_options_key_is_a_level_wide_cap(self):
+        """Esc is written across the cap, not turned on its side in the narrow footprint of the original."""
+        glyph = icons.build_glyphs('keyboard', {})['KG_Start']
+        solid = glyph.getchannel('A').point(lambda v: 255 if v > 128 else 0).getbbox()
+        self.assertGreaterEqual(solid[2] - solid[0], 28)
+        legend = Image.new('L', glyph.size, 0)
+        legend.putdata([255 if p[3] > 128 and max(p[:3]) > 190 else 0 for p in flat(glyph)])
+        light = legend.getbbox()
+        self.assertIsNotNone(light)
+        self.assertGreater(light[2] - light[0], light[3] - light[1])  # the legend is wider than tall
 
     def test_a_key_binding_is_split_into_its_modifiers_and_the_key(self):
         self.assertEqual(icons.parse_key('Shift+Mouse Right'), (('Shift',), 'Mouse Right'))

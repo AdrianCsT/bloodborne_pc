@@ -429,22 +429,33 @@ def first_binding(ini, kind, name):
 
 
 def key_token(ini, name):
-    first = first_binding(ini, 'key', name)
+    """The first key bound to an input; with none bound, the default one, else a dash (a glyph is never blank)."""
+    first = first_binding(ini, 'key', name) or first_default(bbport_controls.default_binding('key', name))
     if first is None:
-        return ('none',)
+        return ('key', (), '-')
     mods, base = parse_key(first)
     return ('key', mods, base)
 
 
+def first_default(text):
+    names = bbport_controls.split_binding(text)
+    return names[0] if names else None
+
+
 def pad_token(ini, name):
-    first = first_binding(ini, 'pad', name)
-    return ('pad', first) if first else ('none',)
+    """The first gamepad button bound to an input; with none bound, the default one, the View button for the two
+    touchpad halves (a pad has no touchpad), else a dash (a glyph is never blank)."""
+    first = first_binding(ini, 'pad', name) or first_default(bbport_controls.default_binding('pad', name))
+    if first:
+        return ('pad', first)
+    return ('pad', 'back') if name in ('touchpad', 'touchpad_right') else ('key', (), '-')
 
 
 def plan(icon_set, ini):
     """{texture: Plan(kind, tokens, names)}: what to draw in each glyph for an icon set ('xbox' or 'keyboard')
     and the bbport.ini values (key.<input>, pad.<input>, mouse_camera). A token is ('key', modifiers, key),
-    ('pad', SDL button), ('stick', side), ('mouse',) or ('none',) for an input nothing is bound to."""
+    ('pad', SDL button), ('stick', side) or ('mouse',). An input with nothing bound shows its default binding, or
+    on the Xbox side the View button for a touchpad half, or a dash: no glyph is blank."""
     if icon_set not in ('xbox', 'keyboard'):
         raise IconError(f'no icons are drawn for {icon_set}')
     ini = ini or {}
@@ -543,16 +554,9 @@ def legend_size(text, width, height, top=12.0):
     return (box[3] - box[1]) / SS
 
 
-def put_text(draw, text, box, fill, top=12.0, vertical_on=None):
-    """The text, as large as fits, centred on its ink in box. With vertical_on (the image drawn on) it is written
-    from the bottom up, for a tall, narrow box such as the Options pill."""
+def put_text(draw, text, box, fill, top=12.0):
+    """The text, as large as fits, centred on its ink in box."""
     x0, y0, x1, y1 = box
-    if vertical_on is not None:
-        layer = Image.new('RGBA', (int((y1 - y0) * SS), int((x1 - x0) * SS)), (0, 0, 0, 0))
-        put_text(ImageDraw.Draw(layer), text, (0, 0, y1 - y0, x1 - x0), fill, top)
-        turned = layer.rotate(90, expand=True)
-        vertical_on.paste(turned, (int(x0 * SS), int(y0 * SS)), turned)
-        return
     font, stroke, ink = fit_text(draw, text, x1 - x0, y1 - y0, top)
     x = (x0 + x1) / 2 * SS - (ink[0] + ink[2]) / 2
     y = (y0 + y1) / 2 * SS - (ink[1] + ink[3]) / 2
@@ -651,7 +655,7 @@ def inner_box(kind, set_name):
     return x0 + 3, y0 + 3, x1 - 3, y1 - 3
 
 
-def draw_key(image, draw, token, box, vertical=False):
+def draw_key(image, draw, token, box):
     """A key or mouse input inside box: a legend, an arrow, or the mouse with its button lit; a modifier
     ('Shift+Mouse Right') goes beside it in a wide box and above it in a tall one."""
     _kind, mods, base = token
@@ -674,7 +678,7 @@ def draw_key(image, draw, token, box, vertical=False):
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         arrow(draw, ARROWS[base], (cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2), INK)
     else:
-        put_text(draw, legend_for(base), box, INK, vertical_on=image if vertical else None)
+        put_text(draw, legend_for(base), box, INK)
 
 
 MODIFIER_NAMES = {'Shift': 'Left Shift', 'Ctrl': 'Left Ctrl', 'Alt': 'Left Alt'}
@@ -737,7 +741,7 @@ def draw_small_cap(image, draw, token, box, text=None):
     if text:
         put_text(draw, text, face, INK)
     elif token[0] == 'key':
-        draw_key(image, draw, token, face, False)
+        draw_key(image, draw, token, face)
 
 
 def is_mouse(token):
@@ -779,9 +783,11 @@ def render_glyph(icon_set, glyph):
     image = Image.new('RGBA', (32 * SS, 32 * SS), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     kind, tokens = glyph.kind, glyph.tokens
+    if icon_set == 'keyboard' and kind == 'pill':  # a key cap across the whole width, its legend written level
+        kind = 'key'
     if kind == 'dpad':
         if icon_set == 'xbox':
-            draw_dpad(draw, set(glyph.names) if tokens[0][0] != 'none' else set())
+            draw_dpad(draw, set(glyph.names))
         elif len(tokens) == 4:
             for token, box in zip(tokens, key_caps('KG_L_UDLR', 4)):
                 draw_small_cap(image, draw, token, box)
@@ -804,7 +810,7 @@ def render_glyph(icon_set, glyph):
                 return image.resize((32, 32), Image.LANCZOS)
             draw_cap(draw, box, kind, icon_set)
             if token[0] == 'key':
-                draw_key(image, draw, token, inner, vertical=kind == 'pill')
+                draw_key(image, draw, token, inner)
             elif token[0] == 'stick':
                 put_text(draw, 'LS' if token[1] == 'left' else 'RS', inner, INK, top=11)
             elif token[0] == 'pad':
