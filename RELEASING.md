@@ -27,7 +27,7 @@ The launcher compares versions, so its comparison must follow the order above, w
 ## Branches
 
 - Work and betas live on `develop`.
-- `master` stays where it is until a stable release ships, then fast-forwards to the stable commit.
+- `master` fast-forwards to `develop` whenever a release ships, beta or stable (decided 2026-10-10; until then it moved only on stable releases).
 
 ## What the launcher offers
 
@@ -79,12 +79,14 @@ Run these in order. Stop at the first failure and fix it before you go on.
 9. **Publish.** Create the release from the tag, with the notes from the template and the zip attached as `bbport-windows.zip`. Title: `Bloodborne for Windows <version>`.
    - Beta: tick **Set as a pre-release**, or pass `--prerelease` to `gh release create`.
    - Stable: leave it unticked.
+   - Files the launcher downloads from a release go on the release its pin names, with their source. Today that is `tools/fetch_fsr4vk.py`: `fsr4vk-v0.4.3-amdfix.zip` and `fsr4vk-v0.4.3-amdfix-src.zip` on `windows-v1.7.0-beta.2`. After publishing, download the pinned URL once and compare its SHA-256 with the pin.
 10. **Check the updater.** Open `BLauncher.exe` from the previous stable build and check for updates.
     - Stable release: it must offer the new version.
     - Beta: with the "Beta versions" switch off it must not offer the beta. With the switch on it must offer it.
+11. **Move `master`.** Fast-forward `master` to the release commit and push it.
 
 ## Beta to stable
 
 1. Testers play the beta for a day or two. If one reports a regression, fix it on `develop` and ship the next beta.
 2. When a beta is clean, set `VERSION` to the stable number on `develop`. That edit (with the changelog entry) is the sole change since the last beta. Run the checklist again; the stable zip has its own hash.
-3. After step 10 passes, fast-forward `master` to the stable commit and push it.
+3. Step 11 of the checklist moves `master` to the stable commit, as it does for every release.
