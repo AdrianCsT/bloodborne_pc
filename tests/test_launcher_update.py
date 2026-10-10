@@ -16,7 +16,7 @@ if sys.platform == 'win32':
 
 def release(tag, prerelease=False, draft=False, assets=('bbport-windows.zip',)):
     return {'tag_name': tag, 'prerelease': prerelease, 'draft': draft,
-            'html_url': f'https://github.com/AdrianCsT/bloodborne_pc/releases/tag/{tag}',
+            'html_url': f'https://github.com/0xCydral/bloodborne_pc/releases/tag/{tag}',
             'assets': [{'name': name, 'browser_download_url': f'https://example.test/{tag}/{name}'}
                        for name in assets]}
 

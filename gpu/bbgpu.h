@@ -38,8 +38,8 @@ int bbgpu_overlay_captures_input(void);
 void bbgpu_mouse_enable(int enabled);
 int bbgpu_mouse_take(float *dx, float *dy, float *wheel, uint32_t *buttons);
 /* The native mouse camera: motion (counts) goes to `turn` at once, from the window thread,
- * instead of to bbgpu_mouse_take, and `drop` is called whenever the mouse is let go. Null turn:
- * off. */
+ * instead of to bbgpu_mouse_take, and `drop` is called whenever the mouse is taken or let go.
+ * Null turn: off. */
 void bbgpu_mouse_set_direct(void (*turn)(float dx, float dy), void (*drop)(void));
 /* Patches the loaded image before the game runs (image still writable): libGnm entry hooks. */
 void bbgpu_patch_image(unsigned char *image, uint64_t size);
