@@ -4,6 +4,23 @@ All notable changes to the Windows fork of the Bloodborne PS4 port. The format f
 
 The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags remain, and this file replaces their notes. Version 1.6.9 is folded into 1.6.10 (see there).
 
+## [Unreleased]
+
+### Added
+
+- A Controls tab in the Windows launcher (Advanced view), which the README already described ([#5](https://github.com/AdrianCsT/bloodborne_pc/issues/5)). It picks the controller and gives each input up to four keys and a gamepad button, saved as the `key.<input>=` and `pad.<input>=` lines the game already read from the Linux launcher. Keys are captured by their position, so AZERTY and Cyrillic layouts bind the key the game sees.
+- A `Perf:` line in `user\last_run.log` every 30 seconds: frames per second, the slowest 1% of frames, the worst frame and the shader compiles in that window. A tester's log now says how the game ran.
+
+### Changed
+
+- Object motion vectors on AMD cards have their own switch under Object motion vectors, off by default, which needs Experimental features on. Turning on Experimental features for FSR 4.1.1 no longer turns them on.
+
+### Fixed
+
+- In a window, an output above 1920x1080 was rendered at full size and then shrunk into a 1920x1080 window, and frame generation ran at 1920x1080. The window now opens at the output size, or maximized when that size does not fit the screen.
+- The FSR 4.1.1 entry could stay gray after you turned on Experimental features or downloaded the files, because the launcher kept a GPU check made while they were off. It now ignores that result and checks again when the switch goes on.
+- With object motion vectors on, some still objects got vectors from history that was not theirs: in a test, bushes behind the Hunter's Dream workshop moved 100 to 650 pixels a frame, and FSR and frame generation smeared them. Where an object's vector differs from the camera's by more than 5% of the frame width (85 pixels at 1706x960, at least 32), the camera's vector is used. At the same moment of the test route, the worst frames went from 2.8% of the picture with such vectors to none in 24 frames.
+
 ## [1.7.0-beta.1] - 2026-10-09
 
 ### Added
