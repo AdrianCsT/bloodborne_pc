@@ -10,7 +10,7 @@
 #include "gpu/shim/bbport_settings.h"
 
 #ifdef _WIN32
-// Windows has no /tmp, setenv or unsetenv: the file goes in the working directory.
+// Windows has no /tmp or setenv (this test needs no unsetenv): the file goes in the working directory.
 #define TEST_TMP ""
 static int setenv(const char* name, const char* value, int) {
     return _putenv_s(name, value);

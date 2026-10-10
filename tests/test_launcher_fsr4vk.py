@@ -663,7 +663,12 @@ class WorkerTests(unittest.TestCase):
                         mock.patch.object(launcher, 'fsr4vk_present', return_value=present), \
                         mock.patch.object(launcher, 'LANG', 'en'):
                     launcher.Launcher.start_fsr4vk_download(window)
-                    time.sleep(0.2)
+                    if present:  # a refusal starts no thread; a short wait would still catch one
+                        time.sleep(0.2)
+                    else:  # the download runs on a thread: wait for its call, not for a fixed time
+                        deadline = time.monotonic() + 5
+                        while not download.called and time.monotonic() < deadline:
+                            time.sleep(0.01)
                 if present:  # an update: the DLL is in use
                     self.assertEqual(told, [('FSR 4.1.1', 'Close the game before updating.')])
                     self.assertFalse(window.downloading_fsr4vk)
