@@ -528,10 +528,10 @@ void Menu() {
         "Эффекты включаются и выключаются патчами игры при запуске (patches/Bloodborne.xml). "
         "Размытие в движении и тени от динамических источников заметно нагружают GPU."));
     Hint(BbSettings::MenuText(
-        "Free camera: hold Cross and press L3 (keyboard: Space + Z). "
+        "Free camera: hold Cross and press L3 (keyboard: E + C). "
         "Debug menu: left touchpad / Tab. Requires DbgFont14h.ccm and DbgFont14h.tpf "
         "in dvdroot_ps4/font from Nexus mod #253. Right touchpad: Backspace.",
-        "Свободная камера: удерживайте Cross и нажимайте L3 (клавиатура: Space + Z). "
+        "Свободная камера: удерживайте Cross и нажимайте L3 (клавиатура: E + C). "
         "Debug menu: левый touchpad / Tab. Нужны DbgFont14h.ccm и DbgFont14h.tpf "
         "в dvdroot_ps4/font из мода Nexus #253. Правый touchpad: Backspace."));
 
