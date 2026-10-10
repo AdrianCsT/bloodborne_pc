@@ -220,33 +220,42 @@ static void defaults(void) {
 }
 
 /* Sprinting on the keyboard: W + A (or D) + Space, then one of the two direction keys is let go. The pad
- * state the game reads must stay continuous: the left stick off neutral and Circle held in every poll. */
-static int stick_off_neutral(const PadData *d) { return d->left_x!=128 || d->left_y!=128; }
-static void sprint_poll(const bool *keys, int side_key, const char *step, int expect_x) {
+ * state the game reads must stay continuous: Circle held and the left stick at a full push in every poll. A
+ * diagonal sits on the stick's circle (about 90 counts a side, 45 degrees) like a real stick's, not in the
+ * square's corner (0,0), 1.41 times a full push: letting go of one key then dropped the push to 1.0 at once. */
+static float stick_push(const PadData *d) { return hypotf((float)d->left_x-128.0f,(float)d->left_y-128.0f); }
+static void sprint_poll(const bool *keys, int side_key, const char *step, int expect_x, int expect_y) {
     PadData d;
     memset(&d,0,sizeof d);
     d.left_x=d.left_y=d.right_x=d.right_y=128;
     apply_keyboard(&d,keys);
-    printf("  %-18s side=%s left=(%3d,%3d) circle=%d\n",step,side_key==SDL_SCANCODE_A ? "A" : "D",
-           d.left_x,d.left_y,(d.buttons & BTN_CIRCLE)!=0);
-    assert(stick_off_neutral(&d));
+    printf("  %-18s side=%s left=(%3d,%3d) push=%.1f circle=%d\n",step,side_key==SDL_SCANCODE_A ? "A" : "D",
+           d.left_x,d.left_y,stick_push(&d),(d.buttons & BTN_CIRCLE)!=0);
     assert(d.buttons & BTN_CIRCLE);
-    assert(d.left_y==0 && d.left_x==expect_x);
+    assert(abs(d.left_x-expect_x)<=1 && abs(d.left_y-expect_y)<=1);
+    assert(close_to(stick_push(&d),128.0f,2.0f));       /* a full push, never the corner's 181 */
 }
 static void sprint_diagonal(int side_key) {
     bool keys[SDL_SCANCODE_COUNT]={0};
-    const int diagonal_x=side_key==SDL_SCANCODE_A ? 0 : 255;
+    const int diagonal_x=side_key==SDL_SCANCODE_A ? 38 : 218;
     bind_defaults();
     keys[SDL_SCANCODE_W]=true; keys[side_key]=true; keys[SDL_SCANCODE_SPACE]=true;
-    for (int i=0;i<3;++i) { sprint_poll(keys,side_key,"W+side+Space held",diagonal_x); SLEEP_MS(16); }
+    for (int i=0;i<3;++i) { sprint_poll(keys,side_key,"W+side+Space held",diagonal_x,38); SLEEP_MS(16); }
     keys[side_key]=false;
-    for (int i=0;i<6;++i) { sprint_poll(keys,side_key,"side released",128); SLEEP_MS(16); }
+    for (int i=0;i<6;++i) { sprint_poll(keys,side_key,"side released",128,0); SLEEP_MS(16); }
     keys[side_key]=true;                          /* and back to the diagonal */
-    sprint_poll(keys,side_key,"side pressed again",diagonal_x);
+    sprint_poll(keys,side_key,"side pressed again",diagonal_x,38);
 }
 static void sprint(void) {
     sprint_diagonal(SDL_SCANCODE_A);
     sprint_diagonal(SDL_SCANCODE_D);
+    /* The look keys (right stick) keep the square's corner. */
+    bool keys[SDL_SCANCODE_COUNT]={0};
+    PadData d;
+    keys[SDL_SCANCODE_I]=keys[SDL_SCANCODE_J]=true;
+    memset(&d,0,sizeof d); d.left_x=d.left_y=d.right_x=d.right_y=128;
+    apply_keyboard(&d,keys);
+    assert(d.right_x==0 && d.right_y==0 && d.left_x==128 && d.left_y==128);
 }
 
 /* The stick fallback: mouse speed becomes right-stick tilt. */

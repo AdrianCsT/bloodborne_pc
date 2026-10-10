@@ -543,6 +543,21 @@ static int pad_value(SDL_Gamepad *g, int input) {
 static uint8_t key_axis(uint8_t value, int negative, int positive) {
     return negative || positive ? (uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0)) : value;
 }
+/* The left stick from the movement keys. Keys on both axes (a diagonal) put the stick on the circle a real
+ * stick travels, 45 degrees at 90 counts a side (127 * sqrt(1/2)), not in the square's corner (0,0), 1.41
+ * times a full push: letting go of one key then dropped the push from 1.41 to 1.0 in one frame, which the
+ * game may read as the stick being let go (the sprint ends). Keys on one axis only, or opposing keys, and
+ * a gamepad's stick otherwise, keep key_axis. */
+#define DIAGONAL_COUNTS 90
+static void key_left_stick(PadData *d, int left, int right, int up, int down) {
+    if (left!=right && up!=down) {
+        d->left_x=(uint8_t)(128+(right ? DIAGONAL_COUNTS : -DIAGONAL_COUNTS));
+        d->left_y=(uint8_t)(128+(down ? DIAGONAL_COUNTS : -DIAGONAL_COUNTS));
+        return;
+    }
+    d->left_x=key_axis(d->left_x,left,right);
+    d->left_y=key_axis(d->left_y,up,down);
+}
 static void apply_keyboard(PadData *d, const bool *k) {
     int held[IN_COUNT];
     const uint64_t now=now_us();
@@ -553,8 +568,7 @@ static void apply_keyboard(PadData *d, const bool *k) {
     if (held[IN_TOUCHPAD_RIGHT]) touch_click(d,1);
     if (held[IN_L2]) d->l2=255;
     if (held[IN_R2]) d->r2=255;
-    d->left_x=key_axis(d->left_x,held[IN_MOVE_LEFT],held[IN_MOVE_RIGHT]);
-    d->left_y=key_axis(d->left_y,held[IN_MOVE_UP],held[IN_MOVE_DOWN]);
+    key_left_stick(d,held[IN_MOVE_LEFT],held[IN_MOVE_RIGHT],held[IN_MOVE_UP],held[IN_MOVE_DOWN]);
     d->right_x=key_axis(d->right_x,held[IN_LOOK_LEFT],held[IN_LOOK_RIGHT]);
     d->right_y=key_axis(d->right_y,held[IN_LOOK_UP],held[IN_LOOK_DOWN]);
 }

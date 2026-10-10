@@ -9,6 +9,7 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 ### Changed
 
 - The default keyboard keys follow Dark Souls III better: Esc opens the menu (equipment, items; it was Tab), Tab and G both open the gestures (Tab is new), and Space alone is Circle (dodge, hold to sprint; Esc is no longer Circle). Saved bindings in `bbport.ini` are not touched.
+- Keyboard diagonals (W with A or D) now push the left stick as far as a real stick's full push, along the circle, instead of into the square's corner, which is about 1.4 times as far. Letting go of one of the two keys no longer drops the push in one step, which may fix sprinting ending when a diagonal key is released. Not confirmed in game yet.
 
 ### Fixed
 
