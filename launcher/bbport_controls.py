@@ -272,7 +272,6 @@ ICON_DEFAULT = 'auto'
 # Vendors in an SDL GUID (bytes 4 and 5 of the vendor field, little endian): Microsoft and Sony.
 PAD_VENDORS = {0x045E: 'xbox', 0x054C: 'playstation'}
 PLAYSTATION_NAMES = ('dualsense', 'dualshock', 'playstation', 'ps3', 'ps4', 'ps5', 'sony', 'wireless controller')
-XBOX_NAMES = ('xbox', 'x-box', 'xinput', 'microsoft')
 
 
 def pad_family(guid, name):
