@@ -178,6 +178,7 @@ def run_command():
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bbport_lang  # noqa: E402
+import bbport_controls  # noqa: E402
 import bbport_steam  # noqa: E402
 
 LANG = 'en'
@@ -253,7 +254,8 @@ APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'
                 'check_updates': True, 'ui_advanced': False, 'animations': True,
                 'addcont': '', 'pkg_dir': '', 'pkg_src': '', 'reshade': False,
                 'beta_versions': is_prerelease(VERSION),  # a beta user keeps getting betas unless they say no
-                'experimental': False, 'object_motion_amd': False, 'monitor': ''}  # monitor: a name from --displays; '' is the primary
+                'experimental': False, 'object_motion_amd': False, 'monitor': '',  # monitor: a name from --displays; '' is the primary
+                'gamepad': '', 'gamepad_name': ''}  # gamepad: a GUID from --gamepads (BB_GAMEPAD); '' takes the first one
 
 UPSCALERS = [('dlss', ('DLSS (NVIDIA GeForce RTX)',)),
              ('xess', ('XeSS (Intel, any recent GPU)', 'XeSS (Intel, любая современная видеокарта)')),
@@ -532,6 +534,39 @@ def connected_displays():
     return _displays
 
 
+def parse_gamepads(output):
+    """[(GUID, name)] from `bb-gpu-capabilities --gamepads`: one "GUID<TAB>name" line each; others are skipped."""
+    pads = []
+    for line in output.splitlines():
+        guid, tab, name = line.rstrip('\r\n').partition('\t')
+        if tab and guid.strip() and name.strip():
+            pads.append((guid.strip(), name.strip()))
+    return pads
+
+
+def list_gamepads():
+    """The gamepads the game would see (SDL asks, as the game does), or None when the tool cannot run.
+    Run it off the window's thread."""
+    exe, env = gpu_tool()
+    if not exe.is_file():
+        return None
+    try:
+        result = subprocess.run([str(exe), '--gamepads'], capture_output=True, text=True, encoding='utf-8',
+                                errors='replace', timeout=30, env=env, creationflags=NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return parse_gamepads(result.stdout) if result.returncode == 0 else None
+
+
+def gamepad_options(pads, saved, saved_name):
+    """[(value, text)] of the controller dropdown: Automatic first, the connected gamepads, and the saved
+    choice while it is not connected (it is used as soon as it connects)."""
+    options = [('', _('Automatic (first connected)', 'Авто (первый подключённый)'))] + list(pads)
+    if saved and saved not in [value for value, _text in options]:
+        options.append((saved, _('{} (not connected)', '{} (не подключён)').format(saved_name or saved)))
+    return options
+
+
 def fsr411_state(support, experimental, files_present):
     """('ok' | 'no', reason) of the experimental FSR 4.1.1: a GPU that cannot run it keeps its own reason,
     then it needs Experimental features, then the downloaded files (also when the check ran before them).
@@ -639,20 +674,27 @@ def load_ini():
 
 
 def save_ini(values, lines):
-    """Rewrites the edited keys in place, appends missing ones, keeps comments and other keys."""
+    """Rewrites the edited keys in place, appends missing ones, keeps comments and other keys. A key
+    whose value is None is removed (a control back to its default)."""
     written, out = set(), []
     for line in lines:
         if '=' in line and not line.lstrip().startswith('#'):
             key = line.split('=', 1)[0].strip()
             if key in values:
-                out.append(f'{key}={values[key]}')
+                if values[key] is not None:
+                    out.append(f'{key}={values[key]}')
                 written.add(key)
                 continue
         out.append(line)
     if not lines:
         out.append('# bbport settings (in-game menu: Insert / L3+R3)')
-    out += [f'{key}={value}' for key, value in values.items() if key not in written]
+    out += [f'{key}={value}' for key, value in values.items() if key not in written and value is not None]
     ini_path().write_text('\n'.join(out) + '\n', encoding='utf-8')
+
+
+def ini_values(ini):
+    """What collect() saves: the launcher's own bbport.ini keys and the controls (key.* / pad.*)."""
+    return {**{key: ini[key] for key in INI_DEFAULTS}, **bbport_controls.ini_updates(ini)}
 
 
 def game_info(folder):
@@ -743,6 +785,8 @@ def game_environment(s, frame_generation=None):
     if str(s.get('monitor', '')).strip():  # the game opens on the primary monitor when this one is gone
         env['BB_DISPLAY'] = str(s['monitor']).strip()
     env['BB_PRESENT_MODE'] = s['present_mode']
+    if str(s.get('gamepad', '')).strip():  # runtime_pad.c takes this one of the connected gamepads (GUID or part of the name)
+        env['BB_GAMEPAD'] = str(s['gamepad']).strip()
     if s['hdr']:
         env['BB_HDR'] = '1'
     env['BB_FPS'] = s['fps_mode']
@@ -1930,6 +1974,10 @@ class Launcher:
         self.ui_calls = queue.Queue()  # work for the Tk thread from helper threads
         self.mod_order, self.mod_vars, self.patch_vars = [], {}, {}
         self.cards, self.hot_card, self.measures = set(), None, {}
+        # Controls page: the row waiting for a key, the rows' widgets, the gamepads SDL listed (None: not asked or
+        # the tool could not run), and the message under the card.
+        self.capturing, self.control_rows, self.gamepads, self.listing_gamepads = None, {}, None, False
+        self.controls_message = None
         root.title('Bloodborne — bbport')
         root.configure(bg=BG)
         self.dpi = root.winfo_fpixels('1i') / 96.0
@@ -2324,7 +2372,8 @@ class Launcher:
         self.hero = Hero(self, root, self.hero_tall, self.hero_short)
         self.hero.canvas.pack(side='top', fill='x')
         self.tab_names = (('play', _('Play', 'Играть')), ('graphics', _('Graphics', 'Графика')),
-                          ('display', _('Display & FPS', 'Экран и FPS')), ('game', _('Game & effects', 'Игра и эффекты')),
+                          ('display', _('Display & FPS', 'Экран и FPS')), ('controls', _('Controls', 'Управление')),
+                          ('game', _('Game & effects', 'Игра и эффекты')),
                           ('cheats', _('Cheats', 'Читы')), ('mods', _('Mods & patches', 'Моды и патчи')),
                           ('advanced', _('Advanced', 'Дополнительно')), ('log', _('Log', 'Журнал')))
         self.tabbar = TabBar(self, root, self.tab_names, self.show)
@@ -2342,6 +2391,7 @@ class Launcher:
         self.build_play()
         self.build_graphics()
         self.build_display()
+        self.build_controls()
         self.build_game()
         self.build_cheats()
         self.build_mods()
@@ -2406,6 +2456,7 @@ class Launcher:
         self.motion.tween('hero', ms, self.hero.h, target, self.hero.set_height, ease=ease_in_out)
 
     def show(self, name, animate=True):
+        self.stop_capture()
         old, new = self.pages.get(self.current_page), self.pages[name]
         changed = name != self.current_page
         self.current_page = name
@@ -2417,6 +2468,8 @@ class Launcher:
             self.motion.tween('slide', 260 if animate else 0, self.px(40), 0, lambda x: new.place_configure(x=int(x)))
         if name == 'mods':
             self.refresh_lists()
+        elif name == 'controls' and self.gamepads is None:
+            self.refresh_gamepads()
         elif name == 'graphics':
             self.refresh_fsr4()
             self.refresh_fsr4vk()
@@ -2753,6 +2806,189 @@ class Launcher:
         self.monitor_frame.columnconfigure(0, minsize=self.px(210))  # as the card's own columns
         self.monitor_frame.columnconfigure(1, weight=1)
         self.monitor_note = None
+
+    def build_controls(self):
+        """Controls (README: "Controls > Controller"): the gamepad the game uses (BB_GAMEPAD) and the keyboard keys
+        and gamepad buttons of every input, written as the key.* / pad.* lines of bbport.ini that runtime_pad.c reads."""
+        px, tk = self.px, self.tk
+        page = self.scrolled_page('controls', _('Controls', 'Управление'),
+                                  _('Applied when the game starts.', 'Применяется при запуске игры.'))
+        f = self.card(page, _('Controller', 'Контроллер'))
+        holder = tk.Frame(f, bg=CARD)
+        self.gamepad_box = self.ttk.Combobox(holder, state='readonly', width=48)
+        self.gamepad_box.pack(side='left')
+        self.gamepad_box.bind('<<ComboboxSelected>>', lambda _e: self.gamepad_picked())
+        self.button(holder, _('Refresh', 'Обновить'), self.refresh_gamepads).pack(side='left', padx=(px(8), 0))
+        r = self.next_row(f)
+        self.row(f, _('Controller', 'Контроллер'), holder)
+        self.gamepad_note = self.label(f, '', 'small', MUTED, wraplength=px(560), justify='left')
+        self.gamepad_note.grid(row=r + 1, column=1, sticky='w', pady=(px(4), 0))
+        self.gamepad_values = ['']  # the value of each entry of the dropdown
+        self.apply_gamepads(None)
+
+        f = self.card(page, _('Button assignments', 'Назначение кнопок'))
+        self.controls_hint = _('Press Change, then the key you want. Add gives the input a second key. '
+                               'Applied when the game starts.',
+                               'Нажмите «Изменить», затем нужную клавишу. «Добавить» назначает входу вторую клавишу. '
+                               'Применяется при запуске игры.')
+        self.controls_message = self.label(f, self.controls_hint, 'small', MUTED, wraplength=px(680), justify='left')
+        self.controls_message.grid(row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(8), 0))
+        self.controls_after = None
+        grid = tk.Frame(f, bg=CARD)  # one grid for every row, so the columns line up
+        grid.grid(row=self.next_row(f), column=0, columnspan=2, sticky='we', pady=(px(4), 0))
+        self.label(grid, _('Keyboard', 'Клавиатура'), 'small', MUTED).grid(row=0, column=1, columnspan=3, sticky='w')
+        self.label(grid, _('Gamepad', 'Геймпад'), 'small', MUTED).grid(row=0, column=4, sticky='w', padx=(px(16), 0))
+        none_text = _('Not assigned', 'Не назначено')
+        for index, (name, russian, _keys, pad) in enumerate(bbport_controls.CONTROLS, 1):
+            top = (px(8), 0)
+            self.label(grid, _(bbport_controls.LABELS[name], russian), wraplength=px(190), justify='left').grid(
+                row=index, column=0, sticky='w', padx=(0, px(16)), pady=top)
+            row = self.control_rows[name] = {}
+            row['keys'] = self.label(grid, '', width=22, anchor='w')
+            row['keys'].grid(row=index, column=1, sticky='w', pady=top)
+            row['change'] = self.button(grid, _('Change', 'Изменить'), lambda n=name: self.start_capture(n, False))
+            row['change'].grid(row=index, column=2, padx=(px(8), 0), pady=top)
+            row['add'] = self.button(grid, _('Add', 'Добавить'), lambda n=name: self.start_capture(n, True))
+            row['add'].grid(row=index, column=3, padx=(px(8), 0), pady=top)
+            if pad is not None:  # the movement and camera keys have no gamepad side
+                row['pad'] = self.ttk.Combobox(grid, state='readonly', width=24)
+                row['pad'].grid(row=index, column=4, padx=(px(16), 0), pady=top)
+                row['pad'].bind('<<ComboboxSelected>>', lambda _e, n=name: self.pad_picked(n))
+            row['reset'] = self.button(grid, _('Reset', 'Сбросить'), lambda n=name: self.reset_control(n))
+            row['reset'].grid(row=index, column=5, padx=(px(16), 0), pady=top)
+            self.show_control(name)
+        self.button(f, _('Reset all', 'Сбросить всё'), self.reset_all_controls).grid(
+            row=self.next_row(f), column=0, columnspan=2, sticky='w', pady=(px(16), 0))
+        self.root.bind('<KeyPress>', self.control_key, add='+')
+
+    def apply_gamepads(self, pads):
+        """The controller dropdown, from the gamepads SDL listed (None: not asked yet; False: the list could not be read)."""
+        self.gamepads = pads
+        saved, name = self.var('gamepad', 'app').get(), self.var('gamepad_name', 'app').get()
+        options = gamepad_options(pads or [], saved, name)
+        self.gamepad_values = [value for value, _text in options]
+        self.gamepad_box.configure(values=[text for _value, text in options])
+        self.gamepad_box.current(self.gamepad_values.index(saved) if saved in self.gamepad_values else 0)
+        self.gamepad_note.configure(text=_(
+            'The list of controllers could not be read; Automatic uses the first one.',
+            'Не удалось прочитать список контроллеров; «Авто» берёт первый.') if pads is False else _(
+            'The chosen controller is used as soon as it connects.',
+            'Выбранный контроллер используется, как только подключится.'))
+
+    def refresh_gamepads(self):
+        if self.listing_gamepads:
+            return
+        self.listing_gamepads = True
+
+        def work():
+            pads = list_gamepads()
+
+            def done():
+                self.listing_gamepads = False
+                self.apply_gamepads(False if pads is None else pads)
+            self.ui_calls.put(done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def gamepad_picked(self):
+        value = self.gamepad_values[self.gamepad_box.current()]
+        name, previous = self.var('gamepad_name', 'app'), self.var('gamepad', 'app')
+        name.set(dict(self.gamepads or []).get(value) or (name.get() if value == previous.get() else ''))
+        previous.set(value)
+
+    def show_control(self, name):
+        """Shows what is in force for an input: the saved line or the default, with the default marked."""
+        row = self.control_rows[name]
+        parts = bbport_controls.current_binding(self.ini, 'key', name)
+        text = bbport_controls.join_binding(parts) or _('Not assigned', 'Не назначено')
+        custom = f'key.{name}' in self.ini
+        row['keys'].configure(text=text if custom else _('{} (default)', '{} (по умолчанию)').format(text),
+                              fg=TEXT if custom else MUTED)
+        if 'pad' in row:
+            value = bbport_controls.join_binding(bbport_controls.current_binding(self.ini, 'pad', name))
+            values = [''] + [button for button, _label in bbport_controls.PAD_BUTTONS]
+            if value not in values:  # several buttons, as the touchpad's Back + Touchpad
+                values.append(value)
+            row['pad_values'] = values
+            row['pad'].configure(values=[bbport_controls.pad_text(v) or _('Not assigned', 'Не назначено')
+                                         for v in values])
+            row['pad'].current(values.index(value))
+
+    def write_control(self, kind, name, parts):
+        """Sets key.<name> / pad.<name>; the default is no line at all."""
+        key = f'{kind}.{name}'
+        if parts == bbport_controls.split_binding(bbport_controls.default_binding(kind, name)):
+            self.ini.pop(key, None)
+        else:
+            self.ini[key] = bbport_controls.join_binding(parts)
+        self.show_control(name)
+
+    def pad_picked(self, name):
+        row = self.control_rows[name]
+        self.write_control('pad', name, bbport_controls.split_binding(row['pad_values'][row['pad'].current()]))
+
+    def reset_control(self, name):
+        self.stop_capture()
+        for kind in ('key', 'pad'):
+            self.ini.pop(f'{kind}.{name}', None)
+        self.show_control(name)
+
+    def reset_all_controls(self):
+        for name in self.control_rows:
+            self.reset_control(name)
+
+    def say_controls(self, text, color=MUTED):
+        """A message in place of the hint under the card; the hint is back after a few seconds."""
+        if self.controls_after:
+            self.root.after_cancel(self.controls_after)
+        self.controls_message.configure(text=text, fg=color)
+        self.controls_after = self.root.after(4000, lambda: self.controls_message.configure(
+            text=self.controls_hint, fg=MUTED))
+
+    def start_capture(self, name, add):
+        """Change / Add: the next key pressed is taken (the button turns into Cancel; pressing it again cancels)."""
+        again = self.capturing == (name, add)
+        self.stop_capture()
+        if again:
+            return
+        row = self.control_rows[name]
+        row['add' if add else 'change'].configure(text=_('Cancel', 'Отмена'))
+        row['keys'].configure(text=_('Press a key…', 'Нажмите клавишу…'), fg=GOLD)
+        self.capturing = (name, add)
+        self.root.focus_set()  # the key goes to the window, not to a button that would act on Space
+
+    def stop_capture(self):
+        if not self.capturing:
+            return
+        name, _add = self.capturing
+        self.capturing = None
+        row = self.control_rows[name]
+        row['change'].configure(text=_('Change', 'Изменить'))
+        row['add'].configure(text=_('Add', 'Добавить'))
+        self.show_control(name)
+
+    def control_key(self, event):
+        """The key pressed while an input waits for one."""
+        if not self.capturing:
+            return None
+        name, add = self.capturing
+        key = bbport_controls.tk_key_to_sdl(event.keysym, event.keycode, bbport_controls.windows_scan,
+                                           bbport_controls.windows_key_down)
+        if key is None:
+            self.say_controls(_("Insert opens the port's menu in the game; choose another key.",
+                                'Insert открывает меню порта в игре; выберите другую клавишу.')
+                              if event.keysym == 'Insert' else
+                              _('That key cannot be used in the game. Press another one.',
+                                'Игра не может использовать эту клавишу. Нажмите другую.'), BAD)
+            return 'break'
+        parts = bbport_controls.current_binding(self.ini, 'key', name) if add else []
+        if key not in parts:
+            if len(parts) >= bbport_controls.MAX_BIND:
+                self.say_controls(_('At most {} keys per input.', 'Не больше {} клавиш на вход.').format(
+                    bbport_controls.MAX_BIND), BAD)
+            else:
+                self.write_control('key', name, parts + [key])
+        self.stop_capture()
+        return 'break'
 
     def build_game(self):
         page = self.scrolled_page('game', _('Game & effects', 'Игра и эффекты'),
@@ -3193,7 +3429,7 @@ class Launcher:
                 self.app[key] = value
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(json.dumps(self.app, indent=2, ensure_ascii=False), encoding='utf-8')
-        save_ini({key: self.ini[key] for key in INI_DEFAULTS}, self.ini_lines)
+        save_ini(ini_values(self.ini), self.ini_lines)
         self.ini, self.ini_lines = load_ini()
         preset = self.reshade_preset.get()
         if reshade_ready() and preset and preset != self.reshade_started:  # not undoing a change made in the game
