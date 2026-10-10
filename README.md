@@ -153,7 +153,7 @@ In the game, **Insert** (or **L3+R3** on a controller) opens the port's menu: up
 | Enter | Options |
 | Tab | Touchpad |
 
-The keyboard also works next to a connected gamepad, and both can be remapped in the launcher under **Controls**. When several controllers are connected, **Controls > Controller** picks one. The character name is typed on the keyboard in a box over the game.
+The keyboard also works next to a connected gamepad, and both can be remapped in the launcher under **Controls**. When several controllers are connected, **Controls > Controller** picks one. In the Windows launcher, **Controls** is a tab of the Advanced view (the **Advanced** switch at the top right); each input has **Change** and **Add** for keys and a drop-down for the gamepad button. The character name is typed on the keyboard in a box over the game.
 
 ## FAQ and troubleshooting
 
