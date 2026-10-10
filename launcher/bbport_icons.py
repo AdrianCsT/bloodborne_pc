@@ -264,8 +264,8 @@ def principal_axis(pixels):
     """The direction along which the 16 RGBA pixels spread most (None when they are all alike)."""
     mean = [sum(p[c] for p in pixels) / 16 for c in range(4)]
     cov = [[sum((p[i] - mean[i]) * (p[j] - mean[j]) for p in pixels) for j in range(4)] for i in range(4)]
-    # Start from the widest pair of colours: it cannot be orthogonal to the spread, where a fixed start such as
-    # (1, 1, 1, 1) is for red next to green (the power iteration then never leaves zero).
+    # Start from the widest pair of colours. A fixed start such as (1, 1, 1, 1) is orthogonal to the spread of red
+    # next to green, so the power iteration would stay at zero; the widest pair never is.
     one, two = max(((a, b) for a in pixels for b in pixels), key=lambda ab: sum((ab[0][c] - ab[1][c]) ** 2 for c in range(4)))
     axis = [float(one[c] - two[c]) for c in range(4)]
     length = sum(v * v for v in axis) ** 0.5
@@ -436,11 +436,14 @@ def first_binding(ini, kind, name):
     return names[0] if names else None
 
 
+DASH = ('key', (), '-')  # what an input with no binding at all shows
+
+
 def key_token(ini, name):
     """The first key bound to an input; with none bound, the default one, else a dash (a glyph is never blank)."""
     first = first_binding(ini, 'key', name) or first_default(bbport_controls.default_binding('key', name))
     if first is None:
-        return ('key', (), '-')
+        return DASH
     mods, base = parse_key(first)
     return ('key', mods, base)
 
@@ -456,7 +459,7 @@ def pad_token(ini, name):
     first = first_binding(ini, 'pad', name) or first_default(bbport_controls.default_binding('pad', name))
     if first:
         return ('pad', first)
-    return ('pad', 'back') if name in ('touchpad', 'touchpad_right') else ('key', (), '-')
+    return ('pad', 'back') if name in ('touchpad', 'touchpad_right') else DASH
 
 
 def plan(icon_set, ini):
@@ -835,6 +838,7 @@ def build_glyphs(icon_set, ini):
 
 
 # --- the file --------------------------------------------------------------------------------------------
+Generated = namedtuple('Generated', 'digest skipped')
 COMMON_TPF = 'dvdroot_ps4/menu/common.tpf.dcx'  # where the game keeps the glyphs, under its folder
 
 
@@ -865,6 +869,12 @@ ATLAS_ICONS = {
 DISC_AREA = (3, 3, 29, 29)  # the part of a 32x32 glyph that a disc-shaped button uses
 
 
+# How atlas_icon_present tells a baked button from other art: alpha up to ATLAS_CLEAR_ALPHA is clear (the faint
+# halo of the original discs is below it), above ATLAS_SOLID_ALPHA is opaque, and a disc counts when more than
+# ATLAS_MIN_COVER of its box is opaque.
+ATLAS_CLEAR_ALPHA, ATLAS_SOLID_ALPHA, ATLAS_MIN_COVER = 24, 128, 0.5
+
+
 def atlas_icon_present(image, rect, box):
     """True when a baked button is where the table says: the rectangle outside the disc is clear (nothing else is
     drawn there) and the disc is mostly opaque."""
@@ -872,27 +882,32 @@ def atlas_icon_present(image, rect, box):
     outside = 0
     for y in range(rect[1], rect[3]):
         for x in range(rect[0], rect[2]):
-            if not (box[0] <= x < box[2] and box[1] <= y < box[3]) and alpha.getpixel((x, y)) > 24:
+            if not (box[0] <= x < box[2] and box[1] <= y < box[3]) and alpha.getpixel((x, y)) > ATLAS_CLEAR_ALPHA:
                 outside += 1
-    inside = sum(alpha.getpixel((x, y)) > 128 for y in range(box[1], box[3]) for x in range(box[0], box[2]))
-    return outside == 0 and inside > 0.5 * (box[2] - box[0]) * (box[3] - box[1])
+    inside = sum(alpha.getpixel((x, y)) > ATLAS_SOLID_ALPHA for y in range(box[1], box[3]) for x in range(box[0], box[2]))
+    return outside == 0 and inside > ATLAS_MIN_COVER * (box[2] - box[0]) * (box[3] - box[1])
 
 
 def patch_atlases(tpf, glyphs):
     """Redraws, in place in the bytearray tpf, the buttons baked into the menu atlases with the new glyphs
     {name: 32x32 image}. Only the BC7 blocks of a rectangle are rewritten. Returns [(atlas, rectangle, done)]:
-    done is False for a rectangle whose art is not as expected (left as it is); atlases the file lacks are skipped."""
+    done is False for a rectangle that does not fit its atlas or whose art is not as expected (left as it is, so one
+    bad spot never stops the rest); atlases the file lacks have no entries."""
     report = []
     by_name = {texture.name: texture for texture in parse_tpf(bytes(tpf))}
     for name, entries in ATLAS_ICONS.items():
         texture = by_name.get(name)
-        if texture is None or texture.dxgi != DXGI_BC7 or texture.size != texture.width * texture.height:
+        if texture is None:
+            continue
+        if texture.dxgi != DXGI_BC7 or texture.size != texture.width * texture.height \
+                or texture.width % GLYPH_SIZE or texture.height % GLYPH_SIZE:
+            report += [(name, rect, False) for rect, _box, _glyph in entries]  # an edition with other atlases
             continue
         bw, bh = texture.width // 4, texture.height // 4
         blocks = untile_blocks(bytes(tpf[texture.offset:texture.offset + texture.size]), bw, bh)
         image = decode_raster(blocks, texture.width, texture.height)
         for rect, box, glyph in entries:
-            if not atlas_icon_present(image, rect, box):
+            if rect[2] > texture.width or rect[3] > texture.height or not atlas_icon_present(image, rect, box):
                 report.append((name, rect, False))
                 continue
             patch = Image.new('RGBA', (rect[2] - rect[0], rect[3] - rect[1]), (0, 0, 0, 0))
@@ -920,26 +935,32 @@ def source_hash(path):
 def generate(source, destination, icon_set, ini):
     """Writes the game's common.tpf.dcx at `source` to `destination` with its button glyphs redrawn for
     icon_set ('xbox' or 'keyboard') and the bbport.ini values `ini`. The input is checked first (IconError
-    says what differs); the source file is only read. Returns the SHA-256 of the source."""
+    says what differs); the source file is only read. Returns Generated(digest, skipped): the SHA-256 of the source and
+    the number of baked atlas buttons that kept their PlayStation art (see patch_atlases)."""
     import os
     digest = source_hash(source)
     try:
         with open(source, 'rb') as handle:
             tpf = dcx_unpack(handle.read())
         check_layout(tpf)
-        glyphs = build_glyphs(icon_set, ini)
-        patched = bytearray(patch_glyphs(tpf, glyphs))
-        patch_atlases(patched, glyphs)
     except (struct.error, IndexError, KeyError, ValueError, OverflowError, zlib.error) as error:
         # A damaged file fails in many ways below the format checks; to the caller it is one: not usable.
-        raise IconError(f'{COMMON_TPF} cannot be read ({type(error).__name__}: {error})') from None
+        raise IconError(f"could not read or check the game's {COMMON_TPF} ({type(error).__name__}: {error})") from None
+    try:
+        glyphs = build_glyphs(icon_set, ini)
+        patched = bytearray(patch_glyphs(tpf, glyphs))
+        report = patch_atlases(patched, glyphs)
+    except IconError:
+        raise
+    except Exception as error:  # the file was fine: this is the drawing, not the game's data
+        raise IconError(f'could not draw the icons ({type(error).__name__}: {error})') from None
     destination = os.fspath(destination)
     os.makedirs(os.path.dirname(destination) or '.', exist_ok=True)
     temporary = destination + '.tmp'
     with open(temporary, 'wb') as handle:
         handle.write(dcx_pack(bytes(patched)))
     os.replace(temporary, destination)
-    return digest
+    return Generated(digest, sum(1 for _name, _rect, done in report if not done))
 
 
 # --- the cache -------------------------------------------------------------------------------------------
@@ -956,9 +977,10 @@ def cache_key(source_sha256, icon_set, ini):
 
 
 def ensure_layer(game_dir, out_dir, icon_set, ini):
-    """(folder, built): a folder, under out_dir/icons, that is a mod layer (dvdroot_ps4/menu/common.tpf.dcx) with the
+    """(folder, built, kept): a folder, under out_dir/icons, that is a mod layer (dvdroot_ps4/menu/common.tpf.dcx) with the
     icons for icon_set and the bindings in ini. A file made before for the same source, set and bindings is reused
-    (built False). IconError says why the game's file cannot be used."""
+    (built False). kept is how many baked atlas buttons kept their PlayStation art. IconError says why the game's
+    file cannot be used."""
     import json
     import os
     import shutil
@@ -972,15 +994,19 @@ def ensure_layer(game_dir, out_dir, icon_set, ini):
     target = folder / COMMON_TPF
     if target.is_file() and (folder / 'icons.json').is_file():
         os.utime(folder)  # the newest are kept
-        return folder, False
+        try:
+            kept = int(json.loads((folder / 'icons.json').read_text(encoding='utf-8')).get('atlas_skipped', 0))
+        except (OSError, ValueError, TypeError):
+            kept = 0
+        return folder, False, kept
     shutil.rmtree(folder, ignore_errors=True)
-    generate(source, target, icon_set, ini)
-    (folder / 'icons.json').write_text(json.dumps({'source_sha256': digest, 'icon_set': icon_set, 'version': ICONS_VERSION},
-                                                  indent=2), encoding='utf-8')
+    kept = generate(source, target, icon_set, ini).skipped
+    (folder / 'icons.json').write_text(json.dumps({'source_sha256': digest, 'icon_set': icon_set, 'version': ICONS_VERSION,
+                                                   'atlas_skipped': kept}, indent=2), encoding='utf-8')
     others = sorted((p for p in root.iterdir() if p.is_dir() and p != folder), key=lambda p: p.stat().st_mtime, reverse=True)
     for old in others[KEEP_CACHED - 1:]:
         shutil.rmtree(old, ignore_errors=True)
-    return folder, True
+    return folder, True, kept
 
 
 def main(argv):
@@ -993,7 +1019,7 @@ def main(argv):
         folder = os.path.join(out, icon_set)
         variant = os.path.join(folder, 'dvdroot_ps4', 'menu', 'common.tpf.dcx')
         try:
-            digest = generate(source, variant, icon_set, {})
+            digest = generate(source, variant, icon_set, {}).digest
         except (IconError, OSError) as error:
             print(f'{icon_set}: {error}')
             return 1
