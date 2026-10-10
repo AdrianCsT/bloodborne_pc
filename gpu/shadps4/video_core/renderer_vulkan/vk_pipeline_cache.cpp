@@ -35,6 +35,7 @@
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
+#include "bbport_spec_drop.h"
 #include "bbport_toggles.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -1586,16 +1587,10 @@ std::optional<PipelineCache::Result> PipelineCache::CompilePermutation(
     // program's Info, which the pipeline layout is built from: the layout and the module
     // disagree (VUID-VkGraphicsPipelineCreateInfo-layout-07988/07990). Such a translation is
     // thrown away; the GPU thread translates the draw in order.
-    const char* dropped = nullptr;
-    if (!faulted && speculative) {
-        if (code_before != program.code_hash) {
-            dropped = "the code at its address is not the program's";
-        } else if (code_after != code_before) {
-            dropped = "its code changed while it was translated";
-        } else if (!same_resources) {
-            dropped = "its resources differ from the program's";
-        }
-    } else if (!faulted && !speculative && (!same_resources || code_before != program.code_hash)) {
+    const char* dropped = faulted ? nullptr
+                                  : BbSpec::DropReason(speculative, code_before, code_after,
+                                                       program.code_hash, same_resources);
+    if (!faulted && !speculative && (!same_resources || code_before != program.code_hash)) {
         // In order, the game itself put other code under this hash: nothing to fall back to,
         // but the log names it.
         static std::atomic<int> warned{0};
