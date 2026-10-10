@@ -476,5 +476,120 @@ class LayerTests(unittest.TestCase):
             self.layer()
 
 
+def atlas_image(entries, size, margin_noise=False):
+    """A stand-in for a menu atlas: transparent, a bright block of other art, and a flat disc where the game
+    has a baked button (the discs of the given ATLAS_ICONS entries)."""
+    from PIL import ImageDraw
+    image = Image.new('RGBA', size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 63, 63), fill=(30, 200, 90, 255))  # some other art, far from every button
+    for _rect, box, _glyph in entries:
+        draw.ellipse((box[0], box[1], box[2] - 1, box[3] - 1), fill=(60, 60, 60, 255))
+    if margin_noise:
+        entry = entries[0]
+        draw.rectangle((entry[0][0], entry[0][1], entry[0][0] + 3, entry[0][1] + 3), fill=(255, 0, 0, 255))
+    return image
+
+
+class AtlasTests(unittest.TestCase):
+    """The buttons baked into the menu atlases are redrawn too."""
+    NAME = 'MENU_Common_00091'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.entries = icons.ATLAS_ICONS[cls.NAME]
+        cls.atlas = icons.encode_image(atlas_image(cls.entries, (1024, 512)))  # slow in pure Python: once
+        cls.noisy = icons.encode_image(atlas_image(cls.entries, (1024, 512), margin_noise=True))
+        cls.blank = icons.encode_image(Image.new('RGBA', (1024, 512), (0, 0, 0, 0)))
+        cls.tpf = make_tpf(real_layout([(cls.NAME, 1024, 512, 98, cls.atlas)]))
+
+    def patched(self, icon_set='xbox', tpf=None):
+        tpf = tpf or self.tpf
+        glyphs = icons.build_glyphs(icon_set, {})
+        out = icons.patch_glyphs(tpf, glyphs)
+        report = icons.patch_atlases(out, glyphs)
+        return report
+
+    def atlas_of(self, tpf):
+        texture = next(t for t in icons.parse_tpf(tpf) if t.name == self.NAME)
+        return tpf[texture.offset:texture.offset + texture.size]
+
+    def test_the_table_lists_the_baked_buttons_with_their_glyph_and_a_whole_block_rectangle(self):
+        for name, entries in icons.ATLAS_ICONS.items():
+            self.assertIn(name, ('MENU_Common_00091', 'MENU_Common_00092'))
+            for rect, box, glyph in entries:
+                self.assertIn(glyph, icons.GLYPH_NAMES)
+                self.assertEqual([v % 4 for v in rect], [0, 0, 0, 0], rect)  # whole BC7 blocks
+                self.assertTrue(rect[0] <= box[0] and rect[1] <= box[1] and box[2] <= rect[2] and box[3] <= rect[3])
+        shown = {glyph for entries in icons.ATLAS_ICONS.values() for _r, _b, glyph in entries}
+        self.assertEqual(shown, {'KG_OK', 'KG_Cancel', 'KG_L3', 'KG_R_U'})  # circle, cross, L3, triangle
+
+    def test_the_rectangles_of_one_atlas_do_not_overlap(self):
+        for entries in icons.ATLAS_ICONS.values():
+            rects = [rect for rect, _box, _glyph in entries]
+            for i, a in enumerate(rects):
+                for b in rects[i + 1:]:
+                    self.assertTrue(a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1], (a, b))
+
+    def test_every_baked_button_is_redrawn_and_the_rest_of_the_atlas_is_byte_for_byte_the_same(self):
+        glyphs = icons.build_glyphs('xbox', {})
+        tpf = icons.dcx_unpack(icons.dcx_pack(self.tpf))
+        report = icons.patch_atlases(bytearray(tpf), glyphs)
+        self.assertEqual([done for _name, _rect, done in report], [True] * len(self.entries))
+        patched = bytearray(tpf)
+        icons.patch_atlases(patched, glyphs)
+        before = icons.untile_blocks(self.atlas_of(tpf), 256, 128)
+        after = icons.untile_blocks(self.atlas_of(bytes(patched)), 256, 128)
+        changed = {i for i, (a, b) in enumerate(zip(before, after)) if a != b}
+        inside = set()
+        for rect, _box, _glyph in self.entries:
+            for by in range(rect[1] // 4, rect[3] // 4):
+                for bx in range(rect[0] // 4, rect[2] // 4):
+                    inside.add(by * 256 + bx)
+        self.assertTrue(changed)
+        self.assertLessEqual(changed, inside)
+        self.assertEqual(len(bytes(patched)), len(tpf))
+
+    def test_the_new_button_is_the_glyph_of_the_set(self):
+        glyphs = icons.build_glyphs('xbox', {})
+        patched = bytearray(self.tpf)
+        icons.patch_atlases(patched, glyphs)
+        image = icons.decode_image(self.atlas_of(bytes(patched)), 1024, 512)
+        for rect, box, glyph in self.entries:
+            expected = glyphs[glyph].crop((3, 3, 29, 29)).resize((box[2] - box[0], box[3] - box[1]))
+            centre = ((box[0] + box[2]) // 2, (box[1] + box[3]) // 2)
+            want = expected.getpixel((expected.width // 2, expected.height // 2))
+            got = image.getpixel(centre)
+            self.assertLessEqual(max(abs(a - b) for a, b in zip(want, got)), 40, (glyph, want, got))
+            self.assertEqual(image.getpixel((rect[0], rect[1]))[3], 0)  # the corner of the rectangle is clear
+
+    def test_a_rectangle_that_holds_other_art_is_left_alone(self):
+        tpf = make_tpf(real_layout([(self.NAME, 1024, 512, 98, self.noisy)]))
+        patched = bytearray(tpf)
+        report = icons.patch_atlases(patched, icons.build_glyphs('xbox', {}))
+        self.assertEqual([done for _name, _rect, done in report], [False] + [True] * (len(self.entries) - 1))
+
+    def test_an_atlas_that_is_not_a_button_sheet_is_left_alone(self):
+        tpf = make_tpf(real_layout([(self.NAME, 1024, 512, 98, self.blank)]))
+        patched = bytearray(tpf)
+        report = icons.patch_atlases(patched, icons.build_glyphs('keyboard', {}))
+        self.assertEqual({done for _n, _r, done in report}, {False})
+        self.assertEqual(bytes(patched), tpf)
+
+    def test_a_file_without_the_atlases_is_fine(self):
+        patched = bytearray(make_tpf(real_layout()))
+        self.assertEqual(icons.patch_atlases(patched, icons.build_glyphs('xbox', {})), [])
+
+    def test_generate_redraws_the_atlas_buttons_too(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'common.tpf.dcx'
+            source.write_bytes(icons.dcx_pack(self.tpf))
+            destination = Path(folder) / 'out/dvdroot_ps4/menu/common.tpf.dcx'
+            icons.generate(source, destination, 'keyboard', {})
+            made = icons.dcx_unpack(destination.read_bytes())
+        self.assertNotEqual(self.atlas_of(made), self.atlas)
+
+
 if __name__ == '__main__':
     unittest.main()

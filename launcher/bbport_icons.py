@@ -11,9 +11,9 @@ trademark marks, left alone). The big atlases (MENU_Common_00091 and 00092) tile
 raster order, Morton order inside each. The pixels are re-encoded as BC7 mode 6 by a pure Python encoder: this
 module needs the standard library and Pillow only (no numpy, which the frozen launcher does not carry).
 
-Run `python launcher/bbport_icons.py --selftest` for the checks that need no game files, or
-`python launcher/bbport_icons.py <common.tpf.dcx> <out folder> [xbox|keyboard]` to write a variant
-and PNGs of its glyphs for a look."""
+Run `python launcher/bbport_icons.py <common.tpf.dcx> <out folder> [xbox|keyboard ...]` to write each variant
+under <out folder>/<set>/ with PNGs of its KG_* glyphs (also scaled x4), for a look at the art; the tests
+(tests/test_button_icons.py) need no game files."""
 import io
 import struct
 import zlib
@@ -320,6 +320,9 @@ def bc7_encode_block(pixels):
     input (the parity bit is shared by the four channels of an end), blocks of more colours are as close as two
     ends allow."""
     pixels = bleed_transparent([tuple(p) for p in pixels])
+    if pixels.count(pixels[0]) == 16:  # one colour: the common case in an atlas, no fitting needed
+        q, p, _e = endpoint_bits(pixels[0])
+        return bc7_pack(q, q, p, p, [0] * 16)
     starts = [[pixels[0], pixels[0]]]
     axis = principal_axis(pixels)
     if axis:
@@ -834,6 +837,63 @@ def patch_glyphs(tpf, glyphs):
     return bytes(out)
 
 
+# Buttons baked into the menu atlases (the prompts that show a circle, a cross, L3 or a triangle): per atlas, the
+# whole-block rectangle that holds one, the box of its disc, and the glyph it takes after. Measured on the game's
+# file; patch_atlases checks that the art is where this table says before it draws over it.
+ATLAS_ICONS = {
+    'MENU_Common_00091': [((660, 120, 688, 152), (661, 123, 687, 149), 'KG_OK'),
+                          ((692, 120, 720, 152), (694, 123, 720, 149), 'KG_Cancel'),
+                          ((724, 120, 752, 152), (726, 123, 752, 149), 'KG_L3')],
+    'MENU_Common_00092': [((684, 0, 716, 28), (688, 3, 713, 28), 'KG_OK'),
+                          ((660, 108, 688, 136), (663, 108, 688, 133), 'KG_R_U'),
+                          ((700, 108, 728, 136), (703, 108, 728, 133), 'KG_Cancel')],
+}
+DISC_AREA = (3, 3, 29, 29)  # the part of a 32x32 glyph that a disc-shaped button uses
+
+
+def atlas_icon_present(image, rect, box):
+    """True when a baked button is where the table says: the rectangle outside the disc is clear (nothing else is
+    drawn there) and the disc is mostly opaque."""
+    alpha = image.getchannel('A')
+    outside = 0
+    for y in range(rect[1], rect[3]):
+        for x in range(rect[0], rect[2]):
+            if not (box[0] <= x < box[2] and box[1] <= y < box[3]) and alpha.getpixel((x, y)) > 24:
+                outside += 1
+    inside = sum(alpha.getpixel((x, y)) > 128 for y in range(box[1], box[3]) for x in range(box[0], box[2]))
+    return outside == 0 and inside > 0.5 * (box[2] - box[0]) * (box[3] - box[1])
+
+
+def patch_atlases(tpf, glyphs):
+    """Redraws, in place in the bytearray tpf, the buttons baked into the menu atlases with the new glyphs
+    {name: 32x32 image}. Only the BC7 blocks of a rectangle are rewritten. Returns [(atlas, rectangle, done)]:
+    done is False for a rectangle whose art is not as expected (left as it is); atlases the file lacks are skipped."""
+    report = []
+    by_name = {texture.name: texture for texture in parse_tpf(bytes(tpf))}
+    for name, entries in ATLAS_ICONS.items():
+        texture = by_name.get(name)
+        if texture is None or texture.dxgi != DXGI_BC7 or texture.size != texture.width * texture.height:
+            continue
+        bw, bh = texture.width // 4, texture.height // 4
+        blocks = untile_blocks(bytes(tpf[texture.offset:texture.offset + texture.size]), bw, bh)
+        image = decode_raster(blocks, texture.width, texture.height)
+        for rect, box, glyph in entries:
+            if not atlas_icon_present(image, rect, box):
+                report.append((name, rect, False))
+                continue
+            patch = Image.new('RGBA', (rect[2] - rect[0], rect[3] - rect[1]), (0, 0, 0, 0))
+            disc = glyphs[glyph].crop(DISC_AREA)
+            size = (box[2] - box[0], box[3] - box[1])
+            patch.paste(disc.resize(size, Image.LANCZOS) if disc.size != size else disc, (box[0] - rect[0], box[1] - rect[1]))
+            new = encode_blocks(patch)
+            across = patch.width // 4
+            for index, block in enumerate(new):
+                blocks[(rect[1] // 4 + index // across) * bw + rect[0] // 4 + index % across] = block
+            report.append((name, rect, True))
+        tpf[texture.offset:texture.offset + texture.size] = tile_blocks(blocks, bw, bh)
+    return report
+
+
 def source_hash(path):
     import hashlib
     digest = hashlib.sha256()
@@ -852,12 +912,14 @@ def generate(source, destination, icon_set, ini):
     with open(source, 'rb') as handle:
         tpf = dcx_unpack(handle.read())
     check_layout(tpf)
-    patched = patch_glyphs(tpf, build_glyphs(icon_set, ini))
+    glyphs = build_glyphs(icon_set, ini)
+    patched = bytearray(patch_glyphs(tpf, glyphs))
+    patch_atlases(patched, glyphs)
     destination = os.fspath(destination)
     os.makedirs(os.path.dirname(destination) or '.', exist_ok=True)
     temporary = destination + '.tmp'
     with open(temporary, 'wb') as handle:
-        handle.write(dcx_pack(patched))
+        handle.write(dcx_pack(bytes(patched)))
     os.replace(temporary, destination)
     return digest
 
@@ -901,3 +963,33 @@ def ensure_layer(game_dir, out_dir, icon_set, ini):
     for old in others[KEEP_CACHED - 1:]:
         shutil.rmtree(old, ignore_errors=True)
     return folder, True
+
+
+def main(argv):
+    import os
+    if len(argv) < 3:
+        print(__doc__.split('Run `')[1].split('`')[0] if '`' in __doc__ else 'usage: bbport_icons.py SOURCE OUT [SET ...]')
+        return 2
+    source, out = argv[1], argv[2]
+    for icon_set in argv[3:] or ['xbox', 'keyboard']:
+        folder = os.path.join(out, icon_set)
+        variant = os.path.join(folder, 'dvdroot_ps4', 'menu', 'common.tpf.dcx')
+        try:
+            digest = generate(source, variant, icon_set, {})
+        except (IconError, OSError) as error:
+            print(f'{icon_set}: {error}')
+            return 1
+        with open(variant, 'rb') as handle:
+            tpf = dcx_unpack(handle.read())
+        for texture in parse_tpf(tpf):
+            if texture.name.startswith('KG_'):
+                image = decode_image(tpf[texture.offset:texture.offset + 1024], 32, 32).crop((0, 0, texture.width, texture.height))
+                image.save(os.path.join(folder, texture.name + '.png'))
+                image.resize((image.width * 4, image.height * 4), Image.NEAREST).save(os.path.join(folder, texture.name + '_x4.png'))
+        print(f'{icon_set}: {variant} (source SHA-256 {digest})')
+    return 0
+
+
+if __name__ == '__main__':
+    import sys
+    sys.exit(main(sys.argv))
