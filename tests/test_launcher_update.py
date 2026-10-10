@@ -120,7 +120,7 @@ class ChannelTests(unittest.TestCase):
         self.assertIsNone(launcher.newest_release([None, 'x', 3, []], beta=True))
 
     def test_malformed_assets_are_skipped_not_crashed_on(self):
-        good = {'name': 'Bloodborne-Windows.zip', 'browser_download_url': 'https://example.test/good.zip'}
+        good = {'name': 'bbport-windows.zip', 'browser_download_url': 'https://example.test/good.zip'}
         broken = {**release('windows-v1.7.0'), 'assets': [None, 'text', 7, {'name': None}, {'name': 5}, {}, good]}
         self.assertEqual(launcher.newest_release([broken], beta=False)[1], 'https://example.test/good.zip')
         for assets in (None, 'zip', {'name': 'a.zip'}, 5):
