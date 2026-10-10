@@ -99,15 +99,18 @@ FSR 4.1.1 (experimental)
 - The built-in FSR 4.1.1 needs a Vulkan extension (VK_VALVE_shader_mixed_float_dot_product) that
   no Windows driver offers yet. On Windows the game can instead use fsr4vk
   (https://github.com/dvj5411/fsr4vk), a separate program that runs the same AMD model. It is
-  experimental: fsr4vk's author tested it on Linux, and here it was checked on one GeForce RTX 4070.
+  experimental: here it was checked on a GeForce RTX 4070 and a Radeon RX 6600.
 - It is off until you opt in, and it is not in this zip. To use it:
   1. Advanced -> Performance -> turn on "Experimental features".
-  2. Graphics -> "FSR 4.1.1 (experimental)" -> "Download FSR 4.1.1" (about 20 MB, once).
+  2. Graphics -> "FSR 4.1.1 (experimental)" -> "Download FSR 4.1.1" (about 14 MB, once).
   3. Graphics -> Upscaler -> "FSR 4.1.1 (experimental)".
-- The download comes from the fsr4vk project on GitHub, is checked against a fixed SHA-256, and goes
-  to the fsr4vk folder next to BLauncher.exe. Launcher updates leave that folder alone. fsr4vk is
-  GPL-3.0; its licenses are in fsr4vk\LICENSES after the download. The game loads it as a
-  separate program and does not include its code.
+  If you downloaded it with an earlier version, the same place offers "Update FSR 4.1.1": the new
+  build makes it work on AMD cards.
+- The download is fsr4vk v0.4.3 with one fix for AMD's Windows driver, built by this port and
+  hosted on its GitHub release next to its source (fsr4vk-v0.4.3-amdfix-src.zip). It is checked
+  against a fixed SHA-256 and goes to the fsr4vk folder next to BLauncher.exe. Launcher updates
+  leave that folder alone. fsr4vk is GPL-3.0; its licenses and SOURCE.txt are in the fsr4vk folder
+  after the download. The game loads it as a separate program and does not include its code.
 - Until the files are downloaded and Experimental features is on, the entry is greyed out and says
   why. If it was your saved upscaler and either goes away, the launcher switches to DLSS (RTX GPUs)
   or FSR 3.1 and says so once.
