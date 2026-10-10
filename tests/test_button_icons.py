@@ -508,6 +508,11 @@ class LayerTests(unittest.TestCase):
         self.assertTrue(built)
         self.assertTrue((again / icons.COMMON_TPF).is_file())
 
+    def test_a_cache_report_that_is_not_a_json_object_counts_as_no_report(self):
+        folder, _ = self.layer()
+        (folder / 'icons.json').write_text('[]', encoding='utf-8')  # valid JSON, but not an object
+        self.assertEqual(icons.ensure_layer(self.game, self.cache, 'keyboard', {}), (folder, False, 0))
+
     def test_old_files_are_pruned(self):
         from unittest import mock
         with mock.patch.object(icons, 'KEEP_CACHED', 2):
@@ -540,7 +545,7 @@ class LayerTests(unittest.TestCase):
             with self.assertRaises(icons.IconError) as caught:
                 self.layer()
         self.assertIn('could not draw the icons', str(caught.exception))
-        self.assertNotIn('cannot be read', str(caught.exception))
+        self.assertNotIn('could not read or check', str(caught.exception))
         with mock.patch.object(icons, 'check_layout', side_effect=IndexError('x')):
             with self.assertRaises(icons.IconError) as caught:
                 self.layer()

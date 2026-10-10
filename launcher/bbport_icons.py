@@ -996,7 +996,7 @@ def ensure_layer(game_dir, out_dir, icon_set, ini):
         os.utime(folder)  # the newest are kept
         try:
             kept = int(json.loads((folder / 'icons.json').read_text(encoding='utf-8')).get('atlas_skipped', 0))
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, AttributeError):  # AttributeError: JSON that is not an object
             kept = 0
         return folder, False, kept
     shutil.rmtree(folder, ignore_errors=True)
