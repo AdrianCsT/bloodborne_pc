@@ -4,12 +4,19 @@ All notable changes to the Windows fork of the Bloodborne PS4 port. The format f
 
 The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags remain, and this file replaces their notes. Version 1.6.9 is folded into 1.6.10 (see there).
 
+## [Unreleased]
+
+### Fixed
+
+- The launcher found its updates through the GitHub account name, which changed from AdrianCsT to 0xCydral. GitHub forwards the old name only until someone else takes it and creates a repository of the same name, and from then on that person's releases would have been offered as updates. The launcher now looks releases up by the repository's id, which no rename changes, and downloads FSR 4.1.1 from the new address.
+- A release can hold more than one zip (beta.2 also carries the fsr4vk build and its source). The launcher took the first zip GitHub listed; it now takes `bbport-windows.zip` by name.
+
 ## [1.7.0-beta.2] - 2026-10-10
 
 ### Added
 
-- A Controls tab in the Windows launcher (Advanced view), which the README already described ([#5](https://github.com/AdrianCsT/bloodborne_pc/issues/5)). It picks the controller and gives each input up to four keys and a gamepad button, saved as the `key.<input>=` and `pad.<input>=` lines the game already read from the Linux launcher. Keys are captured by their position, so AZERTY and Cyrillic layouts bind the key the game sees.
-- Mouse and keyboard play ([#5](https://github.com/AdrianCsT/bloodborne_pc/issues/5)). While the game window has focus the mouse turns the camera; Insert or Alt+Tab lets go of it. On game 1.09 a hook in the game's camera code turns it directly, so the camera follows the mouse with no stick lag; elsewhere the mouse acts as the right stick. Mouse buttons and wheel steps can be bound, alone or with Shift, Ctrl or Alt, and the Dark Souls III layout is the default keyboard and mouse binding (a "Dark Souls III layout" button puts it back). The Controls tab also has the mouse sensitivity, inverted vertical look and an option to stop the camera turning by itself while walking (off by default). The camera hook is ported from [Ryansousa10's mouse and keyboard fork](https://github.com/Ryansousa10/bloodborne_windows_mouse_and_keyboard).
+- A Controls tab in the Windows launcher (Advanced view), which the README already described ([#5](https://github.com/0xCydral/bloodborne_pc/issues/5)). It picks the controller and gives each input up to four keys and a gamepad button, saved as the `key.<input>=` and `pad.<input>=` lines the game already read from the Linux launcher. Keys are captured by their position, so AZERTY and Cyrillic layouts bind the key the game sees.
+- Mouse and keyboard play ([#5](https://github.com/0xCydral/bloodborne_pc/issues/5)). While the game window has focus the mouse turns the camera; Insert or Alt+Tab lets go of it. On game 1.09 a hook in the game's camera code turns it directly, so the camera follows the mouse with no stick lag; elsewhere the mouse acts as the right stick. Mouse buttons and wheel steps can be bound, alone or with Shift, Ctrl or Alt, and the Dark Souls III layout is the default keyboard and mouse binding (a "Dark Souls III layout" button puts it back). The Controls tab also has the mouse sensitivity, inverted vertical look and an option to stop the camera turning by itself while walking (off by default). The camera hook is ported from [Ryansousa10's mouse and keyboard fork](https://github.com/Ryansousa10/bloodborne_windows_mouse_and_keyboard).
 - A `Perf:` line in `user\last_run.log` every 30 seconds: frames per second, the slowest 1% of frames, the worst frame and the shader compiles in that window. A tester's log now says how the game ran.
 
 ### Changed
@@ -245,20 +252,20 @@ First release of the fork.
 
 This fork builds on [deadinside28's Bloodborne port](https://github.com/deadinside28/bloodborne_pc) (release 0.4; the unreleased work also takes fixes from its 0.5 pre-releases) and [Supermedo's Windows port](https://github.com/Supermedo/bloodborne_pc). Fixes also came from yumlevi, bmy, Mrsuss60 and GoncaloLobo0. JohnChen2727 filed the detailed AMD report in deadinside28/bloodborne_pc#39. The bundled Intel XeSS, NVIDIA DLSS, ReShade (crosire) and PkgTool (maxton's LibOrbisPkg) keep their own licenses, which are in the zip's `licenses` folder.
 
-[Unreleased]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.16...develop
-[1.6.16]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.15...windows-v1.6.16
-[1.6.15]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.14...windows-v1.6.15
-[1.6.14]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.13...windows-v1.6.14
-[1.6.13]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.12...windows-v1.6.13
-[1.6.12]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.11...windows-v1.6.12
-[1.6.11]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.10...windows-v1.6.11
-[1.6.10]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.8...windows-v1.6.10
-[1.6.8]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.7...windows-v1.6.8
-[1.6.7]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.6...windows-v1.6.7
-[1.6.6]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.5...windows-v1.6.6
-[1.6.5]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.4...windows-v1.6.5
-[1.6.4]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.3...windows-v1.6.4
-[1.6.3]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.2...windows-v1.6.3
-[1.6.2]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6.1...windows-v1.6.2
-[1.6.1]: https://github.com/AdrianCsT/bloodborne_pc/compare/windows-v1.6...windows-v1.6.1
-[1.6]: https://github.com/AdrianCsT/bloodborne_pc/releases/tag/windows-v1.6
+[Unreleased]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.16...develop
+[1.6.16]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.15...windows-v1.6.16
+[1.6.15]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.14...windows-v1.6.15
+[1.6.14]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.13...windows-v1.6.14
+[1.6.13]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.12...windows-v1.6.13
+[1.6.12]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.11...windows-v1.6.12
+[1.6.11]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.10...windows-v1.6.11
+[1.6.10]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.8...windows-v1.6.10
+[1.6.8]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.7...windows-v1.6.8
+[1.6.7]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.6...windows-v1.6.7
+[1.6.6]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.5...windows-v1.6.6
+[1.6.5]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.4...windows-v1.6.5
+[1.6.4]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.3...windows-v1.6.4
+[1.6.3]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.2...windows-v1.6.3
+[1.6.2]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6.1...windows-v1.6.2
+[1.6.1]: https://github.com/0xCydral/bloodborne_pc/compare/windows-v1.6...windows-v1.6.1
+[1.6]: https://github.com/0xCydral/bloodborne_pc/releases/tag/windows-v1.6

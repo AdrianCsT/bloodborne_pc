@@ -54,8 +54,11 @@ VERSION = '1.7.0-beta.2'
 # GitHub's /releases list leaves nothing out (pre-releases included); /releases/latest hides them.
 RELEASES_PER_PAGE = 100
 RELEASE_PAGES = 3  # newest first; more than 300 newer entries of other tags would be a repository gone wrong
-RELEASES_API = f'https://api.github.com/repos/AdrianCsT/bloodborne_pc/releases?per_page={RELEASES_PER_PAGE}'
-RELEASES_PAGE = 'https://github.com/AdrianCsT/bloodborne_pc/releases/latest'
+# By repository id, not owner/name: the id survives a rename of the owner, and whoever later takes an old
+# owner name (AdrianCsT was renamed to 0xCydral) cannot serve releases to this launcher.
+RELEASES_API = f'https://api.github.com/repositories/1409457490/releases?per_page={RELEASES_PER_PAGE}'
+RELEASES_PAGE = 'https://github.com/0xCydral/bloodborne_pc/releases/latest'
+PACKAGE_ASSET = 'bbport-windows.zip'  # a release can carry other zips too (the fsr4vk build and its source)
 TAG_PREFIX = 'windows-v'
 
 
@@ -96,10 +99,10 @@ def newest_release(releases, beta):
             continue
         if best is None or version_tuple(version) > version_tuple(best[0]):
             assets = release.get('assets')
-            url = next((asset.get('browser_download_url') for asset in assets if isinstance(asset, dict)
-                        and isinstance(asset.get('name'), str) and asset['name'].lower().endswith('.zip')), None) \
-                if isinstance(assets, list) else None
-            best = (version, url, release.get('html_url') or RELEASES_PAGE)
+            zips = [asset for asset in assets if isinstance(asset, dict) and isinstance(asset.get('name'), str)
+                    and asset['name'].lower().endswith('.zip')] if isinstance(assets, list) else []
+            package = next((asset for asset in zips if asset['name'].lower() == PACKAGE_ASSET), zips[0] if zips else None)
+            best = (version, package.get('browser_download_url') if package else None, release.get('html_url') or RELEASES_PAGE)
     return best
 
 

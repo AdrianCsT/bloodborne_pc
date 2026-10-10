@@ -78,6 +78,16 @@ class ChannelTests(unittest.TestCase):
         newest = launcher.newest_release(final, beta=True)[0]
         self.assertGreater(launcher.version_tuple(newest), launcher.version_tuple('1.7.0-beta.2'))
 
+    def test_the_package_zip_wins_over_the_other_zips_of_a_release(self):
+        other_first = [release('windows-v1.7.0-beta.3', prerelease=True,
+                               assets=('fsr4vk-v0.4.3-amdfix.zip', 'bbport-windows.zip', 'fsr4vk-v0.4.3-amdfix-src.zip'))]
+        url = launcher.newest_release(other_first + RELEASES, beta=True)[1]
+        self.assertEqual(url, 'https://example.test/windows-v1.7.0-beta.3/bbport-windows.zip')
+
+    def test_releases_are_looked_up_by_repository_id(self):
+        # an owner name can change hands after a rename; the repository id cannot
+        self.assertTrue(launcher.RELEASES_API.startswith('https://api.github.com/repositories/1409457490/releases?'))
+
     def test_the_next_beta_reaches_the_switch_on_only(self):
         listed = [release('windows-v1.7.0'), release('windows-v1.8.0-beta.1', True)]
         self.assertEqual(launcher.newest_release(listed, beta=True)[0], '1.8.0-beta.1')

@@ -6,8 +6,8 @@
 
 [English](README.md) · [Русский](docs/original-readme/README.ru.md)
 
-<a href="https://github.com/AdrianCsT/bloodborne_pc/releases/latest"><img src="https://img.shields.io/github/v/release/AdrianCsT/bloodborne_pc?style=for-the-badge&logo=github&logoColor=white&label=Release" alt="Latest release"></a>
-<a href="https://github.com/AdrianCsT/bloodborne_pc/releases"><img src="https://img.shields.io/github/downloads/AdrianCsT/bloodborne_pc/total?style=for-the-badge&logo=github&logoColor=white&label=Downloads" alt="Total downloads"></a>
+<a href="https://github.com/0xCydral/bloodborne_pc/releases/latest"><img src="https://img.shields.io/github/v/release/0xCydral/bloodborne_pc?style=for-the-badge&logo=github&logoColor=white&label=Release" alt="Latest release"></a>
+<a href="https://github.com/0xCydral/bloodborne_pc/releases"><img src="https://img.shields.io/github/downloads/0xCydral/bloodborne_pc/total?style=for-the-badge&logo=github&logoColor=white&label=Downloads" alt="Total downloads"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue?style=for-the-badge" alt="License GPL-2.0"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform Windows 10/11">
 <a href="https://discord.gg/yTMG8c4Bqm"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
@@ -94,7 +94,7 @@ This fork brings together the work of several people and adds a few things of it
 
 ## Download and install
 
-**[Download the latest release](https://github.com/AdrianCsT/bloodborne_pc/releases/latest)** (`bbport-windows.zip`) · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
+**[Download the latest release](https://github.com/0xCydral/bloodborne_pc/releases/latest)** (`bbport-windows.zip`) · **[Join the Discord](https://discord.gg/yTMG8c4Bqm)**
 
 1. Unzip `bbport-windows.zip` anywhere.
 2. Open `Bloodborne.exe`. The first time, the launcher opens. Choose the folder of your own Bloodborne dump (the one with `eboot.bin`) and press **PLAY**. If you have PS4 `.pkg` files instead, use **Install from PKG**.
@@ -248,7 +248,7 @@ The launcher shows a new version in a card at the top right. **Update** download
 
 </details>
 
-Still stuck? Ask on the [Discord server](https://discord.gg/yTMG8c4Bqm) or open an [issue](https://github.com/AdrianCsT/bloodborne_pc/issues).
+Still stuck? Ask on the [Discord server](https://discord.gg/yTMG8c4Bqm) or open an [issue](https://github.com/0xCydral/bloodborne_pc/issues).
 
 ## How it works
 
@@ -555,6 +555,6 @@ The Bloodborne-style icon is original artwork, not taken from the game.
 
 <div align="center">
 
-[Releases](https://github.com/AdrianCsT/bloodborne_pc/releases) · [Discord](https://discord.gg/yTMG8c4Bqm) · [Original project](https://github.com/deadinside28/bloodborne_pc) · [Windows port](https://github.com/Supermedo/bloodborne_pc)
+[Releases](https://github.com/0xCydral/bloodborne_pc/releases) · [Discord](https://discord.gg/yTMG8c4Bqm) · [Original project](https://github.com/deadinside28/bloodborne_pc) · [Windows port](https://github.com/Supermedo/bloodborne_pc)
 
 </div>

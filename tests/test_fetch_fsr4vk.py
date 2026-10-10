@@ -172,7 +172,7 @@ class FetchFsr4VkTest(unittest.TestCase):
         self.assertEqual(fetch.FILES[0][:3], (DLL, DLL, 17603072))
         self.assertEqual(fetch.FILES[0][3], "60a90b24f6789cd52c467471d5a66a0fa6d04e1b8af41095242f50367904f8b2")
         self.assertEqual(fetch.ZIP_NAME, "fsr4vk-v0.4.3-amdfix.zip")
-        release = "https://github.com/AdrianCsT/bloodborne_pc/releases/download/windows-v1.7.0-beta.2/"
+        release = "https://github.com/0xCydral/bloodborne_pc/releases/download/windows-v1.7.0-beta.2/"
         self.assertEqual(fetch.ZIP_URL, release + "fsr4vk-v0.4.3-amdfix.zip")
         self.assertEqual(fetch.SOURCE_ZIP_URL, release + "fsr4vk-v0.4.3-amdfix-src.zip")
         self.assertEqual(fetch.RELEASE, "v0.4.3 with the AMD fix")
