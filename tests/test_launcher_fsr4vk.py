@@ -433,6 +433,31 @@ class CardTests(unittest.TestCase):
         self.assertNotEqual(hashed_on[0], main)
         self.assertFalse(window.fsr4vk_hashing)
 
+    def test_a_hash_that_raises_is_not_started_again_and_again(self):
+        """files_ok hits an OSError (a locked DLL): the card is drawn once more and the files count as not
+        outdated; every draw used to start another hash thread."""
+        window = types.SimpleNamespace(
+            downloading_fsr4vk=False, fsr4vk_hashing=False, ui_calls=queue.Queue(), shown={},
+            var=lambda key, store: types.SimpleNamespace(get=lambda: True),
+            fsr4vk_label=types.SimpleNamespace(configure=lambda **kw: None),
+            fsr4vk_progress=types.SimpleNamespace(set=lambda value: None), fsr4vk_button=FakeButton())
+        window.refresh_fsr4vk = lambda: launcher.Launcher.refresh_fsr4vk(window)
+        stamp = (('locked.dll', 1, 1),)
+        with mock.patch.object(launcher, 'fsr4vk_present', return_value=True), \
+                mock.patch.object(launcher, 'fsr4vk_stamp', return_value=stamp), \
+                mock.patch.object(launcher, 'FSR4VK_VERDICT', None), \
+                mock.patch.object(launcher.fetch_fsr4vk, 'files_ok', side_effect=OSError('locked')) as hashed, \
+                mock.patch.object(launcher.threading, 'excepthook', lambda args: None):
+            window.refresh_fsr4vk()
+            for wait in (5, 0.3, 0.3, 0.3, 0.3):
+                try:
+                    window.ui_calls.get(timeout=wait)()
+                except queue.Empty:
+                    break
+            self.assertEqual(hashed.call_count, 1)
+            self.assertFalse(window.fsr4vk_hashing)
+            self.assertFalse(launcher.fsr4vk_outdated(wait=False))  # a verdict is stored: nothing to hash again
+
     def test_a_hash_already_running_is_not_started_twice(self):
         window = types.SimpleNamespace(
             downloading_fsr4vk=False, fsr4vk_hashing=True, ui_calls=queue.Queue(), shown={},
@@ -518,6 +543,22 @@ class SwitchTests(unittest.TestCase):
         self.settle(window)
         self.assertEqual(window.calls, ['apply', 'refresh', 'check', 'apply'])
         self.assertEqual(window.upscaler_support['fsr411'], (True, ''))
+        self.assertFalse(window.rechecking)
+
+    def test_the_recheck_flag_outlives_the_queued_apply(self):
+        """A settle loop that sees the flag down and the queue empty must not mean the apply is still to come:
+        the flag is cleared only once the apply is queued."""
+        window = self.window({'fsr411': (False, 'needs the Vulkan feature shaderInt8')})
+        seen = []
+
+        class Spy(queue.Queue):
+            def put(self, item, *args, **kwargs):
+                seen.append(window.rechecking)
+                super().put(item, *args, **kwargs)
+        window.ui_calls = Spy()
+        launcher.Launcher.experimental_changed(window)
+        self.settle(window)
+        self.assertEqual(seen, [True])
         self.assertFalse(window.rechecking)
 
     def test_a_good_verdict_or_the_switch_going_off_is_not_asked_again(self):

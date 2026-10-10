@@ -12,38 +12,38 @@ commit c650c2e, GPL-2.0-or-later) are used here: Tk's key code names the physica
 Insert, which opens the port's menu in the game, is refused as a binding. Its keybinds.ini is a different runtime
 format and is not ported. Mouse buttons and the wheel are names in the same key.<input>= lines ("Mouse Left",
 "Wheel Up", see parse_input in src/runtime_pad.c), each optionally after "Shift+", "Ctrl+" or "Alt+"; the Dark
-Souls III layout of the reference (its docs/KEYBOARD_MOUSE.md) is DS3_KEYS, and the mouse_* lines of bbport.ini
+Souls III layout of the reference (its docs/KEYBOARD_MOUSE.md) is the default and DS3_KEYS, and the mouse_* lines of bbport.ini
 are MOUSE_DEFAULTS."""
 
 # input, label (Russian: the key of the GTK launcher's translations), default keyboard keys, default
 # gamepad buttons (SDL names; "" none, None: the input has no gamepad binding). bbport.ini
 # key.<input>= / pad.<input>= replace a default; no line keeps it.
 CONTROLS = [
-    ("cross", "Крест", "Space", "a"),
-    ("circle", "Круг", "Left Shift", "b"),
-    ("square", "Квадрат", "E", "x"),
-    ("triangle", "Треугольник", "Q", "y"),
-    ("l1", "L1", "1", "leftshoulder"),
-    ("r1", "R1", "3", "rightshoulder"),
-    ("l2", "L2", "R", "lefttrigger"),
-    ("r2", "R2", "F", "righttrigger"),
-    ("l3", "L3", "Z", "leftstick"),
-    ("r3", "R3", "C", "rightstick"),
-    ("options", "Options", "Return", "start"),
-    ("touchpad", "Тачпад, левая половина (жесты)", "Tab", "back, touchpad"),
+    ("cross", "Крест", "E, Return", "a"),
+    ("circle", "Круг", "Space, Escape", "b"),
+    ("square", "Квадрат", "R", "x"),
+    ("triangle", "Треугольник", "F", "y"),
+    ("l1", "L1", "Mouse Right", "leftshoulder"),
+    ("r1", "R1", "Mouse Left", "rightshoulder"),
+    ("l2", "L2", "Shift+Mouse Right, Left Ctrl", "lefttrigger"),
+    ("r2", "R2", "Shift+Mouse Left", "righttrigger"),
+    ("l3", "L3", "C", "leftstick"),
+    ("r3", "R3", "Q, Mouse Middle", "rightstick"),
+    ("options", "Options", "Tab", "start"),
+    ("touchpad", "Тачпад, левая половина (жесты)", "G", "back, touchpad"),
     ("touchpad_right", "Тачпад, правая половина (личные вещи)", "Backspace", ""),
-    ("up", "Крестовина вверх", "I", "dpup"),
-    ("down", "Крестовина вниз", "K", "dpdown"),
-    ("left", "Крестовина влево", "J", "dpleft"),
-    ("right", "Крестовина вправо", "L", "dpright"),
+    ("up", "Крестовина вверх", "Up, Wheel Up", "dpup"),
+    ("down", "Крестовина вниз", "Down, Wheel Down", "dpdown"),
+    ("left", "Крестовина влево", "Left, Shift+Wheel Down", "dpleft"),
+    ("right", "Крестовина вправо", "Right, Shift+Wheel Up", "dpright"),
     ("move_up", "Движение вперёд", "W", None),
     ("move_down", "Движение назад", "S", None),
     ("move_left", "Движение влево", "A", None),
     ("move_right", "Движение вправо", "D", None),
-    ("look_up", "Камера вверх", "Up", None),
-    ("look_down", "Камера вниз", "Down", None),
-    ("look_left", "Камера влево", "Left", None),
-    ("look_right", "Камера вправо", "Right", None),
+    ("look_up", "Камера вверх", "I", None),
+    ("look_down", "Камера вниз", "K", None),
+    ("look_left", "Камера влево", "J", None),
+    ("look_right", "Камера вправо", "L", None),
 ]
 
 # The English text of each label: the key of the Windows launcher's translations.
@@ -242,16 +242,11 @@ def is_modifier_keysym(keysym):
 MOUSE_DEFAULTS = {"mouse_camera": "1", "mouse_sensitivity": "1.00", "mouse_invert_y": "0", "mouse_no_auto_rotation": "0"}
 MOUSE_SENSITIVITY_RANGE = (0.01, 20.0)  # what the runtime accepts; the launcher's slider covers 0.1 to 5
 
-# The Dark Souls III keyboard and mouse layout (the reference's docs/KEYBOARD_MOUSE.md). The runtime has no walk
-# input, so Left Alt (walk in Dark Souls III) is not bound.
-DS3_KEYS = {
-    "cross": "E", "circle": "Space", "square": "R", "triangle": "F",
-    "l1": "Mouse Right", "r1": "Mouse Left", "l2": "Left Ctrl", "r2": "Shift+Mouse Left",
-    "l3": "C", "r3": "Q, Mouse Middle", "options": "Tab", "touchpad": "G", "touchpad_right": "Backspace",
-    "up": "Up, Wheel Up", "down": "Down, Wheel Down", "left": "Left", "right": "Right",
-    "move_up": "W", "move_down": "S", "move_left": "A", "move_right": "D",
-    "look_up": "I", "look_down": "K", "look_left": "J", "look_right": "L",
-}
+# The Dark Souls III keyboard and mouse layout (the reference's docs/KEYBOARD_MOUSE.md, "Default keys") is the
+# default keyboard and mouse binding of CONTROLS, and src/runtime_pad.c's bind_defaults is the same table. The
+# runtime has no walk input, so Left Alt (walk in Dark Souls III) is not bound. The Controls page's Dark Souls III
+# button puts these bindings back.
+DS3_KEYS = {name: keys for name, _label, keys, _pad in CONTROLS}
 
 
 def ds3_updates():
@@ -260,11 +255,6 @@ def ds3_updates():
 
 
 def apply_ds3(ini):
-    """A copy of ini with the layout's keyboard and mouse bindings; a binding equal to the default needs no line."""
-    ini = dict(ini)
-    for name, value in DS3_KEYS.items():
-        if split_binding(value) == split_binding(default_binding("key", name)):
-            ini.pop(f"key.{name}", None)
-        else:
-            ini[f"key.{name}"] = value
-    return ini
+    """A copy of ini without the saved key.* lines: the layout is the default, so the keyboard and mouse bindings
+    fall back to it. The pad.* lines stay."""
+    return {key: value for key, value in ini.items() if not (key.startswith("key.") and key[4:] in DS3_KEYS)}

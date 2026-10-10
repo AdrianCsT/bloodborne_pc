@@ -345,18 +345,28 @@ typedef struct { int mouse_camera, invert_y, no_auto_rotation; float sensitivity
 static const MouseSettings mouse_defaults={1,0,0,1.0f};
 static MouseSettings kbm={1,0,0,1.0f};
 
+/* The Dark Souls III layout of the reference (its docs/KEYBOARD_MOUSE.md, "Default keys"); the launcher's CONTROLS
+ * table (launcher/bbport_controls.py) is the same, and a test keeps them equal. The runtime has no walk input, so
+ * Left Alt (walk in Dark Souls III) is not bound. */
 static void bind_defaults(void) {
-    static const struct { int input; SDL_Scancode key; } keys[]={
-        {IN_CROSS,SDL_SCANCODE_SPACE}, {IN_CIRCLE,SDL_SCANCODE_LSHIFT}, {IN_SQUARE,SDL_SCANCODE_E},
-        {IN_TRIANGLE,SDL_SCANCODE_Q}, {IN_L1,SDL_SCANCODE_1}, {IN_R1,SDL_SCANCODE_3},
-        {IN_L2,SDL_SCANCODE_R}, {IN_R2,SDL_SCANCODE_F}, {IN_L3,SDL_SCANCODE_Z}, {IN_R3,SDL_SCANCODE_C},
-        {IN_OPTIONS,SDL_SCANCODE_RETURN}, {IN_TOUCHPAD,SDL_SCANCODE_TAB},
-        {IN_TOUCHPAD_RIGHT,SDL_SCANCODE_BACKSPACE},
-        {IN_UP,SDL_SCANCODE_I}, {IN_DOWN,SDL_SCANCODE_K}, {IN_LEFT,SDL_SCANCODE_J}, {IN_RIGHT,SDL_SCANCODE_L},
-        {IN_MOVE_UP,SDL_SCANCODE_W}, {IN_MOVE_DOWN,SDL_SCANCODE_S}, {IN_MOVE_LEFT,SDL_SCANCODE_A},
-        {IN_MOVE_RIGHT,SDL_SCANCODE_D}, {IN_LOOK_UP,SDL_SCANCODE_UP}, {IN_LOOK_DOWN,SDL_SCANCODE_DOWN},
-        {IN_LOOK_LEFT,SDL_SCANCODE_LEFT}, {IN_LOOK_RIGHT,SDL_SCANCODE_RIGHT},
+#define K(input,key) {input,KIND_KEY,0,SDL_SCANCODE_##key}
+#define M(input,mods,button) {input,KIND_MOUSE,mods,SDL_BUTTON_##button}
+#define W(input,mods,step) {input,KIND_WHEEL,mods,step}
+    static const struct { int input; uint8_t kind, mods; int16_t code; } keys[]={
+        K(IN_CROSS,E), K(IN_CROSS,RETURN), K(IN_CIRCLE,SPACE), K(IN_CIRCLE,ESCAPE),
+        K(IN_SQUARE,R), K(IN_TRIANGLE,F),
+        M(IN_L1,0,RIGHT), M(IN_R1,0,LEFT),
+        M(IN_L2,BIND_SHIFT,RIGHT), K(IN_L2,LCTRL), M(IN_R2,BIND_SHIFT,LEFT),
+        K(IN_L3,C), K(IN_R3,Q), M(IN_R3,0,MIDDLE),
+        K(IN_OPTIONS,TAB), K(IN_TOUCHPAD,G), K(IN_TOUCHPAD_RIGHT,BACKSPACE),
+        K(IN_UP,UP), W(IN_UP,0,1), K(IN_DOWN,DOWN), W(IN_DOWN,0,-1),
+        K(IN_LEFT,LEFT), W(IN_LEFT,BIND_SHIFT,-1), K(IN_RIGHT,RIGHT), W(IN_RIGHT,BIND_SHIFT,1),
+        K(IN_MOVE_UP,W), K(IN_MOVE_DOWN,S), K(IN_MOVE_LEFT,A), K(IN_MOVE_RIGHT,D),
+        K(IN_LOOK_UP,I), K(IN_LOOK_DOWN,K), K(IN_LOOK_LEFT,J), K(IN_LOOK_RIGHT,L),
     };
+#undef K
+#undef M
+#undef W
     static const struct { int input, button; } pads[]={
         {IN_CROSS,SDL_GAMEPAD_BUTTON_SOUTH}, {IN_CIRCLE,SDL_GAMEPAD_BUTTON_EAST},
         {IN_SQUARE,SDL_GAMEPAD_BUTTON_WEST}, {IN_TRIANGLE,SDL_GAMEPAD_BUTTON_NORTH},
@@ -370,7 +380,8 @@ static void bind_defaults(void) {
     };
     memset(bindings,0,sizeof bindings);
     for (size_t i=0;i<sizeof(keys)/sizeof(*keys);++i) {
-        Binding *b=&bindings[keys[i].input]; b->keys[b->key_count++]=(KeyInput){KIND_KEY,0,(int16_t)keys[i].key};
+        Binding *b=&bindings[keys[i].input];
+        b->keys[b->key_count++]=(KeyInput){keys[i].kind,keys[i].mods,keys[i].code};
     }
     kbm=mouse_defaults;
     for (size_t i=0;i<sizeof(pads)/sizeof(*pads);++i) {
@@ -404,12 +415,15 @@ static int parse_input(const char *s, KeyInput *in) {
     in->kind=KIND_KEY; in->code=(int16_t)code;
     return 1;
 }
-static float clamp_setting(float v, float low, float high) { return v<low ? low : v>high ? high : v; }
+/* NaN passes both comparisons, so a value that is not finite is the default (a NaN sensitivity corrupts the turn). */
+static float clamp_setting(float v, float low, float high, float fallback) {
+    return !isfinite(v) ? fallback : v<low ? low : v>high ? high : v;
+}
 /* mouse_camera / mouse_sensitivity / mouse_invert_y / mouse_no_auto_rotation. */
 static void load_mouse_setting(const char *key, const char *value) {
     const float v=(float)atof(value);
     if (!strcmp(key,"mouse_camera")) kbm.mouse_camera=v!=0;
-    else if (!strcmp(key,"mouse_sensitivity")) kbm.sensitivity=clamp_setting(v,0.01f,20.0f);
+    else if (!strcmp(key,"mouse_sensitivity")) kbm.sensitivity=clamp_setting(v,0.01f,20.0f,mouse_defaults.sensitivity);
     else if (!strcmp(key,"mouse_invert_y")) kbm.invert_y=v!=0;
     else if (!strcmp(key,"mouse_no_auto_rotation")) kbm.no_auto_rotation=v!=0;
 }

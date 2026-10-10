@@ -99,7 +99,8 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
             want_w = ow;
             want_h = oh;
             SDL_Rect usable{};
-            maximize = SDL_GetDisplayUsableBounds(display, &usable) && (ow > usable.w || oh > usable.h);
+            // When the usable area cannot be read, maximize: the output size could be larger than the screen.
+            maximize = !SDL_GetDisplayUsableBounds(display, &usable) || ow > usable.w || oh > usable.h;
             std::printf("Window: sized for the %dx%d output%s\n", ow, oh,
                         maximize ? " (maximized: that size does not fit the screen)" : "");
         }

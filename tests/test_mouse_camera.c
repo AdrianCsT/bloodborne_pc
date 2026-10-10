@@ -166,13 +166,54 @@ static void settings(void) {
     write_config(path,"mouse_sensitivity=0\n");
     load_bindings();
     assert(close_to(kbm.sensitivity,0.01f,0.0001f));
-    /* No mouse line, no mouse binding: the defaults leave the buttons to the keyboard. */
+    /* A value that is not a number would pass both comparisons of a clamp and corrupt the camera turn for good:
+     * it falls back to the default sensitivity. */
+    static const char *const not_finite[]={"nan","-nan","inf","-inf","infinity"};
+    for (size_t i=0;i<sizeof(not_finite)/sizeof(*not_finite);++i) {
+        char line[64];
+        snprintf(line,sizeof(line),"mouse_sensitivity=%s\n",not_finite[i]);
+        write_config(path,line);
+        load_bindings();
+        assert(isfinite(kbm.sensitivity) && close_to(kbm.sensitivity,1.0f,0.0001f));
+    }
+    /* No key line: the Dark Souls III layout is the default, mouse buttons and wheel included. */
     write_config(path,"upscaler=fsr3\n");
     load_bindings();
     /* Gamepad players keep the game's own camera: auto-rotation stays unless asked for. */
     assert(close_to(kbm.sensitivity,1.0f,0.0001f) && kbm.mouse_camera && !kbm.invert_y &&
-           !kbm.no_auto_rotation && !mouse_inputs_bound());
+           !kbm.no_auto_rotation && mouse_inputs_bound());
     remove(path);
+}
+
+static int has_default(int input, int kind, int mods, int code) {
+    for (int i=0;i<bindings[input].key_count;++i) {
+        const KeyInput *k=&bindings[input].keys[i];
+        if (k->kind==kind && k->mods==mods && k->code==code) return 1;
+    }
+    return 0;
+}
+
+/* The default keyboard and mouse bindings are the Dark Souls III layout (launcher/bbport_controls.py has the same
+ * table and a test keeps them equal). R2 is Shift+Mouse Left, L2 Shift+Mouse Right and Left Ctrl. */
+static void defaults(void) {
+    bind_defaults();
+    assert(bindings[IN_R2].key_count==1 && has_default(IN_R2,KIND_MOUSE,BIND_SHIFT,SDL_BUTTON_LEFT));
+    assert(bindings[IN_L2].key_count==2 && has_default(IN_L2,KIND_MOUSE,BIND_SHIFT,SDL_BUTTON_RIGHT) &&
+           has_default(IN_L2,KIND_KEY,0,SDL_SCANCODE_LCTRL));
+    assert(bindings[IN_R1].key_count==1 && has_default(IN_R1,KIND_MOUSE,0,SDL_BUTTON_LEFT));
+    assert(bindings[IN_L1].key_count==1 && has_default(IN_L1,KIND_MOUSE,0,SDL_BUTTON_RIGHT));
+    assert(bindings[IN_CROSS].key_count==2 && has_default(IN_CROSS,KIND_KEY,0,SDL_SCANCODE_E) &&
+           has_default(IN_CROSS,KIND_KEY,0,SDL_SCANCODE_RETURN));
+    assert(bindings[IN_CIRCLE].key_count==2 && has_default(IN_CIRCLE,KIND_KEY,0,SDL_SCANCODE_SPACE) &&
+           has_default(IN_CIRCLE,KIND_KEY,0,SDL_SCANCODE_ESCAPE));
+    assert(has_default(IN_R3,KIND_KEY,0,SDL_SCANCODE_Q) && has_default(IN_R3,KIND_MOUSE,0,SDL_BUTTON_MIDDLE));
+    assert(has_default(IN_UP,KIND_WHEEL,0,1) && has_default(IN_DOWN,KIND_WHEEL,0,-1));
+    assert(has_default(IN_LEFT,KIND_WHEEL,BIND_SHIFT,-1) && has_default(IN_RIGHT,KIND_WHEEL,BIND_SHIFT,1));
+    assert(has_default(IN_MOVE_UP,KIND_KEY,0,SDL_SCANCODE_W) && has_default(IN_LOOK_UP,KIND_KEY,0,SDL_SCANCODE_I) &&
+           has_default(IN_LOOK_RIGHT,KIND_KEY,0,SDL_SCANCODE_L));
+    /* The gamepad's defaults are unchanged. */
+    assert(bindings[IN_R2].pad_count==1 && bindings[IN_R2].pad[0]==PAD_RIGHT_TRIGGER);
+    assert(bindings[IN_CROSS].pad_count==1 && bindings[IN_CROSS].pad[0]==SDL_GAMEPAD_BUTTON_SOUTH);
 }
 
 /* The stick fallback: mouse speed becomes right-stick tilt. */
@@ -312,9 +353,10 @@ int main(void) {
     held_setup();
     held();
     settings();
+    defaults();
     stick();
     turn();
     hook_turn();
     hook_refusals();
-    puts("PASS: mouse input names and modifiers, held buttons, wheel steps, mouse settings, stick fallback, camera turn, hook refusals");
+    puts("PASS: mouse input names and modifiers, held buttons, wheel steps, mouse settings, Dark Souls III default layout, stick fallback, camera turn, hook refusals");
 }

@@ -247,6 +247,22 @@ INI_DEFAULTS = {'upscaler': 'fsr4', 'preset': '1', 'sharpen': '1', 'sharpness': 
                 'output_res': '1920x1080', 'model_lod': '0',
                 'live_resolution': 'auto', **bbport_controls.MOUSE_DEFAULTS,
                 **{key: '1' if on else '0' for key, _t, on in EFFECTS + EXTRAS + CHEATS + TWEAKS}}
+INI_FLOAT_RANGES = {'sharpness': (0.0, 2.0), 'mouse_sensitivity': bbport_controls.MOUSE_SENSITIVITY_RANGE}
+
+
+def ini_float(key, value):
+    """A saved float setting as a number: the default when it is not a finite number, else clamped to the range
+    the runtime accepts (nan passes both comparisons of a clamp)."""
+    try:
+        number = float(value)
+    except ValueError:
+        number = math.nan
+    if not math.isfinite(number):
+        return float(INI_DEFAULTS[key])
+    low, high = INI_FLOAT_RANGES[key]
+    return min(max(number, low), high)
+
+
 APP_DEFAULTS = {'ui_language': '', 'game_dir': str(PORT_DIR.parent / 'CUSA03173'), 'user_dir': '',
                 'mods_dir': '', 'mods_enabled': True, 'patches_dir': '', 'language': '1',
                 'player_name': '', 'fullscreen': False, 'hdr': False, 'present_mode': 'Mailbox',
@@ -2123,10 +2139,7 @@ class Launcher:
                 if key in INI_FLAGS:
                     v = tk.BooleanVar(value=value == '1')
                 elif key in INI_FLOATS:
-                    try:
-                        v = tk.DoubleVar(value=float(value))
-                    except ValueError:
-                        v = tk.DoubleVar(value=float(INI_DEFAULTS[key]))
+                    v = tk.DoubleVar(value=ini_float(key, value))
                 else:
                     v = tk.StringVar(value=value)
             else:
@@ -2958,7 +2971,10 @@ class Launcher:
         self.listing_gamepads = True
 
         def work():
-            pads = list_gamepads()
+            try:
+                pads = list_gamepads()
+            except Exception:  # whatever the tool raises, the flag must be cleared, or the list never refreshes
+                pads = None
 
             def done():
                 self.listing_gamepads = False
@@ -3467,8 +3483,8 @@ class Launcher:
             try:
                 self.check_upscalers()
             finally:
-                self.rechecking = False
                 self.ui_calls.put(self.apply_upscaler_support)
+                self.rechecking = False  # after the apply is queued: a watcher never sees both down
         threading.Thread(target=work, daemon=True).start()
 
     def refresh_fsr4vk(self):
@@ -3483,8 +3499,11 @@ class Launcher:
                 self.fsr4vk_hashing = True
 
                 def hash_files():
+                    global FSR4VK_VERDICT
                     try:
                         fsr4vk_outdated()
+                    except Exception:  # files that cannot be read (a locked DLL): not outdated, and not hashed again
+                        FSR4VK_VERDICT = (fsr4vk_stamp(), True)
                     finally:
                         self.fsr4vk_hashing = False
                         self.ui_calls.put(self.refresh_fsr4vk)

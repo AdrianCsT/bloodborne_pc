@@ -29,7 +29,9 @@ from pathlib import Path
 RELEASE = 'v0.4.3 with the AMD fix'
 SOURCE_URL = 'https://github.com/dvj5411/fsr4vk/tree/7c04e511195bf4420a060d64df84d625a37457e0'
 ISSUE_URL = 'https://github.com/dvj5411/fsr4vk/issues/1'
-RELEASE_URL = 'https://github.com/AdrianCsT/bloodborne_pc/releases/download/windows-v1.7.0-beta.2'
+# Deliberately the windows-v1.7.0-beta.2 release, where the asset is hosted: this URL does not follow later
+# version bumps.
+RELEASE_URL ='https://github.com/AdrianCsT/bloodborne_pc/releases/download/windows-v1.7.0-beta.2'
 ZIP_NAME = 'fsr4vk-v0.4.3-amdfix.zip'
 ZIP_URL = f'{RELEASE_URL}/{ZIP_NAME}'
 SOURCE_ZIP_URL = f'{RELEASE_URL}/fsr4vk-v0.4.3-amdfix-src.zip'

@@ -6,9 +6,11 @@ commas. Run: python -m pytest -q tests/test_launcher_controls.py"""
 import ast
 import ctypes
 import os
+import queue
 import re
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -43,6 +45,25 @@ class TableTests(unittest.TestCase):
         block = re.search(r'input_names\[IN_COUNT\]=\{(.*?)\};', source, re.S).group(1)
         self.assertEqual([row[0] for row in controls.CONTROLS], re.findall(r'"(\w+)"', block))
 
+    def test_the_default_keys_are_the_runtimes_in_the_same_order(self):
+        """bind_defaults in src/runtime_pad.c and the launcher's CONTROLS are one table."""
+        source = (ROOT / 'src' / 'runtime_pad.c').read_text(encoding='utf-8')
+        block = re.search(r'static void bind_defaults\(void\) \{(.*?)static const struct \{ int input, button; \} pads',
+                          source, re.S).group(1)
+        names = re.findall(r'"(\w+)"', re.search(r'input_names\[IN_COUNT\]=\{(.*?)\};', source, re.S).group(1))
+        keys = {'LCTRL': 'Left Ctrl'}
+        mods = {'0': '', 'BIND_SHIFT': 'Shift+'}
+        runtime = {name: [] for name in names}
+        for kind, input_, first, second in re.findall(r'(?<![#\w])([KMW])\(IN_(\w+),(-?\w+)(?:,(-?\w+))?\)', block):
+            if kind == 'K':
+                text = keys.get(first) or (first if len(first) == 1 else first.capitalize())
+            elif kind == 'M':
+                text = mods[first] + 'Mouse ' + second.capitalize()
+            else:
+                text = mods[first] + ('Wheel Up' if second == '1' else 'Wheel Down')
+            runtime[input_.lower()].append(text)
+        self.assertEqual({row[0]: controls.split_binding(row[2]) for row in controls.CONTROLS}, runtime)
+
     def test_only_the_keyboard_inputs_have_no_gamepad_binding(self):
         # runtime_pad.c refuses pad.<input> from move_up on
         keyboard_only = [row[0] for row in controls.CONTROLS if row[3] is None]
@@ -68,7 +89,10 @@ class TableTests(unittest.TestCase):
             self.skipTest('SDL3.dll not found')
         for name, _label, keys, pad in controls.CONTROLS:
             for key in controls.split_binding(keys):
-                self.assertNotEqual(lib.SDL_GetScancodeFromName(key.encode()), 0, f'{name}: {key}')
+                bare = re.sub(r'^((?:shift|ctrl|alt)\+)+', '', key, flags=re.I)
+                if bare in {mouse for mouse, _text in controls.MOUSE_INPUTS}:
+                    continue  # a mouse button or a wheel step: parse_input knows these by name
+                self.assertNotEqual(lib.SDL_GetScancodeFromName(bare.encode()), 0, f'{name}: {key}')
             for button in controls.split_binding(pad):
                 if button not in ('lefttrigger', 'righttrigger'):  # read as buttons by the runtime itself
                     self.assertGreaterEqual(lib.SDL_GetGamepadButtonFromString(button.encode()), 0, f'{name}: {button}')
@@ -91,7 +115,7 @@ class BindingTextTests(unittest.TestCase):
         self.assertEqual(controls.join_binding(['Space', 'E']), 'Space, E')
 
     def test_no_line_means_the_default_and_an_empty_line_means_nothing(self):
-        self.assertEqual(controls.current_binding({}, 'key', 'circle'), ['Left Shift'])
+        self.assertEqual(controls.current_binding({}, 'key', 'circle'), ['Space', 'Escape'])
         self.assertEqual(controls.current_binding({}, 'pad', 'touchpad'), ['back', 'touchpad'])
         self.assertEqual(controls.current_binding({}, 'pad', 'touchpad_right'), [])
         self.assertEqual(controls.current_binding({'key.circle': ''}, 'key', 'circle'), [])
@@ -227,7 +251,7 @@ class MouseNameTests(unittest.TestCase):
                                                    'mouse_invert_y': invert, 'mouse_no_auto_rotation': auto})
         self.assertEqual(set(controls.MOUSE_DEFAULTS), {'mouse_camera', 'mouse_sensitivity', 'mouse_invert_y',
                                                         'mouse_no_auto_rotation'})
-        low, high = re.search(r'sensitivity=clamp_setting\(v,([\d.]+)f,([\d.]+)f\)', source).groups()
+        low, high = re.search(r'sensitivity=clamp_setting\(v,([\d.]+)f,([\d.]+)f,mouse_defaults.sensitivity\)', source).groups()
         self.assertEqual(controls.MOUSE_SENSITIVITY_RANGE, (float(low), float(high)))
 
 
@@ -237,15 +261,23 @@ class Ds3LayoutTests(unittest.TestCase):
     def test_the_layout(self):
         layout = controls.DS3_KEYS
         self.assertEqual({k: layout[k] for k in ('r1', 'r2', 'l1', 'l2', 'circle', 'cross', 'square', 'triangle')},
-                         {'r1': 'Mouse Left', 'r2': 'Shift+Mouse Left', 'l1': 'Mouse Right', 'l2': 'Left Ctrl',
-                          'circle': 'Space', 'cross': 'E', 'square': 'R', 'triangle': 'F'})
+                         {'r1': 'Mouse Left', 'r2': 'Shift+Mouse Left', 'l1': 'Mouse Right',
+                          'l2': 'Shift+Mouse Right, Left Ctrl', 'circle': 'Space, Escape', 'cross': 'E, Return',
+                          'square': 'R', 'triangle': 'F'})
         self.assertEqual({k: layout[k] for k in ('r3', 'l3', 'up', 'down', 'left', 'right')},
                          {'r3': 'Q, Mouse Middle', 'l3': 'C', 'up': 'Up, Wheel Up', 'down': 'Down, Wheel Down',
-                          'left': 'Left', 'right': 'Right'})
+                          'left': 'Left, Shift+Wheel Down', 'right': 'Right, Shift+Wheel Up'})
         self.assertEqual({k: layout[k] for k in ('options', 'touchpad', 'touchpad_right')},
                          {'options': 'Tab', 'touchpad': 'G', 'touchpad_right': 'Backspace'})
         self.assertEqual([layout[k] for k in ('move_up', 'move_down', 'move_left', 'move_right')], list('WSAD'))
         self.assertEqual([layout[k] for k in ('look_up', 'look_down', 'look_left', 'look_right')], list('IKJL'))
+
+    def test_the_layout_is_the_default_not_a_second_copy(self):
+        for name, _label, keys, _pad in controls.CONTROLS:
+            self.assertEqual(controls.DS3_KEYS[name], keys)
+            self.assertEqual(controls.current_binding({}, 'key', name), controls.split_binding(keys))
+        self.assertEqual(controls.default_binding('key', 'r2'), 'Shift+Mouse Left')
+        self.assertEqual(controls.default_binding('key', 'l2'), 'Shift+Mouse Right, Left Ctrl')
 
     def test_it_covers_every_input_once_without_a_key_used_twice(self):
         self.assertEqual(set(controls.DS3_KEYS), {row[0] for row in controls.CONTROLS})
@@ -270,14 +302,11 @@ class Ds3LayoutTests(unittest.TestCase):
         self.assertEqual(set(updates), {f'key.{row[0]}' for row in controls.CONTROLS})
         self.assertFalse(any(key.startswith('pad.') for key in updates))
         self.assertEqual(updates['key.r2'], 'Shift+Mouse Left')
+        self.assertEqual(updates['key.l2'], 'Shift+Mouse Right, Left Ctrl')
 
-    def test_the_keys_that_match_the_defaults_write_no_line(self):
-        ini = controls.apply_ds3({'pad.cross': 'x', 'key.cross': 'F5', 'upscaler': 'fsr4'})
-        self.assertEqual(ini['pad.cross'], 'x')                       # the gamepad is left alone
-        self.assertEqual(ini['upscaler'], 'fsr4')
-        self.assertEqual(ini['key.cross'], 'E')
-        self.assertNotIn('key.move_up', ini)                          # W is the default already: no line
-        self.assertEqual(ini['key.look_up'], 'I')
+    def test_applying_it_drops_the_saved_key_lines_and_leaves_the_gamepad_alone(self):
+        ini = controls.apply_ds3({'pad.cross': 'x', 'key.cross': 'F5', 'key.r2': 'F', 'upscaler': 'fsr4'})
+        self.assertEqual(ini, {'pad.cross': 'x', 'upscaler': 'fsr4'})
         for name in controls.DS3_KEYS:
             self.assertEqual(controls.current_binding(ini, 'key', name), controls.split_binding(controls.DS3_KEYS[name]), name)
         self.assertEqual(controls.current_binding(ini, 'pad', 'cross'), ['x'])
@@ -319,7 +348,7 @@ class SettingsFileTests(unittest.TestCase):
         again, _lines = launcher.load_ini()
         self.assertEqual(controls.current_binding(again, 'key', 'cross'), ['F5'])
         self.assertEqual(controls.current_binding(again, 'pad', 'cross'), ['x'])
-        self.assertEqual(controls.current_binding(again, 'key', 'circle'), ['Left Shift'])  # untouched: default
+        self.assertEqual(controls.current_binding(again, 'key', 'circle'), ['Space', 'Escape'])  # untouched: default
 
     def test_reset_removes_the_line(self):
         self.path.write_text('key.cross=F5\npad.cross=x\nupscaler=dlss\n', encoding='utf-8')
@@ -353,16 +382,14 @@ class SettingsFileTests(unittest.TestCase):
         self.assertEqual({'mouse_camera', 'mouse_invert_y', 'mouse_no_auto_rotation'} - launcher.INI_FLAGS, set())
         self.assertIn('mouse_sensitivity', launcher.INI_FLOATS)
 
-    def test_the_ds3_layout_is_written_as_key_lines_and_leaves_the_gamepad_alone(self):
+    def test_the_ds3_layout_clears_the_key_lines_and_leaves_the_gamepad_alone(self):
         self.path.write_text('pad.cross=x\nkey.cross=F5\n', encoding='utf-8')
         ini, lines = launcher.load_ini()
         ini, lines = self.save(controls.apply_ds3(ini), lines)
         text = self.path.read_text(encoding='utf-8').splitlines()
-        for line in ('pad.cross=x', 'key.cross=E', 'key.r1=Mouse Left', 'key.r2=Shift+Mouse Left', 'key.r3=Q, Mouse Middle',
-                     'key.up=Up, Wheel Up', 'key.down=Down, Wheel Down', 'key.l2=Left Ctrl', 'key.look_left=J'):
-            self.assertIn(line, text)
+        self.assertIn('pad.cross=x', text)
         self.assertEqual(sum(line.startswith('pad.') for line in text), 1)
-        self.assertNotIn('key.move_up=W', text)   # the default needs no line
+        self.assertFalse([line for line in text if line.startswith('key.')])  # the layout is the default: no lines
 
     def test_a_value_with_an_equals_sign_survives(self):
         ini, lines = launcher.load_ini()
@@ -402,6 +429,56 @@ class ControllerTests(unittest.TestCase):
             gone = launcher.gamepad_options(pads, 'cc', 'Pad C')
             self.assertEqual(gone[-1], ('cc', 'Pad C (not connected)'))
             self.assertEqual(launcher.gamepad_options([], 'cc', '')[-1], ('cc', 'cc (not connected)'))
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class LauncherSettingTests(unittest.TestCase):
+    """Launcher.var and Launcher.refresh_gamepads on stand-in windows (no Tk, no window)."""
+
+    def float_of(self, key, value):
+        tk = types.SimpleNamespace(DoubleVar=lambda value: types.SimpleNamespace(value=value),
+                                   BooleanVar=lambda value: types.SimpleNamespace(value=value),
+                                   StringVar=lambda value: types.SimpleNamespace(value=value))
+        window = types.SimpleNamespace(tk=tk, vars={}, ini={key: value}, app={})
+        return launcher.Launcher.var(window, key, 'ini').value
+
+    def test_a_float_setting_that_is_not_a_number_loads_as_the_default(self):
+        for text in ('nan', '-nan', 'inf', '-inf', 'abc', ''):
+            self.assertEqual(self.float_of('mouse_sensitivity', text), 1.0, text)
+            self.assertEqual(self.float_of('sharpness', text), 0.5, text)
+
+    def test_a_float_setting_outside_its_range_is_clamped(self):
+        low, high = controls.MOUSE_SENSITIVITY_RANGE
+        self.assertEqual(self.float_of('mouse_sensitivity', '500'), high)
+        self.assertEqual(self.float_of('mouse_sensitivity', '-3'), low)
+        self.assertEqual(self.float_of('mouse_sensitivity', '0'), low)
+        self.assertEqual(self.float_of('mouse_sensitivity', '2.5'), 2.5)
+        self.assertEqual(self.float_of('sharpness', '9'), 2.0)
+        self.assertEqual(self.float_of('sharpness', '-1'), 0.0)
+
+    def refresh(self, pads):
+        window = types.SimpleNamespace(listing_gamepads=False, ui_calls=queue.Queue(), applied=[])
+        window.apply_gamepads = window.applied.append
+        with mock.patch.object(launcher, 'list_gamepads', pads), \
+                mock.patch.object(launcher.threading, 'excepthook', lambda args: None):
+            launcher.Launcher.refresh_gamepads(window)
+            try:
+                window.ui_calls.get(timeout=3)()
+            except queue.Empty:
+                pass
+        return window
+
+    def test_a_listing_that_raises_still_clears_the_flag_and_says_it_failed(self):
+        def broken():
+            raise RuntimeError('the tool could not be built')
+        window = self.refresh(broken)
+        self.assertFalse(window.listing_gamepads)
+        self.assertEqual(window.applied, [False])
+
+    def test_a_listing_that_works_clears_the_flag(self):
+        window = self.refresh(lambda: [('0', 'Pad')])
+        self.assertFalse(window.listing_gamepads)
+        self.assertEqual(window.applied, [[('0', 'Pad')]])
 
 
 class TranslationTests(unittest.TestCase):
