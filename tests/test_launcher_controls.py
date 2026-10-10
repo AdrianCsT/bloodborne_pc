@@ -447,6 +447,12 @@ class LauncherSettingTests(unittest.TestCase):
             self.assertEqual(self.float_of('mouse_sensitivity', text), 1.0, text)
             self.assertEqual(self.float_of('sharpness', text), 0.5, text)
 
+    def test_every_float_setting_has_a_range_and_a_default(self):
+        self.assertEqual(launcher.INI_FLOATS, set(launcher.INI_FLOAT_RANGES))
+        for key in launcher.INI_FLOATS:
+            low, high = launcher.INI_FLOAT_RANGES[key]
+            self.assertTrue(low <= float(launcher.INI_DEFAULTS[key]) <= high, key)
+
     def test_a_float_setting_outside_its_range_is_clamped(self):
         low, high = controls.MOUSE_SENSITIVITY_RANGE
         self.assertEqual(self.float_of('mouse_sensitivity', '500'), high)
@@ -507,7 +513,7 @@ class TranslationTests(unittest.TestCase):
             for language in self.LANGUAGES:
                 translated = bbport_lang.table(language).get(text)
                 self.assertTrue(translated, f'{language}: {text}')
-        # the layout is named the same in every language (a game title), and the old hint is gone
+        # the old hint is gone from the texts
         self.assertNotIn('Press Change, then the key you want. Add gives the input a second key. '
                          'Applied when the game starts.', bbport_lang.KEYS)
 
@@ -544,6 +550,145 @@ class TranslationTests(unittest.TestCase):
         self.assertGreater(len(texts), 15)
         for text in texts:
             self.assertIn(text, bbport_lang.KEYS, text)
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class CaptureTests(unittest.TestCase):
+    """The key capture of the Controls page on a stand-in window: what one press writes to the ini, which
+    presses are refused, how a modifier becomes a binding, and the single side-button poll chain."""
+
+    METHODS = ('start_capture', 'stop_capture', 'control_key', 'control_key_release', 'control_mouse',
+               'poll_side_buttons', 'assign_key', 'write_control')
+
+    def window(self, ini=None):
+        names = [row[0] for row in controls.CONTROLS]
+        widget = lambda: types.SimpleNamespace(configure=lambda **kw: None)  # noqa: E731
+        window = types.SimpleNamespace(
+            ini=dict(ini or {}), capturing=None, pending_modifier=None, side_buttons_down=set(), side_poll=None,
+            control_rows={name: {'change': widget(), 'add': widget(), 'keys': widget()} for name in names},
+            said=[], shown=[], afters=[], cancelled=[],
+            tk=types.SimpleNamespace(EventType=types.SimpleNamespace(MouseWheel='wheel')),
+            root=types.SimpleNamespace(focus_set=lambda: None, focus_displayof=lambda: object()))
+        window.say_controls = lambda text, color=None: window.said.append(text)
+        window.show_control = window.shown.append
+        window.root.after = lambda ms, call: window.afters.append(call) or len(window.afters)
+        window.root.after_cancel = window.cancelled.append
+        for name in self.METHODS:
+            setattr(window, name, types.MethodType(getattr(launcher.Launcher, name), window))
+        return window
+
+    def press(self, window, keysym, keycode=0):
+        return window.control_key(types.SimpleNamespace(keysym=keysym, keycode=keycode))
+
+    def capture(self, window, name, add, keysym):
+        with mock.patch.object(launcher, 'LANG', 'en'), mock.patch.object(controls, 'windows_key_down', return_value=False):
+            window.start_capture(name, add)
+            self.press(window, keysym)
+
+    def test_change_replaces_and_add_appends_to_the_binding_in_force(self):
+        window = self.window()
+        self.capture(window, 'circle', False, 'Tab')
+        self.assertEqual(window.ini['key.circle'], 'Tab')
+        self.capture(window, 'circle', True, 'F5')
+        self.assertEqual(window.ini['key.circle'], 'Tab, F5')
+        self.assertIsNone(window.capturing)
+        window = self.window()
+        self.capture(window, 'cross', True, 'F5')  # Add on a default binding keeps the default keys
+        self.assertEqual(window.ini['key.cross'], 'E, Return, F5')
+
+    def test_a_key_the_input_already_has_is_ignored_and_a_binding_equal_to_the_default_writes_nothing(self):
+        window = self.window()
+        self.capture(window, 'circle', True, 'space')  # Circle is Space by default
+        self.assertNotIn('key.circle', window.ini)
+        window = self.window({'key.circle': 'Tab'})
+        self.capture(window, 'circle', False, 'space')  # changed back to the default: the line goes
+        self.assertNotIn('key.circle', window.ini)
+
+    def test_a_fifth_key_is_refused_and_the_line_stays(self):
+        window = self.window({'key.circle': 'F1, F2, F3, F4'})
+        self.capture(window, 'circle', True, 'F5')
+        self.assertEqual(window.ini['key.circle'], 'F1, F2, F3, F4')
+        self.assertEqual(window.said[-1], 'At most 4 keys per input.')
+
+    def test_insert_and_unknown_keys_are_refused_and_the_capture_goes_on(self):
+        window = self.window()
+        self.capture(window, 'circle', False, 'Insert')
+        self.assertEqual(window.capturing, ('circle', False))
+        self.assertNotIn('key.circle', window.ini)
+        self.assertIn('Insert', window.said[-1])
+        self.press(window, 'XF86Launch5')
+        self.assertEqual(window.capturing, ('circle', False))
+
+    def test_a_modifier_alone_is_bound_when_it_is_let_go(self):
+        window = self.window()
+        with mock.patch.object(launcher, 'LANG', 'en'), mock.patch.object(controls, 'windows_key_down', return_value=False):
+            window.start_capture('l2', False)
+            self.press(window, 'Shift_L')
+            self.assertEqual(window.capturing, ('l2', False))  # still waiting: a mouse input may follow
+            window.control_key_release(types.SimpleNamespace(keysym='Shift_L'))
+        self.assertEqual(window.ini['key.l2'], 'Left Shift')
+        self.assertIsNone(window.capturing)
+
+    def test_a_modifier_then_a_mouse_input_is_the_combination(self):
+        window = self.window()
+        pressed = {0x10, 0xA0}  # Shift and Left Shift
+        with mock.patch.object(launcher, 'LANG', 'en'), \
+                mock.patch.object(controls, 'windows_key_down', side_effect=lambda vk: vk in pressed):
+            window.start_capture('r2', False)
+            self.press(window, 'Shift_L')
+            window.control_mouse(types.SimpleNamespace(type='press', num=3, widget=None))
+        self.assertEqual(window.ini['key.r2'], 'Shift+Mouse Right')
+
+    def test_altgr_binds_right_alt_not_the_control_it_sends_first(self):
+        """Windows sends a Left Ctrl press, then Right Alt, for AltGr (Tk names them Control_L and Alt_R)."""
+        for first_up in ('Control_L', 'Alt_R'):
+            with self.subTest(first_up=first_up):
+                window = self.window()
+                down = {0xA2, 0xA5}
+                with mock.patch.object(launcher, 'LANG', 'en'), \
+                        mock.patch.object(controls, 'windows_key_down', side_effect=lambda vk: vk in down):
+                    window.start_capture('l3', False)
+                    self.press(window, 'Control_L')
+                    self.press(window, 'Alt_R')
+                    window.control_key_release(types.SimpleNamespace(keysym=first_up))
+                self.assertEqual(window.ini['key.l3'], 'Right Alt')
+
+    def test_the_left_button_counts_only_on_the_waiting_rows_text(self):
+        window = self.window()
+        with mock.patch.object(launcher, 'LANG', 'en'), mock.patch.object(controls, 'windows_key_down', return_value=False):
+            window.start_capture('r1', False)
+            elsewhere = types.SimpleNamespace(type='press', num=1, widget=object())
+            self.assertIsNone(window.control_mouse(elsewhere))
+            self.assertEqual(window.capturing, ('r1', False))
+            on_text = types.SimpleNamespace(type='press', num=1, widget=window.control_rows['r1']['keys'])
+            self.assertEqual(window.control_mouse(on_text), 'break')
+            window.start_capture('up', False)
+            window.control_mouse(types.SimpleNamespace(type='wheel', delta=-120, widget=None))
+        self.assertEqual(window.ini['key.up'], 'Wheel Down')
+
+    def test_a_side_button_binds_and_ends_the_poll(self):
+        window = self.window()
+        state = {'down': set()}
+        with mock.patch.object(launcher, 'LANG', 'en'), \
+                mock.patch.object(controls, 'windows_key_down', side_effect=lambda vk: vk in state['down']):
+            window.start_capture('l1', False)
+            window.poll_side_buttons()
+            self.assertEqual(len(window.afters), 2)  # nothing pressed: the chain goes on
+            state['down'] = {0x06}
+            window.poll_side_buttons()
+        self.assertEqual(window.ini['key.l1'], 'Mouse X2')
+        self.assertEqual(len(window.afters), 2)  # and it was not rescheduled
+
+    def test_a_restarted_capture_leaves_one_poll_chain(self):
+        window = self.window()
+        with mock.patch.object(launcher, 'LANG', 'en'), mock.patch.object(controls, 'windows_key_down', return_value=False):
+            window.start_capture('l1', False)
+            first = window.side_poll
+            window.start_capture('l2', False)  # within 50 ms: the old chain must be cancelled
+            self.assertEqual(window.cancelled, [first])
+            window.stop_capture()
+            self.assertEqual(window.cancelled, [first, 2])  # the second chain's id
+            self.assertIsNone(window.side_poll)
 
 
 if __name__ == '__main__':

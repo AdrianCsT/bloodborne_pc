@@ -157,6 +157,20 @@ class FetchFsr4VkTest(unittest.TestCase):
             self.assertIn("variable descriptor count", (target / "SOURCE.txt").read_text())
             self.assertFalse(list(target.rglob("*.tmp")))
 
+    def test_a_dll_windows_will_not_replace_leaves_no_temporary_file(self):
+        """The game has the old DLL loaded: the swap is refused and the half-written copy must not stay."""
+        body = make_zip(MEMBERS)
+        server = self.serve(body)
+        self.pin(body, MEMBERS, server.server_address[1])
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder)
+            (target / DLL).write_bytes(b"MZ the original upstream build")
+            with mock.patch.object(fetch.os, "replace", side_effect=PermissionError(5, "Access is denied")):
+                with self.assertRaises(PermissionError):
+                    fetch.fetch(target)
+            self.assertFalse(list(target.rglob("*.tmp")))
+            self.assertEqual((target / DLL).read_bytes(), b"MZ the original upstream build")
+
     def test_patch_md_is_not_required(self):
         body = make_zip(MEMBERS)
         server = self.serve(body)

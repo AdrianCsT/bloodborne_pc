@@ -609,7 +609,7 @@ class WorkerTests(unittest.TestCase):
     def run_worker(self, download, check=lambda: None):
         shown, progress = [], []
         window = types.SimpleNamespace(
-            downloading_fsr4vk=False, ui_calls=queue.Queue(), refresh_fsr4vk=lambda: None,
+            process=None, downloading_fsr4vk=False, ui_calls=queue.Queue(), refresh_fsr4vk=lambda: None,
             apply_upscaler_support=lambda: shown.append('applied'), check_upscalers=check,
             fsr4vk_progress=types.SimpleNamespace(set=progress.append),
             messagebox=types.SimpleNamespace(showerror=lambda *a: shown.append(a[1])))
@@ -649,6 +649,27 @@ class WorkerTests(unittest.TestCase):
         window = types.SimpleNamespace(downloading_fsr4vk=False,
                                        var=lambda key, store: types.SimpleNamespace(get=lambda: True))
         launcher.Launcher.refresh_fsr4vk(window)  # no AttributeError
+
+    def test_an_update_waits_for_the_game_to_close(self):
+        """The running game has the old DLL loaded and Windows would refuse the swap: say so, download nothing."""
+        for present in (True, False):
+            with self.subTest(dll_present=present):
+                told, window = [], types.SimpleNamespace(
+                    process=object(), downloading_fsr4vk=False, ui_calls=queue.Queue(), refresh_fsr4vk=lambda: None,
+                    messagebox=types.SimpleNamespace(showinfo=lambda *a: told.append(a)))
+                with mock.patch.object(launcher, 'download_fsr4vk', return_value='') as download, \
+                        mock.patch.object(launcher, 'fsr4vk_present', return_value=present), \
+                        mock.patch.object(launcher, 'LANG', 'en'):
+                    launcher.Launcher.start_fsr4vk_download(window)
+                    time.sleep(0.2)
+                if present:  # an update: the DLL is in use
+                    self.assertEqual(told, [('FSR 4.1.1', 'Close the game before updating.')])
+                    self.assertFalse(window.downloading_fsr4vk)
+                    download.assert_not_called()
+                else:  # a first download touches nothing the game has open
+                    self.assertEqual(told, [])
+                    self.assertTrue(window.downloading_fsr4vk)
+                    download.assert_called_once()
 
     def test_a_clean_download_shows_no_error(self):
         window, shown, _progress = self.run_worker(lambda progress=None: '')
