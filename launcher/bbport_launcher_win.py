@@ -2687,7 +2687,7 @@ class Launcher:
         self.switch(holder, self.var('fullscreen', 'app'), _('Fullscreen', 'Полный экран')).pack(anchor='w')
         holder = self.cell(quick, 6, 0, '', span=2)
         row = self.switch(holder, self.var('frame_generation', 'ini'),
-                          _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'))
+                          _('Frame generation', 'Генерация кадров'))
         row.pack(anchor='w')
         note = self.label(holder, '', 'small', MUTED, wraplength=px(420), justify='left')
         note.pack(anchor='w', padx=(px(54), 0), pady=(px(2), 0))
@@ -2768,7 +2768,7 @@ class Launcher:
         grey_amd_motion()
         experimental.trace_add('write', lambda *_a: self.experimental_changed())  # FSR 4.1.1 needs it
         self.grey_with_upscaler(*self.check(
-            f, 'frame_generation', 'ini', _('Frame generation (FSR 3.1)', 'Генерация кадров (FSR 3.1)'),
+            f, 'frame_generation', 'ini', _('Frame generation', 'Генерация кадров'),
             _('Doubles the frame rate; adds a little input lag. Best with at least 60 FPS.',
               'Удваивает частоту кадров; добавляет немного задержки ввода. Лучше всего от 60 FPS.')))
         self.build_reshade(page)

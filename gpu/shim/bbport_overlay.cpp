@@ -381,7 +381,7 @@ void Menu() {
         "more detail from multiple frames. Without it, only history-based anti-aliasing remains.",
         "Каждый кадр сцена сдвигается на долю пикселя, и апскейлер собирает из нескольких "
         "кадров больше деталей. Без него получается только сглаживание по истории."));
-    Checkbox(BbSettings::MenuText("Frame generation (FSR 3.1)", "Генерация кадров (FSR 3.1)"),
+    Checkbox(BbSettings::MenuText("Frame generation", "Генерация кадров"),
              s.frame_generation);
     Hint(BbSettings::MenuText(
         "Doubles the frame rate: one interpolated frame between every two game frames, from the "

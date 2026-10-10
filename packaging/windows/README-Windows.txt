@@ -123,12 +123,12 @@ FSR 4.1.1 (experimental)
   for FSR 4 and 0.55 ms for FSR 3.1. Measured once, not a benchmark.
 
 Frame generation (optional)
-- Graphics -> "Frame generation (FSR 3.1)" (also on the Play page and in the in-game menu, or
+- Graphics -> "Frame generation" (also on the Play page and in the in-game menu, or
   frame_generation=1 in bbport.ini, or BB_FRAME_GEN=1 for one run) shows one interpolated frame
-  between every two game frames: 60 FPS of the game are shown as 120. It is AMD's FSR 3.1 frame
-  interpolation and optical flow, driven by the game's depth and motion vectors, on top of the
-  upscaler you picked (FSR 4, FSR 3.1, DLSS, XeSS or TAA). The HUD of the game frame is kept over
-  the interpolated frame, so it does not smear. Default: off.
+  between every two game frames: 60 FPS of the game are shown as 120. It is AMD's FidelityFX
+  frame interpolation and optical flow, driven by the game's depth and motion vectors, and it
+  works with every upscaler (FSR 4, FSR 4.1.1, FSR 3.1, DLSS, XeSS or TAA). The HUD of the game
+  frame is kept over the interpolated frame, so it does not smear. Default: off.
 - It costs input lag: the game frame is shown about half a frame interval later than without
   it. Best with at least 60 FPS before generation; below that the interpolated frames show
   more artifacts and the lag is more noticeable.

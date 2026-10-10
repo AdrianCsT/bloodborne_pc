@@ -279,7 +279,7 @@ bool FrameGeneration::CreateContext(u32 width, u32 height, vk::Format format) {
     capabilities.structSize = sizeof(capabilities);
     if (ffxVkPortableQueryDeviceCapabilities(physical, &capabilities) != FFX_VK_PORTABLE_OK ||
         !capabilities.fsr3FrameGenerationPrerequisites) {
-        Report("off (the GPU lacks what the FSR 3.1 interpolation needs)");
+        Report("off (the GPU lacks what AMD's frame interpolation needs)");
         return false;
     }
     // The interpolated frame is written by a compute shader: storage support in the frame's
@@ -318,7 +318,7 @@ bool FrameGeneration::CreateContext(u32 width, u32 height, vk::Format format) {
                                                                  &context);
     if (result != FFX_VK_PORTABLE_OK) {
         context = nullptr;
-        std::printf("Frame generation: off (the FSR 3.1 interpolation context could not be "
+        std::printf("Frame generation: off (the AMD frame interpolation context could not be "
                     "created, error %d)\n", int(result));
         reported = "failed";
         return false;
@@ -326,7 +326,7 @@ bool FrameGeneration::CreateContext(u32 width, u32 height, vk::Format format) {
     context_width = width;
     context_height = height;
     context_format = format;
-    std::printf("Frame generation: on (FSR 3.1 interpolation, %ux%u, interpolated frame %s, "
+    std::printf("Frame generation: on (AMD frame interpolation, %ux%u, interpolated frame %s, "
                 "optical flow)\n", width, height, vk::to_string(output_format).c_str());
     reported = "on";
     return true;

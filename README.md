@@ -54,7 +54,7 @@ This fork brings together the work of several people and adds a few things of it
 | This fork | Support for *The Old Hunters* DLC license (experimental) |
 | This fork | A redesigned launcher with Simple and Advanced modes and animations |
 | This fork | Install from PKG: the launcher installs the game from your PS4 `.pkg` files (base game, update and DLC) |
-| This fork | Frame generation: FSR 3.1 frame interpolation on top of FSR 4, FSR 3.1, DLSS or XeSS, about twice the frames on screen from a 60 FPS base, with the HUD kept sharp |
+| This fork | Frame generation: AMD FidelityFX frame interpolation on top of any upscaler (FSR 4, FSR 3.1, DLSS or XeSS), about twice the frames on screen from a 60 FPS base, with the HUD kept sharp |
 | This fork | Intel XeSS 3.0.2 as an upscaler for any GPU, and a launcher that greys out the upscalers a GPU cannot run, with the reason |
 | This fork | ReShade 6.8 with two Bloodborne presets (Natural and Vivid), switched on from the launcher |
 | This fork | Shaders compiled ahead of the frame on the draw-preparation threads, and the driver's pipeline cache saved between runs: fewer first-time stutters |
