@@ -115,16 +115,19 @@ static void held(void) {
     SLEEP_MS(200);
     memset(&d,0,sizeof d); apply_keyboard(&d,keys);
     assert(!(d.buttons & BTN_UP));
+    /* Two queued steps are two presses with a gap between. pulse_held takes the time as an argument, so
+     * the edges are checked on a synthetic clock (a sleep that overshoots on a busy host cannot fail it). */
+    pulse_until[IN_DOWN]=0; pulse_queue[IN_DOWN]=0;
     wheel_step(-1,0); wheel_step(-1,0);
-    memset(&d,0,sizeof d); apply_keyboard(&d,keys);
-    assert(d.buttons & BTN_DOWN);
-    SLEEP_MS(65);                      /* the first press is over, the gap not yet */
-    memset(&d,0,sizeof d); apply_keyboard(&d,keys);
-    assert(!(d.buttons & BTN_DOWN));
-    SLEEP_MS(60);                      /* gap over: the second step */
-    memset(&d,0,sizeof d); apply_keyboard(&d,keys);
-    assert(d.buttons & BTN_DOWN);
-    SLEEP_MS(300);
+    const uint64_t t=1000000;          /* far before now_us(): later real reads see a finished pulse */
+    assert(pulse_held(IN_DOWN,t));                                /* the first press */
+    assert(pulse_held(IN_DOWN,t+PULSE_ON_US-1));
+    assert(!pulse_held(IN_DOWN,t+PULSE_ON_US));                   /* the press is over, the gap is not */
+    assert(!pulse_held(IN_DOWN,t+PULSE_ON_US+PULSE_GAP_US-1));
+    assert(pulse_held(IN_DOWN,t+PULSE_ON_US+PULSE_GAP_US));       /* gap over: the second step */
+    assert(pulse_held(IN_DOWN,t+2*PULSE_ON_US+PULSE_GAP_US-1));
+    assert(!pulse_held(IN_DOWN,t+2*(PULSE_ON_US+PULSE_GAP_US)));  /* no third step */
+    assert(pulse_queue[IN_DOWN]==0);
     memset(&d,0,sizeof d); apply_keyboard(&d,keys);
     assert(!(d.buttons & BTN_DOWN));
     /* A plain wheel binding takes steps with a modifier held too; a Shift+Wheel one only with Shift. */
@@ -249,6 +252,29 @@ static void sprint_diagonal(int side_key) {
 static void sprint(void) {
     sprint_diagonal(SDL_SCANCODE_A);
     sprint_diagonal(SDL_SCANCODE_D);
+    /* Opposing keys are no diagonal: A with D cancel to the stick's centre side (127, the positive side's full
+     * push is one less than the negative's), and with W only the vertical axis moves, as before. */
+    {
+        bool both[SDL_SCANCODE_COUNT]={0};
+        PadData e;
+        both[SDL_SCANCODE_A]=both[SDL_SCANCODE_D]=true;
+        memset(&e,0,sizeof e); e.left_x=e.left_y=e.right_x=e.right_y=128;
+        apply_keyboard(&e,both);
+        assert(e.left_x==127 && e.left_y==128);
+        both[SDL_SCANCODE_W]=true;
+        memset(&e,0,sizeof e); e.left_x=e.left_y=e.right_x=e.right_y=128;
+        apply_keyboard(&e,both);
+        assert(e.left_x==127 && e.left_y==0);
+        both[SDL_SCANCODE_S]=true;     /* W with S as well: both axes opposed, nothing is a diagonal */
+        memset(&e,0,sizeof e); e.left_x=e.left_y=e.right_x=e.right_y=128;
+        apply_keyboard(&e,both);
+        assert(e.left_x==127 && e.left_y==127);
+        /* A gamepad's stick shows through when no movement key is held. */
+        memset(&e,0,sizeof e); e.left_x=40; e.left_y=200; e.right_x=e.right_y=128;
+        memset(both,0,sizeof both);
+        apply_keyboard(&e,both);
+        assert(e.left_x==40 && e.left_y==200);
+    }
     /* The look keys (right stick) keep the square's corner. */
     bool keys[SDL_SCANCODE_COUNT]={0};
     PadData d;
@@ -384,6 +410,63 @@ static void hook_refusals(void) {
     runtime_image_start=0; runtime_image_size=0;
 }
 
+#ifdef _WIN32
+/* The installed hook, on a fake image that holds the 1.09 bytes at the hook site: the stub's page is executable
+ * and not writable (no page of the hook is both), the turn lives on a read/write page after it, and the stub runs:
+ * with nothing to turn it leaves the camera alone, with a turn it hands the camera object to camhook_frame and
+ * empties the slot, which proves the patched operand reaches the data page. */
+static MEMORY_BASIC_INFORMATION page_info(const void *at) {
+    MEMORY_BASIC_INFORMATION info;
+    assert(VirtualQuery(at,&info,sizeof info)==sizeof info);
+    return info;
+}
+static void put64(unsigned char *at, uint64_t value) { memcpy(at,&value,8); }
+static void hook_install(void) {
+    const size_t size=0x1500000;
+    unsigned char *image=VirtualAlloc(NULL,size,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);  /* the ret below runs */
+    assert(image);
+    unsigned char *site=image+HOOK_SITE;
+    memcpy(site,original,sizeof original);
+    site[10]=0xc3; site[10+0x26]=0xc3;               /* what follows the replaced instruction: ret, on both branches */
+    runtime_image_start=(uintptr_t)image; runtime_image_size=size;
+    const char *why="";
+    assert(delta==NULL && runtime_camhook_install(0,&why) && !*why && runtime_camhook_active());
+    unsigned char *stub_page=(unsigned char *)delta-STUB_DATA;
+    assert(page_info(stub_page).Protect==PAGE_EXECUTE_READ);
+    assert(page_info((const void *)delta).Protect==PAGE_READWRITE);
+    assert(site[0]==0xe9);                           /* the jump at the hook site reaches the stub */
+    int32_t rel;
+    memcpy(&rel,site+1,4);
+    assert((uintptr_t)(site+5+rel)==(uintptr_t)stub_page);
+    runtime_camhook_turn(0.2f,0.3f);
+    assert(*delta!=0);
+    /* A thunk that runs the stub as the game's camera code would: rbp for the replaced instruction, r13 the camera. */
+    static float camera[0x200/4];
+    static unsigned char scratch[0x800];
+    memset(camera,0,sizeof camera);
+    camera[0x140/4]=0.1f; camera[0x144/4]=0.5f; camera[0x150/4]=0.1f; camera[0x1ec/4]=1.2f; camera[0x1f0/4]=-0.8f;
+    unsigned char *thunk=VirtualAlloc(NULL,0x1000,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);
+    assert(thunk);
+    unsigned char *c=thunk;
+    *c++=0x55; *c++=0x41; *c++=0x55;                                    /* push rbp; push r13 */
+    *c++=0x48; *c++=0xbd; put64(c,(uint64_t)(uintptr_t)(scratch+0x400)); c+=8;    /* mov rbp,imm64 */
+    *c++=0x49; *c++=0xbd; put64(c,(uint64_t)(uintptr_t)camera); c+=8;             /* mov r13,imm64 */
+    *c++=0x48; *c++=0xb8; put64(c,(uint64_t)(uintptr_t)stub_page); c+=8;          /* mov rax,imm64 */
+    *c++=0xff; *c++=0xd0;                                               /* call rax */
+    *c++=0x41; *c++=0x5d; *c++=0x5d; *c++=0xc3;                         /* pop r13; pop rbp; ret */
+    FlushInstructionCache(GetCurrentProcess(),thunk,0x1000);
+    void (*run)(void)=(void (*)(void))(uintptr_t)thunk;
+    run();
+    assert(close_to(camera[0x144/4],0.8f,1e-6f) && close_to(camera[0x140/4],0.3f,1e-6f));   /* the turn was applied */
+    assert(*delta==0);                                                  /* ...and taken from the data page */
+    run();
+    assert(close_to(camera[0x144/4],0.8f,1e-6f));                       /* nothing queued: the camera is left alone */
+    VirtualFree(thunk,0,MEM_RELEASE);
+    delta=NULL;
+    runtime_image_start=0; runtime_image_size=0;
+}
+#endif
+
 int main(void) {
 #ifdef _WIN32
     /* A failed assert prints to stderr and aborts: no dialog on the desktop of whoever runs this. */
@@ -401,5 +484,8 @@ int main(void) {
     turn();
     hook_turn();
     hook_refusals();
-    puts("PASS: mouse input names and modifiers, held buttons, wheel steps, mouse settings, Dark Souls III default layout, diagonal sprint stays continuous, stick fallback, camera turn, hook refusals");
+#ifdef _WIN32
+    hook_install();
+#endif
+    puts("PASS: mouse input names and modifiers, held buttons, wheel steps, mouse settings, Dark Souls III default layout, diagonal sprint stays continuous, stick fallback, camera turn, hook refusals, hook install (stub page not writable, data page not executable)");
 }

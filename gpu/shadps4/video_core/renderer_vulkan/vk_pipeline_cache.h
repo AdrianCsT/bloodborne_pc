@@ -66,8 +66,11 @@ struct Program {
     /// bbport: `info` as translated, for draw-preparation workers (they must not read `info`,
     /// whose user data the GPU thread rewrites every draw). Guarded by programs_mutex.
     std::unique_ptr<Shader::Info> info_template;
-    /// bbport: XXH3 of the code bytes `info` was translated from, set with info_template. A
-    /// permutation translated from other bytes at the same address does not belong here.
+    /// bbport: XXH3 of the code bytes `info` stands for, set with info_template. A program made by
+    /// CompileNewProgram holds the hash of the bytes it was translated from. One loaded by the
+    /// pipeline cache warm-up was not translated here: its hash is of the bytes at its address
+    /// when the GPU thread first used it. A permutation a worker translated from other bytes than
+    /// these does not belong here (CompilePermutation drops it; see bbport_spec_drop.h).
     u64 code_hash{};
 
     Program() = default;
@@ -136,8 +139,9 @@ extern std::atomic<u32> g_bb_worker_compiles;
 extern std::atomic<u64> g_bb_wait_ns;
 extern std::atomic<u32> g_bb_waits;
 extern std::atomic<u32> g_bb_wait_timeouts;
-/// bbport: worker translations thrown away because the guest code they read was not the
-/// program's (see CompilePermutation).
+/// bbport: worker translations thrown away (NoteDiscarded, which CompileNewProgram and
+/// CompilePermutation call): the guest code they read was not the program's, it changed while
+/// they were translated, or (CompilePermutation) their resources differ from the program's Info.
 extern std::atomic<u32> g_bb_spec_discards;
 
 struct PreparedDraw;

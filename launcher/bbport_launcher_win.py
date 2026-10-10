@@ -2063,12 +2063,12 @@ class Launcher:
         self.ui_calls = queue.Queue()  # work for the Tk thread from helper threads
         self.mod_order, self.mod_vars, self.patch_vars = [], {}, {}
         self.cards, self.hot_card, self.measures = set(), None, {}
-        # Controls page: the row waiting for a key, the rows' widgets, the gamepads SDL listed (None: not asked or
-        # the tool could not run), and the message under the card.
+        # Controls page: the row waiting for a key, the rows' widgets, the gamepads SDL listed (None: not asked; False:
+        # the list could not be read), and the message under the card.
         self.capturing, self.control_rows, self.gamepads, self.listing_gamepads = None, {}, None, False
         # A Shift, Ctrl or Alt pressed while an input waits: bound when it is let go, unless a mouse input comes
         # first (then it is the combination's modifier); the side buttons held when the wait began.
-        self.pending_modifier, self.side_buttons_down = None, set()
+        self.pending_modifier, self.side_buttons_down, self.side_poll = None, set(), None
         self.controls_message = None
         root.title('Bloodborne — bbport')
         root.configure(bg=BG)
@@ -3103,11 +3103,14 @@ class Launcher:
                             'Нажмите клавишу, кнопку мыши или крутите колесо; для сочетания сначала зажмите Shift, '
                             'Ctrl или Alt. Для левой кнопки щёлкните по выделенному тексту.'))
         self.root.focus_set()  # the key goes to the window, not to a button that would act on Space
-        self.root.after(50, self.poll_side_buttons)
+        self.side_poll = self.root.after(50, self.poll_side_buttons)
 
     def stop_capture(self):
         if not self.capturing:
             return
+        if self.side_poll:  # one poll chain per capture: a restart within 50 ms must not leave the old one running
+            self.root.after_cancel(self.side_poll)
+            self.side_poll = None
         name, _add = self.capturing
         self.capturing = self.pending_modifier = None
         row = self.control_rows[name]
@@ -3173,7 +3176,7 @@ class Launcher:
             self.assign_key(name, add, bbport_controls.with_modifiers(
                 sorted(pressed)[0], *bbport_controls.held_modifiers(bbport_controls.windows_key_down)))
             return
-        self.root.after(50, self.poll_side_buttons)
+        self.side_poll = self.root.after(50, self.poll_side_buttons)
 
     def assign_key(self, name, add, key):
         """Gives the waiting input the captured key, button or wheel step (Add keeps the ones it has)."""
@@ -3538,7 +3541,7 @@ class Launcher:
 
     def refresh_fsr4vk(self):
         """The FSR 4.1.1 card: what is downloaded, and the button (only while Experimental features is on)."""
-        if not hasattr(self, 'fsr4vk_button'):  # the Graphics page builds the card; a switch can change before
+        if not hasattr(self, 'fsr4vk_button'):  # the Graphics page builds the card; a switch can change before it exists
             return
         ready, problem = fsr4vk_present(), fsr4vk_download_problem()
         outdated = fsr4vk_outdated(wait=False) if ready else False
@@ -3578,6 +3581,9 @@ class Launcher:
     def start_fsr4vk_download(self):
         """Downloads the fsr4vk files in the background, then re-runs the capability check so the
         dropdown entry can be picked."""
+        if self.process and fsr4vk_present():  # an update: the running game has the old DLL loaded, and Windows refuses the swap
+            self.messagebox.showinfo('FSR 4.1.1', _('Close the game before updating.', 'Закройте игру перед обновлением.'))
+            return
         self.downloading_fsr4vk = True
         self.refresh_fsr4vk()
 

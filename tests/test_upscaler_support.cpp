@@ -7,9 +7,22 @@
 #include <unistd.h>
 #include "bbport_settings.h"
 
+#ifdef _WIN32
+// Windows has no /tmp, setenv or unsetenv: the file goes in the working directory.
+#define TEST_TMP ""
+static int setenv(const char* name, const char* value, int) {
+    return _putenv_s(name, value);
+}
+static int unsetenv(const char* name) {
+    return _putenv_s(name, "");
+}
+#else
+#define TEST_TMP "/tmp/"
+#endif
+
 int main() {
     using namespace BbSettings;
-    char path[] = "/tmp/bbport-upscaler-test-XXXXXX";
+    char path[] = TEST_TMP "bbport-upscaler-test-XXXXXX";
     const int fd = mkstemp(path);
     assert(fd >= 0);
     close(fd);

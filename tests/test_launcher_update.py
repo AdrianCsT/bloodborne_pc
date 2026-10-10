@@ -179,6 +179,51 @@ class CheckTests(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class InstallTests(unittest.TestCase):
+    """Launcher.install_update on a stand-in window: when the release page opens instead of an install."""
+
+    PAGE = 'https://github.com/0xCydral/bloodborne_pc/releases/tag/windows-v1.7.0'
+
+    def install(self, url, process=None, frozen=True, answer=False):
+        asked, told = [], []
+        window = types.SimpleNamespace(
+            process=process, update_button=None, root=None,
+            messagebox=types.SimpleNamespace(askyesno=lambda *a: asked.append(a) or answer,
+                                             showinfo=lambda *a: told.append(a)))
+        with mock.patch.object(launcher, 'FROZEN', frozen), mock.patch.object(launcher.webbrowser, 'open') as opened, \
+                mock.patch.object(launcher.threading, 'Thread') as thread, mock.patch.object(launcher, 'LANG', 'en'):
+            launcher.Launcher.install_update(window, '1.7.0', url, self.PAGE)
+        return opened, asked, told, thread
+
+    def test_a_release_without_a_package_url_opens_its_page(self):
+        for url in (None, ''):
+            with self.subTest(url=url):
+                opened, asked, told, thread = self.install(url)
+                opened.assert_called_once_with(self.PAGE)
+                self.assertEqual((asked, told), ([], []))  # no question, no download
+                thread.assert_not_called()
+
+    def test_a_source_tree_opens_the_page_even_with_a_package_url(self):
+        opened, asked, _told, thread = self.install('https://example.test/bbport-windows.zip', frozen=False)
+        opened.assert_called_once_with(self.PAGE)
+        self.assertEqual(asked, [])
+        thread.assert_not_called()
+
+    def test_a_running_game_comes_before_everything(self):
+        opened, asked, told, thread = self.install(None, process=object())
+        self.assertEqual(told, [('Bloodborne', 'Close the game before updating.')])
+        opened.assert_not_called()
+        self.assertEqual(asked, [])
+        thread.assert_not_called()
+
+    def test_a_package_url_asks_before_it_downloads(self):
+        opened, asked, _told, thread = self.install('https://example.test/bbport-windows.zip')
+        self.assertEqual(len(asked), 1)  # answered no: nothing else happens
+        opened.assert_not_called()
+        thread.assert_not_called()
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
 class ExperimentalTests(unittest.TestCase):
     """The Experimental features switch (kept in this file: launcher settings that reach the game)."""
 

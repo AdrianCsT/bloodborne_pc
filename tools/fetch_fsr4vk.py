@@ -161,8 +161,12 @@ def fetch(target: Path, progress=None) -> None:
                 destination = target / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 temporary = destination.with_name(destination.name + '.tmp')
-                temporary.write_bytes(data)
-                os.replace(temporary, destination)
+                try:
+                    temporary.write_bytes(data)
+                    os.replace(temporary, destination)
+                except OSError:  # e.g. the game has the DLL loaded: no half-written copy stays
+                    temporary.unlink(missing_ok=True)
+                    raise
             for name in EXTRA:
                 if name in archive.namelist():
                     (target / name).write_bytes(archive.read(name))

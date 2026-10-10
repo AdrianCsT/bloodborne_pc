@@ -287,6 +287,10 @@ add_executable(settings-test EXCLUDE_FROM_ALL ../tests/test_settings.cpp shim/bb
 target_compile_options(settings-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_include_directories(settings-test PRIVATE .. shim)
 
+add_executable(spec-drop-test EXCLUDE_FROM_ALL ../tests/test_spec_drop.cpp)
+target_compile_options(spec-drop-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
+target_include_directories(spec-drop-test PRIVATE shim)
+
 add_executable(scene-resolution-test EXCLUDE_FROM_ALL ../tests/test_scene_resolution.cpp ../tests/test_gpu_runtime_stubs.cpp)
 target_include_directories(scene-resolution-test PRIVATE shim shadps4 third_party/gcn/include)
 # The test's Vulkan-Hpp inline methods have a different set of platform extensions

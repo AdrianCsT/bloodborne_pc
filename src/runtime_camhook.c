@@ -18,7 +18,7 @@
  * A 6-byte jmp at the meeting point runs `stub`: when the mouse moved it saves every register the
  * game may hold, calls camhook_frame on the game's camera thread with the camera object (r13),
  * restores them, runs the instruction the jmp replaced and returns to the game. camhook_frame
- * adds the mouse turn (taken atomically from the stub's `delta` slot, written by the window
+ * adds the mouse turn (taken atomically from the `delta` slot on the page after the stub's, written by the window
  * thread) to both pitches, inside the game's own limits (+0x1f0..+0x1ec), and to the yaw, and
  * turns the drawn position around the pivot by the same angles so that the spring has nothing to
  * catch up with. The mouse thus turns the camera by exact angles in the frame it moved, as in PC
@@ -43,7 +43,7 @@ uint64_t runtime_image_size;
 
 #define HOOK_SITE 0x143ce67
 static const unsigned char original[10]={0x8b,0x85,0x3c,0xfc,0xff,0xff, 0x84,0xc0, 0x74,0x26};
-/* delta at 0x1c0 (pitch, yaw floats), return address at 0x1c8, camhook_frame at 0x1d0. */
+/* the stub's delta operand is patched to the data page; return address at 0x1c8, camhook_frame at 0x1d0. */
 static const unsigned char stub[0x1d8]={
     0x48, 0x83, 0x3d, 0xb8, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x84, 0x9f, 0x01, 0x00, 0x00, 0x53, 0x48,
     0x89, 0xe3, 0x48, 0x83, 0xe4, 0xf0, 0x48, 0x81, 0xec, 0x80, 0x01, 0x00, 0x00, 0xc5, 0xf8, 0x11,
@@ -76,9 +76,14 @@ static const unsigned char stub[0x1d8]={
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-#define STUB_DELTA 0x1c0
 #define STUB_BACK 0x1c8
 #define STUB_FRAME 0x1d0
+/* The stub page is executable and not writable once the stub is in it; the window thread writes the turn to a
+ * page of its own, the one after it. The stub's first instruction (cmp qword [rip+disp32],0, disp32 at byte 3,
+ * ending at byte 8) reads that slot, so the displacement is patched when the stub is copied. */
+#define STUB_DATA 0x1000
+#define STUB_DELTA_DISP 3
+#define STUB_DELTA_END 8
 
 static volatile uint64_t *delta;
 
@@ -105,7 +110,7 @@ static __attribute__((unused)) ABI float camhook_frame(unsigned char *camera, fl
     float *drawn=field(camera,CAM_DRAWN);
     const double ox=drawn[0]-pivot[0], oy=drawn[1]-pivot[1], oz=drawn[2]-pivot[2];
     const double r=sqrt(ox*ox+oy*oy+oz*oz);
-    if (r>1e-3 && r<100) {
+    if (r>1e-3 && r<100) {  /* metres: no direction closer than 1 mm, and not the follow camera past 100 m */
         double s=oy/r;
         s=s<-1 ? -1 : s>1 ? 1 : s;
         const double p=asin(s)+(pitch-pitch_old), y=atan2(-ox,-oz)+turn[1];
@@ -118,18 +123,19 @@ static __attribute__((unused)) ABI float camhook_frame(unsigned char *camera, fl
 
 #ifdef _WIN32
 #include <windows.h>
-/* An executable page within a rel32 jump of the hook site. */
+/* Two pages (the stub's, then its data) within a rel32 jump of the hook site, writable until the stub is in. */
 static unsigned char *near_page(uintptr_t site) {
     for (int64_t step=1;step<0x7000;++step) for (int dir=-1;dir<=1;dir+=2) {
         const uintptr_t at=((site&~(uintptr_t)0xffff)+(uintptr_t)(dir*step*0x10000));
-        void *p=VirtualAlloc((void *)at,0x1000,MEM_RESERVE|MEM_COMMIT,PAGE_EXECUTE_READWRITE);
+        void *p=VirtualAlloc((void *)at,2*STUB_DATA,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
         if (p) return p;
     }
     return NULL;
 }
 /* The camera's automatic turning while the character moves ("Disable Camera Auto Rotation via
- * Movement", Imedved and Kyo, patches/Bloodborne.xml): its yaw writes, nopped. A mouse camera
- * turns only by the mouse (or the stick). */
+ * Movement", Imedved and Kyo, patches/Bloodborne.xml): the four stores `vmovss [r13+offset],xmm`
+ * (camera object offsets +0x144 twice, +0x130 and +0x294) that the walking camera turns itself with, nopped;
+ * only +0x144 is the yaw this file turns. A mouse camera turns only by the mouse (or the stick). */
 static const struct { uint32_t at; unsigned char original[9]; } auto_rotation[]={
     {0x143c6e8,{0xc4,0xc1,0x7a,0x11,0x85,0x44,0x01,0x00,0x00}}, {0x143c984,{0xc4,0xc1,0x7a,0x11,0x8d,0x30,0x01,0x00,0x00}},
     {0x143dde6,{0xc4,0xc1,0x7a,0x11,0x85,0x94,0x02,0x00,0x00}}, {0x143c870,{0xc4,0xc1,0x7a,0x11,0xad,0x44,0x01,0x00,0x00}},
@@ -151,7 +157,7 @@ static void disable_auto_rotation(void) {
         if (memcmp(at,auto_rotation[i].original,9)) continue;
         if (write_code(at,nops,9)) ++done;
     }
-    printf("Runtime: camera auto-rotation off (%d of 4 sites)\n",done);
+    printf("Runtime: camera auto-rotation off (%d of %zu sites)\n",done,sizeof(auto_rotation)/sizeof(*auto_rotation));
 }
 int runtime_camhook_install(int no_auto_rotation, const char **why) {
     static char reason[96];
@@ -169,6 +175,8 @@ int runtime_camhook_install(int no_auto_rotation, const char **why) {
     unsigned char *page=near_page((uintptr_t)site);
     if (!page) { *why="no memory near the game code"; return 0; }
     memcpy(page,stub,sizeof(stub));
+    const int32_t slot=STUB_DATA-STUB_DELTA_END;
+    memcpy(page+STUB_DELTA_DISP,&slot,4);
     const uint64_t back=(uintptr_t)site+6;
     const uint64_t frame=(uintptr_t)camhook_frame;
     memcpy(page+STUB_FRAME,&frame,8);
@@ -176,6 +184,13 @@ int runtime_camhook_install(int no_auto_rotation, const char **why) {
     const int64_t rel=(int64_t)((uintptr_t)page-((uintptr_t)site+5));
     if (rel<INT32_MIN || rel>INT32_MAX) { VirtualFree(page,0,MEM_RELEASE); *why="no memory near the game code"; return 0; }
     const int32_t rel32=(int32_t)rel;
+    DWORD old;
+    if (!VirtualProtect(page,STUB_DATA,PAGE_EXECUTE_READ,&old)) { /* the data page stays read/write */
+        VirtualFree(page,0,MEM_RELEASE);
+        *why="the camera stub cannot be made executable";
+        return 0;
+    }
+    FlushInstructionCache(GetCurrentProcess(),page,STUB_DATA);
     unsigned char jump[6]={0xe9,0,0,0,0,0x90};
     memcpy(jump+1,&rel32,4);
     if (!write_code(site,jump,6)) {
@@ -184,7 +199,7 @@ int runtime_camhook_install(int no_auto_rotation, const char **why) {
         *why=reason;
         return 0;
     }
-    delta=(volatile uint64_t *)(page+STUB_DELTA);
+    delta=(volatile uint64_t *)(page+STUB_DATA);
     printf("Runtime: PC mouse camera hooked into the game's camera (image+0x%x)\n",HOOK_SITE);
     if (no_auto_rotation) disable_auto_rotation();
     return 1;
