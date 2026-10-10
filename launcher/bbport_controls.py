@@ -190,8 +190,9 @@ def tk_key_to_sdl(keysym, keycode=0, scan_of=None, down=None):
     keysym, keycode: the event's. scan_of: virtual key -> scan code (windows_scan). down: virtual key -> held
     (windows_key_down), which tells the left modifier from the right one. Letters, digits and punctuation
     are named by the position of the key, as the game reads them: the key labelled A on a French keyboard
-    sits where a US keyboard has Q, and the game must see Q. Without scan_of (or for a key it does not
-    know) the character of the keysym stands in, which is right on a US layout."""
+    sits where a US keyboard has Q, and the game must see Q. Without scan_of (or for a key outside the typing
+    block) the character of the keysym stands in, which is right on a US layout; with scan_of, a typing-block
+    key whose position it does not know gives None."""
     keysym = held_side(keysym, down)
     if keysym in KEYSYMS:
         return KEYSYMS[keysym]

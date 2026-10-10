@@ -478,6 +478,8 @@ class MissingHelperTests(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location('launcher_without_fetch', Path(launcher.__file__))
         self.hidden = importlib.util.module_from_spec(spec)
+        path = list(sys.path)
+        self.addCleanup(lambda: sys.path.__setitem__(slice(None), path))  # the module inserts into sys.path on every load
         with mock.patch.dict(sys.modules, {'fetch_fsr4vk': None}):  # None makes the import raise ImportError
             spec.loader.exec_module(self.hidden)
 
