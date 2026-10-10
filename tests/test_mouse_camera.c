@@ -216,6 +216,36 @@ static void defaults(void) {
     assert(bindings[IN_CROSS].pad_count==1 && bindings[IN_CROSS].pad[0]==SDL_GAMEPAD_BUTTON_SOUTH);
 }
 
+/* Sprinting on the keyboard: W + A (or D) + Space, then one of the two direction keys is let go. The pad
+ * state the game reads must stay continuous: the left stick off neutral and Circle held in every poll. */
+static int stick_off_neutral(const PadData *d) { return d->left_x!=128 || d->left_y!=128; }
+static void sprint_poll(const bool *keys, int side_key, const char *step, int expect_x) {
+    PadData d;
+    memset(&d,0,sizeof d);
+    d.left_x=d.left_y=d.right_x=d.right_y=128;
+    apply_keyboard(&d,keys);
+    printf("  %-18s side=%s left=(%3d,%3d) circle=%d\n",step,side_key==SDL_SCANCODE_A ? "A" : "D",
+           d.left_x,d.left_y,(d.buttons & BTN_CIRCLE)!=0);
+    assert(stick_off_neutral(&d));
+    assert(d.buttons & BTN_CIRCLE);
+    assert(d.left_y==0 && d.left_x==expect_x);
+}
+static void sprint_diagonal(int side_key) {
+    bool keys[SDL_SCANCODE_COUNT]={0};
+    const int diagonal_x=side_key==SDL_SCANCODE_A ? 0 : 255;
+    bind_defaults();
+    keys[SDL_SCANCODE_W]=true; keys[side_key]=true; keys[SDL_SCANCODE_SPACE]=true;
+    for (int i=0;i<3;++i) { sprint_poll(keys,side_key,"W+side+Space held",diagonal_x); SLEEP_MS(16); }
+    keys[side_key]=false;
+    for (int i=0;i<6;++i) { sprint_poll(keys,side_key,"side released",128); SLEEP_MS(16); }
+    keys[side_key]=true;                          /* and back to the diagonal */
+    sprint_poll(keys,side_key,"side pressed again",diagonal_x);
+}
+static void sprint(void) {
+    sprint_diagonal(SDL_SCANCODE_A);
+    sprint_diagonal(SDL_SCANCODE_D);
+}
+
 /* The stick fallback: mouse speed becomes right-stick tilt. */
 static PadData stick_after(float counts_per_s, float dy_per_s, int dt_us, int ticks) {
     MouseStick s={0};
@@ -354,9 +384,10 @@ int main(void) {
     held();
     settings();
     defaults();
+    sprint();
     stick();
     turn();
     hook_turn();
     hook_refusals();
-    puts("PASS: mouse input names and modifiers, held buttons, wheel steps, mouse settings, Dark Souls III default layout, stick fallback, camera turn, hook refusals");
+    puts("PASS: mouse input names and modifiers, held buttons, wheel steps, mouse settings, Dark Souls III default layout, diagonal sprint stays continuous, stick fallback, camera turn, hook refusals");
 }
