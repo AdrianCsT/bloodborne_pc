@@ -1,23 +1,68 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220" role="img" aria-labelledby="title desc">
-  <title id="title">Bloodborne PC</title>
-  <desc id="desc">Bloodborne PC: play Bloodborne natively on Windows, from your own PS4 copy.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-labelledby="bb-banner-title bb-banner-desc">
+  <title id="bb-banner-title">Bloodborne PC</title>
+  <desc id="bb-banner-desc">A blood moon rising behind the black spires of a Gothic city, with the title Bloodborne PC: Bloodborne, native on Windows, from your own PS4 copy.</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0b0a0c"/>
-      <stop offset="1" stop-color="#171315"/>
+    <linearGradient id="bb-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#08090d"/>
+      <stop offset="0.62" stop-color="#140d14"/>
+      <stop offset="1" stop-color="#3a0d13"/>
     </linearGradient>
-    <radialGradient id="glow" cx="1" cy="0" r="0.9">
-      <stop offset="0" stop-color="#8e1a1f" stop-opacity="0.38"/>
-      <stop offset="1" stop-color="#8e1a1f" stop-opacity="0"/>
+    <radialGradient id="bb-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#b3202b" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#5a0f16" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#5a0f16" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#5c1014"/>
-      <stop offset="1" stop-color="#b8282e"/>
-    </linearGradient>
+    <radialGradient id="bb-bone" cx="0.38" cy="0.34" r="0.75">
+      <stop offset="0" stop-color="#f3ebda"/>
+      <stop offset="1" stop-color="#cdbba1"/>
+    </radialGradient>
+    <clipPath id="bb-moon-clip"><circle cx="872" cy="98" r="52"/></clipPath>
+    <clipPath id="bb-panel"><rect width="960" height="240" rx="16"/></clipPath>
   </defs>
-  <rect width="960" height="220" rx="16" fill="url(#bg)"/>
-  <rect width="960" height="220" rx="16" fill="url(#glow)"/>
-  <rect x="48" y="148" width="96" height="6" rx="3" fill="url(#accent)"/>
-  <text x="48" y="124" fill="#e8dfcf" font-family="Georgia, 'Palatino Linotype', 'Times New Roman', serif" font-size="76" letter-spacing="6">BLOODBORNE PC</text>
-  <text x="48" y="186" fill="#a09282" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="26">Play Bloodborne natively on Windows, from your own PS4 copy.</text>
+
+  <g clip-path="url(#bb-panel)">
+    <rect width="960" height="240" fill="url(#bb-sky)"/>
+    <circle cx="872" cy="98" r="190" fill="url(#bb-halo)"/>
+
+    <!-- blood moon: a bone disc over a blood rim -->
+    <circle cx="872" cy="98" r="52" fill="#8f1b24"/>
+    <g clip-path="url(#bb-moon-clip)">
+      <circle cx="860" cy="88" r="52" fill="url(#bb-bone)"/>
+      <circle cx="846" cy="80" r="9" fill="#a8947c" fill-opacity="0.35"/>
+      <circle cx="872" cy="108" r="6" fill="#a8947c" fill-opacity="0.3"/>
+      <circle cx="858" cy="64" r="4" fill="#a8947c" fill-opacity="0.3"/>
+    </g>
+
+    <!-- far skyline: fog slate -->
+    <path fill="#161c29" d="M0 240V196H46V188H52V196H110V182L126 168L142 182V196H214V190H220V196H300V178L314 164L328 178V196H420V184H452V196H520V170L540 150L560 170V196H610V150L632 112L654 150V196H700V160H730V196H800V176H830V196H960V240Z"/>
+    <!-- fog bands -->
+    <g stroke="#2a3346" stroke-width="1" stroke-opacity="0.7" fill="none">
+      <path d="M0 202H260M340 206H700M760 200H960"/>
+    </g>
+
+    <!-- near skyline: black cathedral, rooftops, one thin spire across the moon -->
+    <path fill="#050507" d="M0 240V214H58V206H66V214H120V198L150 186L180 198V214H236V208H244V214H300V202H330V214H392V198L414 180L436 198V214H520V210H640V176H652V120L676 36L700 120V176H716V146L728 76L740 146V176H772V132L798 52L824 132V176H850V190H858L864 88L870 190H900V204H910V196H940V214H960V240Z"/>
+    <!-- buttresses -->
+    <path fill="#050507" d="M640 176L604 214H640ZM772 176L808 214H772Z"/>
+    <!-- rose window -->
+    <circle cx="676" cy="152" r="9" fill="none" stroke="#b3202b" stroke-width="2" stroke-opacity="0.9"/>
+    <!-- lit windows -->
+    <g fill="#e9e0cd" fill-opacity="0.75">
+      <rect x="150" y="204" width="4" height="6"/>
+      <rect x="338" y="206" width="3" height="5"/>
+      <rect x="418" y="200" width="3" height="5"/>
+      <rect x="918" y="206" width="3" height="5"/>
+    </g>
+    <g fill="#b3202b">
+      <rect x="722" y="164" width="4" height="8"/>
+      <rect x="792" y="160" width="4" height="8"/>
+    </g>
+
+    <!-- title -->
+    <text x="48" y="88" fill="#d4414d" font-family="ui-monospace, 'SFMono-Regular', Consolas, monospace" font-size="15" letter-spacing="4" textLength="272" lengthAdjust="spacing">NOT AN EMULATOR</text>
+    <text x="48" y="146" fill="#e9e0cd" font-family="Georgia, 'Palatino Linotype', 'Times New Roman', serif" font-size="66" textLength="500" lengthAdjust="spacingAndGlyphs">BLOODBORNE</text>
+    <text x="566" y="146" fill="#b3202b" font-family="Georgia, 'Palatino Linotype', 'Times New Roman', serif" font-size="66" textLength="72" lengthAdjust="spacingAndGlyphs">PC</text>
+    <rect x="48" y="162" width="64" height="3" fill="#b3202b"/>
+    <text x="48" y="192" fill="#a3acbd" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" textLength="470" lengthAdjust="spacingAndGlyphs">Native on Windows. From your own PS4 copy.</text>
+  </g>
 </svg>

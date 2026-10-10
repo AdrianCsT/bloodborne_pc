@@ -1,15 +1,16 @@
 <div align="center">
 
-<h1><img src="docs/banner.svg" alt="Bloodborne PC" width="720"></h1>
+<h1><img src="docs/banner.svg" alt="Bloodborne PC: a blood moon over Gothic rooftops, native on Windows from your own PS4 copy" width="720"></h1>
 
 **Play Bloodborne natively on Windows 10 and 11, from your own PS4 copy. No emulator.**
 
 [English](README.md) · [Русский](docs/original-readme/README.ru.md)
 
-<a href="https://github.com/0xCydral/bloodborne_pc/releases/latest"><img src="https://img.shields.io/github/v/release/0xCydral/bloodborne_pc?style=for-the-badge&logo=github&logoColor=white&label=Release" alt="Latest release"></a>
-<a href="https://github.com/0xCydral/bloodborne_pc/releases"><img src="https://img.shields.io/github/downloads/0xCydral/bloodborne_pc/total?style=for-the-badge&logo=github&logoColor=white&label=Downloads" alt="Total downloads"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--2.0-blue?style=for-the-badge" alt="License GPL-2.0"></a>
 <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform Windows 10/11">
+<a href="https://github.com/0xCydral/bloodborne_pc/releases/latest"><img src="https://img.shields.io/github/v/release/0xCydral/bloodborne_pc?style=for-the-badge&logo=github&logoColor=white&label=Release" alt="Latest release"></a>
+<a href="https://github.com/0xCydral/bloodborne_pc/releases"><img src="https://img.shields.io/github/downloads/0xCydral/bloodborne_pc/total?style=for-the-badge&logo=github&logoColor=white&label=Downloads" alt="Total downloads"></a>
+<img src="https://img.shields.io/badge/Status-Experimental-orange?style=for-the-badge" alt="Status: experimental">
 <a href="https://discord.gg/KYZRKk9CB"><img src="https://img.shields.io/badge/Discord-Original%20project-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord of the original project"></a>
 
 ![The launcher in Simple mode](docs/screenshots/launcher-simple.png)
@@ -66,16 +67,9 @@ Cards that are not on this list are untested here. If you play on one, a [bug re
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A["Your Bloodborne copy<br/>game folder or .pkg files"] --> B["Launcher<br/>settings, patches, mods"]
-    B --> C["Game image<br/>the game's own eboot, relinked"]
-    C --> D["Loader<br/>maps the image and starts it"]
-    D --> E["Runtime<br/>the PS4 system libraries, reimplemented"]
-    D --> F["Vulkan renderer<br/>built on shadPS4's video core"]
-    E --> G(("Bloodborne<br/>runs on your CPU"))
-    F --> G
-```
+<p align="center"><img src="docs/how-it-works.svg" alt="Your own Bloodborne copy goes through the launcher, a prepared game image and the loader. The loader feeds the PS4 runtime and the Vulkan renderer, and together they run Bloodborne on your CPU." width="860"></p>
+
+The step labels in the picture match the numbers below.
 
 1. **Prepare.** The launcher saves your settings in `bbport.ini` and prepares the game. Scripts convert the game's own executable (`eboot.bin`) into a memory image with the PS4 libc and Fios2 libraries linked in, compile the community patches (frame rate, resolution, effects) and set up your mods as an overlay. Your game folder is not changed.
 2. **Load.** A small loader maps the image into memory and jumps into the game. The game's code runs on your processor, with no emulation and no instruction translation.
