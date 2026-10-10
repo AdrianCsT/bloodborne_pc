@@ -4,7 +4,9 @@ All notable changes to the Windows fork of the Bloodborne PS4 port. The format f
 
 The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags remain, and this file replaces their notes. Version 1.6.9 is folded into 1.6.10 (see there).
 
-## [Unreleased]
+## [1.7.0] - 2026-10-10
+
+The stable release of the 1.7.0 betas below, plus these changes from their testing.
 
 ### Added
 
@@ -20,6 +22,8 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 - The in-game menu (Insert) could not save its settings to `bbport.ini` on Windows: the save renamed a temporary file over the existing one, which Windows refuses, and the log said `Settings: cannot write`. Found by building the settings tests on Windows; not yet seen in the game.
 - The launcher found its updates through the GitHub account name, which changed from AdrianCsT to 0xCydral. GitHub forwards the old name only until someone else takes it and creates a repository of the same name, and from then on that person's releases would have been offered as updates. The launcher now looks releases up by the repository's id, which no rename changes, and downloads FSR 4.1.1 from the new address.
 - A release can hold more than one zip (beta.2 also carries the fsr4vk build and its source). The launcher took the first zip GitHub listed; it now takes `bbport-windows.zip` by name, and for a release without it, Update opens the release page.
+- Updating FSR 4.1.1 while the game was running could not replace the DLL the game had open. The launcher now asks you to close the game first, and a failed replace leaves no temporary file behind.
+- The mouse camera hook kept its code page writable and executable at once. The page is now executable only, and the camera turn goes through a separate data page.
 
 ## [1.7.0-beta.2] - 2026-10-10
 
