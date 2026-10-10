@@ -463,6 +463,13 @@ int main(int argc, char **argv) {
        (the launcher's own request does not reach the game), and without it a sleep can overshoot
        by 15.6 ms: the frame generation wait between the two presents relies on it. */
     timeBeginPeriod(1);
+    /* bbport: no power throttling while another window has the focus. Windows 11 may run a
+       background process at efficient clocks and ignore its 1 ms timer request; the frame
+       limiter's and frame generation's waits then overshoot and the frame rate falls apart. */
+    PROCESS_POWER_THROTTLING_STATE throttling={PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED|PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,0};
+    if (!SetProcessInformation(GetCurrentProcess(),ProcessPowerThrottling,&throttling,sizeof(throttling)))
+        printf("Runtime: power throttling stays on (error %lu)\n",(unsigned long)GetLastError());
 #endif
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
