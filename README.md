@@ -1,8 +1,8 @@
 <div align="center">
 
-# Bloodborne PC
+<h1><img src="docs/banner.svg" alt="Bloodborne PC" width="720"></h1>
 
-**A native port of Bloodborne for Windows 10 and 11. No emulator.**
+**Play Bloodborne natively on Windows 10 and 11, from your own PS4 copy. No emulator.**
 
 [English](README.md) · [Русский](docs/original-readme/README.ru.md)
 
@@ -16,11 +16,14 @@
 
 </div>
 
+> [!WARNING]
+> Bloodborne PC is experimental. The game boots, loads saves and plays with sound, gamepad and saving, but a full play-through has not been verified. **No game files are included.** You need your own copy of the game.
+
 > [!NOTE]
 > This project is not related to shadPS4. Please ask questions about it on the
 > [original project's Discord server](https://discord.gg/KYZRKk9CB), not on the shadPS4 server.
 
-**Players:** [What this is](#what-this-is) · [What you need](#what-you-need) · [Install](#install) · [Update](#update) · [First launch and key settings](#first-launch-and-key-settings) · [Controls](#controls) · [Troubleshooting and FAQ](#troubleshooting-and-faq)
+**Players:** [What this is](#what-this-is) · [Status](#status) · [How it works](#how-it-works) · [What you need](#what-you-need) · [Install](#install) · [Update](#update) · [First launch and key settings](#first-launch-and-key-settings) · [Controls](#controls) · [Troubleshooting and FAQ](#troubleshooting-and-faq) · [Contributing](#contributing) · [Legal](#legal)
 
 **Developers:** [For developers](#for-developers)
 
@@ -28,12 +31,58 @@
 
 Bloodborne PC lets you play *Bloodborne* for PlayStation 4 on a Windows 10 or 11 PC, using your own copy of the game. It is not an emulator. The game's own code runs on your processor, and a graphics layer turns the PS4's drawing commands into Vulkan, the graphics interface your video card driver provides.
 
+An emulator translates every instruction of the game while it runs. Bloodborne PC does not: the PS4 has an ordinary x86-64 processor, the same kind of chip as your PC, so the game's code runs on it as it is. What the game cannot do alone is talk to the PS4 operating system, and the port supplies its own version of those system libraries.
+
 You set everything up in a small program called the launcher: pick your game, pick a few options, press **PLAY**. You can play with a controller or with a keyboard and mouse.
 
-**Status: experimental, playable.** The game boots, loads saves and plays with sound, gamepad and saving. The Hunter's Dream and several areas of Yharnam were played with it. A full play-through has not been verified.
-
 > [!IMPORTANT]
-> **No game files are included.** You need your own copy of Bloodborne for PS4 (CUSA03173, version 1.09), either as a game folder or as the PS4 `.pkg` files. This project is not affiliated with Sony Interactive Entertainment, FromSoftware, AMD or NVIDIA.
+> **No game files are included.** You need your own copy of Bloodborne for PS4 (CUSA03173, version 1.09), either as a game folder or as the PS4 `.pkg` files. This project is not affiliated with Sony Interactive Entertainment, FromSoftware, AMD or NVIDIA. See [Legal](#legal).
+
+## Status
+
+**Experimental, playable.** The Hunter's Dream and several areas of Yharnam were played with it. A full play-through has not been verified.
+
+| Area | State | Notes |
+|---|---|---|
+| Boot, saves, sound, saving | **Works** | The game boots, loads saves and plays with sound and saving. |
+| Gamepad, keyboard and mouse | **Works** | Both can be used at the same time. See [Controls](#controls). |
+| Upscalers (DLSS, FSR 3.1, FSR 4, XeSS, TAA) | **Works** | Which ones your card can run is shown in the launcher. See [Upscaler](#upscaler). |
+| Frame generation | **Works** | AMD frame interpolation on top of any upscaler, in the Windows build since 1.6.12. Off by default. |
+| Install from `.pkg` files | **Works** | The launcher installs the game, the update and the DLC license. |
+| A full play-through | **Not verified** | |
+| The Old Hunters DLC | **Experimental** | The license is reported to the game. See the [FAQ](#troubleshooting-and-faq). |
+| FSR 4.1.1 on Windows | **Experimental** | Off until you opt in. Not in the zip. |
+| Linux | **Upstream** | The Linux version is in the [upstream project](https://github.com/deadinside28/bloodborne_pc). |
+
+### Tested hardware
+
+| Graphics card | What was checked |
+|---|---|
+| NVIDIA GeForce RTX 5080 | FSR 3.1 and FSR 4, game versions 1.00 and 1.09 |
+| NVIDIA GeForce RTX 4070 | FSR 4.1.1 through fsr4vk, and frame generation for five minutes at a 60 FPS base |
+| AMD Radeon RX 6700 XT, RX 6600 | The fix for the crash when the world loads (see the [FAQ](#troubleshooting-and-faq)). The RX 6600 also ran FSR 4.1.1 through fsr4vk. |
+
+Cards that are not on this list are untested here. If you play on one, a [bug report](https://github.com/0xCydral/bloodborne_pc/issues/new?template=bug_report.yml) with your `user\last_run.log` helps either way.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Your Bloodborne copy<br/>game folder or .pkg files"] --> B["Launcher<br/>settings, patches, mods"]
+    B --> C["Game image<br/>the game's own eboot, relinked"]
+    C --> D["Loader<br/>maps the image and starts it"]
+    D --> E["Runtime<br/>the PS4 system libraries, reimplemented"]
+    D --> F["Vulkan renderer<br/>built on shadPS4's video core"]
+    E --> G(("Bloodborne<br/>runs on your CPU"))
+    F --> G
+```
+
+1. **Prepare.** The launcher saves your settings in `bbport.ini` and prepares the game. Scripts convert the game's own executable (`eboot.bin`) into a memory image with the PS4 libc and Fios2 libraries linked in, compile the community patches (frame rate, resolution, effects) and set up your mods as an overlay. Your game folder is not changed.
+2. **Load.** A small loader maps the image into memory and jumps into the game. The game's code runs on your processor, with no emulation and no instruction translation.
+3. **Answer system calls.** Every call from the game into a PS4 system library lands in the port's own runtime, which implements only what Bloodborne calls: memory, threads, files, audio, controller and saves.
+4. **Draw.** The game's graphics commands go to a Vulkan renderer. It is built on the video core and shader recompiler of [shadPS4](https://github.com/shadps4-emu/shadPS4), the PS4 emulator, and adds the upscalers and frame generation.
+
+The details are under [Internals](#internals) in the developer half.
 
 ## What you need
 
@@ -47,7 +96,7 @@ You set everything up in a small program called the launcher: pick your game, pi
 
 Version 1.09 is the one to use. The community patches (60, 90 and unlocked FPS, resolution, effects) are made for it, and other versions run at 30 FPS.
 
-The game folder is the one with `eboot.bin`, `sce_module`, `sce_sys` and `dvdroot_ps4` inside. Tested on an NVIDIA RTX 5080 (FSR 3.1 and FSR 4, game versions 1.00 and 1.09).
+The game folder is the one with `eboot.bin`, `sce_module`, `sce_sys` and `dvdroot_ps4` inside.
 
 You do not need a compiler, Python or an emulator. Everything else is in the zip.
 
@@ -284,7 +333,28 @@ Use **Advanced > Desktop shortcut**, or point a shortcut or Steam (*Add a Non-St
 
 </details>
 
+<details>
+<summary><b>Where can I get the game?</b></summary>
+
+Nowhere here. The zip contains no game files and the launcher does not download them. Use a copy you own, dumped from your own console, as a game folder or as `.pkg` files.
+
+</details>
+
 Still stuck? Ask on the original project's [Discord server](https://discord.gg/KYZRKk9CB) or open an [issue](https://github.com/0xCydral/bloodborne_pc/issues). If the Discord invite has expired, the [original project's README](https://github.com/deadinside28/bloodborne_pc#readme) has the current one.
+
+## Contributing
+
+The most useful help is a good bug report. Use the [bug report form](https://github.com/0xCydral/bloodborne_pc/issues/new?template=bug_report.yml) and attach `user\last_run.log`. Reports from graphics cards that are not in [Tested hardware](#tested-hardware) are welcome.
+
+For code changes, read [CONTRIBUTING.md](CONTRIBUTING.md). In short: keep a pull request to one change, add or update a test, use Conventional Commits, and never include game files.
+
+## Legal
+
+Bloodborne PC is not affiliated with, endorsed by or connected to Sony Interactive Entertainment, FromSoftware, AMD or NVIDIA. "PlayStation", "PS4" and "Bloodborne" belong to their owners. NVIDIA, GeForce RTX and DLSS are trademarks of NVIDIA Corporation.
+
+No game files are included or provided with Bloodborne PC. Use it only with a copy of the game you own and have dumped yourself. You are responsible for following the laws that apply to you.
+
+Bloodborne PC is licensed under the **GNU GPL, version 2 or later** ([LICENSE](LICENSE)). It contains code from shadPS4 (GPL-2.0-or-later). Other components keep their own licenses. The full list is under [Credits and licenses](#credits-and-licenses).
 
 ---
 
@@ -294,7 +364,7 @@ Everything below is reference material: what this fork adds to the projects it i
 
 The Linux version of the port is in the upstream project. The game's own x86-64 code runs on the CPU, and its graphics are translated to Vulkan by a renderer derived from [shadPS4](https://github.com/shadps4-emu/shadPS4).
 
-[What this fork combines](#what-this-fork-combines) · [Upscalers and GPUs](#upscalers-and-gpus) · [Controls reference](#controls-reference) · [How it works](#how-it-works) · [Building from source](#building-from-source) · [Settings and environment variables](#settings-and-environment-variables) · [Project layout and roadmap](#project-layout-and-roadmap) · [Credits and licenses](#credits-and-licenses)
+[What this fork combines](#what-this-fork-combines) · [Upscalers and GPUs](#upscalers-and-gpus) · [Controls reference](#controls-reference) · [Internals](#internals) · [Building from source](#building-from-source) · [Settings and environment variables](#settings-and-environment-variables) · [Project layout and roadmap](#project-layout-and-roadmap) · [Credits and licenses](#credits-and-licenses)
 
 ### What this fork combines
 
@@ -344,7 +414,9 @@ The **Dark Souls III layout** button (Controls > Button assignments) asks, then 
 
 The settings are lines of `bbport.ini`: `mouse_camera`, `mouse_sensitivity` (0.022 degrees of turn per mouse count x the value, 0.01 to 20), `mouse_invert_y`, `mouse_no_auto_rotation`. A binding line takes `Mouse Left`, `Mouse Right`, `Mouse Middle`, `Mouse X1`, `Mouse X2`, `Wheel Up`, `Wheel Down`, each optionally after `Shift+`, `Ctrl+` or `Alt+` (for example `key.r2=Shift+Mouse Left`).
 
-### How it works
+### Internals
+
+The plain-words version is [How it works](#how-it-works) above. These notes go deeper.
 
 <details>
 <summary><b>Overview: Wine and DXVK for one game</b></summary>

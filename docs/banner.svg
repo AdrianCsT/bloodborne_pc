@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220" role="img" aria-labelledby="title desc">
+  <title id="title">Bloodborne PC</title>
+  <desc id="desc">Bloodborne PC: play Bloodborne natively on Windows, from your own PS4 copy.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0a0c"/>
+      <stop offset="1" stop-color="#171315"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="1" cy="0" r="0.9">
+      <stop offset="0" stop-color="#8e1a1f" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#8e1a1f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5c1014"/>
+      <stop offset="1" stop-color="#b8282e"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="220" rx="16" fill="url(#bg)"/>
+  <rect width="960" height="220" rx="16" fill="url(#glow)"/>
+  <rect x="48" y="148" width="96" height="6" rx="3" fill="url(#accent)"/>
+  <text x="48" y="124" fill="#e8dfcf" font-family="Georgia, 'Palatino Linotype', 'Times New Roman', serif" font-size="76" letter-spacing="6">BLOODBORNE PC</text>
+  <text x="48" y="186" fill="#a09282" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="26">Play Bloodborne natively on Windows, from your own PS4 copy.</text>
+</svg>
