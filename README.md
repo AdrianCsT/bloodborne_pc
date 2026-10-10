@@ -162,6 +162,8 @@ The keyboard also works next to a connected gamepad, and both can be remapped in
 
 The **Dark Souls III layout** button (Controls > Button assignments) asks, then sets the keyboard and mouse bindings back to those defaults and leaves the gamepad bindings alone; *Reset all* does the same for every setting.
 
+**Button icons.** The game draws PlayStation buttons. *Controls > Button icons* (`button_icons` in `bbport.ini`) changes them: *Automatic* (the default) picks Xbox icons for a connected Xbox or other controller, PlayStation icons for a PlayStation one, and keycaps and mouse icons when none is connected; *PlayStation*, *Xbox* and *Keyboard and mouse* force a set. The keyboard icons show the first key bound to each input (Space as "Spc", the left stick as WASD, a mouse button as a mouse with that button lit). The icons are chosen when the game starts, so changing controllers in the game keeps them until the next start. They are redrawn from your own copy of the game (`menu/common.tpf.dcx`) into `out/icons` next to the launcher, which the game reads instead of its own file; nothing in the game folder changes and the port ships no game art. A mod with its own `menu/common.tpf.dcx` keeps priority, and the log says the icons are off for that run. The big prompt images baked into the menu atlases (for example the circle, cross and L3 in the item pickup prompt) are redrawn too.
+
 The settings are lines of `bbport.ini`: `mouse_camera`, `mouse_sensitivity` (0.022 degrees of turn per mouse count x the value, 0.01 to 20), `mouse_invert_y`, `mouse_no_auto_rotation`. A binding line takes `Mouse Left`, `Mouse Right`, `Mouse Middle`, `Mouse X1`, `Mouse X2`, `Wheel Up`, `Wheel Down`, each optionally after `Shift+`, `Ctrl+` or `Alt+` (for example `key.r2=Shift+Mouse Left`).
 
 ## FAQ and troubleshooting
@@ -473,6 +475,7 @@ Most players never need these. Everything here is also reachable from the launch
 | `BB_PRESENT_DUMP_TRIGGER=file`, `BB_PRESENT_DUMP_COUNT=N` | Dump N consecutive presented frames |
 | `BB_ADDCONT=SPEXPANSIONDLC03` | Add-on licenses reported to the game, comma-separated. This one is The Old Hunters, whose areas ship with the v1.09 data. Experimental. |
 | `BB_GAMEPAD=<GUID or part of the name>` | Pick a controller |
+| `BB_ICONS_DIR=<folder>` | A mod layer with a generated `dvdroot_ps4/menu/common.tpf.dcx` (the button icons), put under the mods by `run.py`. The launcher sets it at Play; a mod with its own file takes priority. |
 | `BB_PAD_DEADZONE=N`, `BB_PAD_DEADZONE_OUTER=N` | Stick dead zone: inner (5) and outer (127) limit, 0..127 |
 | `BB_PAD_CENTER=lx,ly,rx,ry`, `BB_PAD_CENTER_CAL=0` | Stick neutral of a pad that rests off-centre, in SDL units (-32768..32767); `BB_PAD_CENTER_CAL=0` turns the automatic measurement off. The neutral is measured each time the pad connects: if a stick drifts at rest, reconnect the pad without touching the sticks |
 | `BB_DISPLAY=<number or part of the name>` | Monitor for the window and fullscreen: its number as `bb-gpu-capabilities --displays` lists it (1, 2, ...) or part of its name, case-insensitive. Empty, or none matches: the primary monitor, with a `Display:` line in the log. |

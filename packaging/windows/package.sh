@@ -36,7 +36,7 @@ done
 out/pyenv/Scripts/python.exe -m PyInstaller --noconfirm --clean --log-level WARN --windowed \
     --name BLauncher --icon "$(cygpath -w "$PWD/launcher/bloodborne.ico")" --distpath out/pyi-dist \
     --workpath out/pyi-work --specpath out/pyi-work --paths "$(cygpath -w "$PWD/scripts")" \
-    --paths "$(cygpath -w "$PWD/tools")" --hidden-import fetch_fsr4vk "${hidden[@]}" \
+    --paths "$(cygpath -w "$PWD/tools")" --hidden-import fetch_fsr4vk --hidden-import bbport_icons "${hidden[@]}" \
     "$(cygpath -w "$PWD/launcher/bbport_launcher_win.py")"
 
 # PkgTool (maxton/LibOrbisPkg v0.2, LGPL-3.0, shipped unmodified) extracts the game from the .pkg files the

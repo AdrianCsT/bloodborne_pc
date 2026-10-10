@@ -248,7 +248,7 @@ INI_FLOATS = {'sharpness', 'mouse_sensitivity'}  # written with two decimals
 INI_DEFAULTS = {'upscaler': 'fsr4', 'preset': '1', 'sharpen': '1', 'sharpness': '0.50',
                 'object_motion': '1', 'frame_generation': '0', 'show_fps': '1',
                 'output_res': '1920x1080', 'model_lod': '0',
-                'live_resolution': 'auto', **bbport_controls.MOUSE_DEFAULTS,
+                'live_resolution': 'auto', 'button_icons': bbport_controls.ICON_DEFAULT, **bbport_controls.MOUSE_DEFAULTS,
                 **{key: '1' if on else '0' for key, _t, on in EFFECTS + EXTRAS + CHEATS + TWEAKS}}
 INI_FLOAT_RANGES = {'sharpness': (0.0, 2.0), 'mouse_sensitivity': bbport_controls.MOUSE_SENSITIVITY_RANGE}
 
@@ -813,6 +813,37 @@ def set_reshade_preset(name):
     path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
+def icons_environment(s, ini):
+    """The environment entries of the button icons for one Play: BB_ICONS_DIR (a folder run.py puts under the mods,
+    holding a common.tpf.dcx generated from the player's own copy, see bbport_icons.py) and BB_ICONS_NOTE (a line for
+    the log). The icon set is resolved now, from the controller connected: it stays until the next start. {} when the
+    game keeps its own icons (PlayStation, or no game file to redraw)."""
+    choice = ini.get('button_icons', INI_DEFAULTS['button_icons'])
+    if choice not in [value for value, _text in bbport_controls.ICON_CHOICES]:
+        choice = bbport_controls.ICON_DEFAULT
+    game = Path(s['game_dir'])
+    if choice == 'playstation' or not (game / 'dvdroot_ps4' / 'menu' / 'common.tpf.dcx').is_file():
+        return {}
+    pads = list_gamepads() if choice == 'auto' else []
+    icon_set = bbport_controls.resolve_icon_set(choice, pads, str(s.get('gamepad', '')).strip())
+    if icon_set == 'playstation':
+        return {}
+    try:
+        import bbport_icons
+        import mods
+    except ImportError as error:  # a source tree without Pillow
+        return {'BB_ICONS_NOTE': f'Button icons are off for this run: {error}'}
+    try:
+        note = mods.icons_note(mods.user_layers(game, s['mods_dir'] or DATA_DIR / 'mods', DATA_DIR / 'mods.json',
+                                                '1' if s['mods_enabled'] else '0'))
+        if note:
+            return {'BB_ICONS_NOTE': note}
+        folder, built = bbport_icons.ensure_layer(game, DATA_DIR / 'out', icon_set, ini)
+    except (bbport_icons.IconError, OSError, ValueError) as error:
+        return {'BB_ICONS_NOTE': f'Button icons are off for this run: {error}'}
+    return {'BB_ICONS_DIR': str(folder), 'BB_ICONS_NOTE': f'Button icons: {icon_set} ({"made" if built else "from the cache"})'}
+
+
 def game_environment(s, frame_generation=None):
     """The environment of the game. Frame generation is read from bbport.ini unless the caller knows it."""
     ini = load_ini()[0]
@@ -829,6 +860,9 @@ def game_environment(s, frame_generation=None):
     env['BB_MODS_DIR'] = s['mods_dir'] or str(DATA_DIR / 'mods')
     env['BB_MODS_CONFIG'] = str(DATA_DIR / 'mods.json')
     env['BB_MODS_ENABLED'] = '1' if s['mods_enabled'] else '0'
+    env.pop('BB_ICONS_DIR', None)  # only this launch's choice counts, not one inherited from an earlier run
+    env.pop('BB_ICONS_NOTE', None)
+    env.update(icons_environment(s, ini))
     env['BB_PATCHES_DIR'] = s['patches_dir'] or str(DATA_DIR / 'patches')
     env['BB_PATCHES_CONFIG'] = str(DATA_DIR / 'patches.json')
     env['BB_LANGUAGE'] = s['language']
@@ -2885,6 +2919,18 @@ class Launcher:
         self.gamepad_note.grid(row=r + 1, column=1, sticky='w', pady=(px(4), 0))
         self.gamepad_values = ['']  # the value of each entry of the dropdown
         self.apply_gamepads(None)
+
+        f = self.card(page, _('Button icons', 'Значки кнопок'))
+        self.row(f, _('Button icons', 'Значки кнопок'), self.choice(f, 'button_icons', 'ini', bbport_controls.ICON_CHOICES))
+        self.note(f, _('The buttons the game shows on screen. Automatic follows the controller connected when the game '
+                       'starts: Xbox icons for an Xbox or other controller, PlayStation icons for a PlayStation one, '
+                       'your keys and mouse buttons when none is connected. Changing controllers in the game keeps '
+                       'the icons until the next start. A mod with its own menu/common.tpf.dcx keeps priority.',
+                       'Кнопки, которые игра показывает на экране. «Автоматически» следует за контроллером, '
+                       'подключённым при запуске игры: значки Xbox для контроллера Xbox или другого, значки '
+                       'PlayStation для контроллера PlayStation, ваши клавиши и кнопки мыши, если контроллера нет. '
+                       'Смена контроллера в игре сохраняет значки до следующего запуска. Мод со своим '
+                       'menu/common.tpf.dcx имеет приоритет.'), top=4)
 
         f = self.card(page, _('Mouse', 'Мышь'))
         self.check(f, 'mouse_camera', 'ini', _('Mouse controls the camera', 'Мышь управляет камерой'),

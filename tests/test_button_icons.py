@@ -340,5 +340,141 @@ class PlanTests(unittest.TestCase):
         self.assertLessEqual(len(icons.legend_for('Some Unknown Key')), 4)
 
 
+XBOX_GUID = '030000005e0400008e02000000007200'  # Microsoft, an Xbox 360 pad
+DS4_GUID = '030000004c050000cc09000000007200'  # Sony, a DualShock 4
+OTHER_GUID = '03000000c82d00000160000000007200'  # 8BitDo
+
+
+class AutoResolutionTests(unittest.TestCase):
+    """The icon set the launcher picks at Play for button_icons=auto: from the pad the game would use."""
+
+    def test_a_choice_that_is_not_auto_is_kept(self):
+        for choice in ('playstation', 'xbox', 'keyboard'):
+            self.assertEqual(controls.resolve_icon_set(choice, [(XBOX_GUID, 'Xbox')]), choice)
+            self.assertEqual(controls.resolve_icon_set(choice, []), choice)
+
+    def test_no_pad_means_keyboard_and_mouse(self):
+        self.assertEqual(controls.resolve_icon_set('auto', []), 'keyboard')
+
+    def test_an_xbox_pad_means_xbox_icons_and_a_playstation_pad_playstation_ones(self):
+        self.assertEqual(controls.resolve_icon_set('auto', [(XBOX_GUID, 'Xbox 360 Controller')]), 'xbox')
+        self.assertEqual(controls.resolve_icon_set('auto', [(DS4_GUID, 'PS4 Controller')]), 'playstation')
+
+    def test_the_pad_is_known_by_its_vendor_or_by_its_name(self):
+        self.assertEqual(controls.pad_family(XBOX_GUID, 'Anything'), 'xbox')
+        self.assertEqual(controls.pad_family(DS4_GUID, 'Anything'), 'playstation')
+        self.assertEqual(controls.pad_family('xinput', 'XInput Controller'), 'xbox')
+        for name in ('Wireless Controller', 'DualSense Wireless Controller', 'PS5 Controller', 'Sony Interactive'):
+            self.assertEqual(controls.pad_family('', name), 'playstation', name)
+        for name in ('Xbox One Controller', 'Controller (XBOX 360 For Windows)', 'Microsoft X-Box pad'):
+            self.assertEqual(controls.pad_family('', name), 'xbox', name)
+
+    def test_another_pad_gets_the_xbox_layout_its_buttons_are_named_by(self):
+        self.assertEqual(controls.pad_family(OTHER_GUID, '8BitDo Pro 2'), 'xbox')
+        self.assertEqual(controls.resolve_icon_set('auto', [(OTHER_GUID, '8BitDo Pro 2')]), 'xbox')
+
+    def test_the_pad_the_player_chose_decides_else_the_first_one(self):
+        pads = [(DS4_GUID, 'PS4 Controller'), (XBOX_GUID, 'Xbox 360 Controller')]
+        self.assertEqual(controls.resolve_icon_set('auto', pads), 'playstation')
+        self.assertEqual(controls.resolve_icon_set('auto', pads, XBOX_GUID), 'xbox')
+        self.assertEqual(controls.resolve_icon_set('auto', pads, 'not connected'), 'playstation')
+
+    def test_when_the_pads_cannot_be_listed_the_game_keeps_its_own_icons(self):
+        self.assertEqual(controls.resolve_icon_set('auto', None), 'playstation')
+
+    def test_the_choices_are_the_four_the_setting_takes(self):
+        self.assertEqual([value for value, _text in controls.ICON_CHOICES], ['auto', 'playstation', 'xbox', 'keyboard'])
+        self.assertEqual(controls.ICON_DEFAULT, 'auto')
+
+
+class LayerTests(unittest.TestCase):
+    """The cache of generated files: keyed by the source, the set and the bindings, reused when nothing changed."""
+
+    def setUp(self):
+        import tempfile
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.game = self.root / 'game'
+        (self.game / 'dvdroot_ps4/menu').mkdir(parents=True)
+        self.source = self.game / icons.COMMON_TPF
+        self.source.write_bytes(icons.dcx_pack(make_tpf(real_layout())))
+        self.cache = self.root / 'out'
+
+    def layer(self, icon_set='keyboard', ini=None):
+        return icons.ensure_layer(self.game, self.cache, icon_set, ini or {})
+
+    def test_the_layer_holds_the_generated_file_under_the_games_own_path(self):
+        folder, built = self.layer()
+        self.assertTrue(built)
+        generated = folder / icons.COMMON_TPF
+        self.assertTrue(generated.is_file())
+        found = icons.check_layout(icons.dcx_unpack(generated.read_bytes()))
+        original = icons.dcx_unpack(self.source.read_bytes())
+        patched = icons.dcx_unpack(generated.read_bytes())
+        cancel = found['KG_Cancel']
+        self.assertNotEqual(patched[cancel.offset:cancel.offset + 1024], original[cancel.offset:cancel.offset + 1024])
+        self.assertEqual(len(patched), len(original))
+
+    def test_the_source_file_is_never_written(self):
+        before = self.source.read_bytes()
+        self.layer()
+        self.assertEqual(self.source.read_bytes(), before)
+
+    def test_the_hash_of_the_source_is_recorded(self):
+        import hashlib
+        import json
+        folder, _built = self.layer()
+        meta = json.loads((folder / 'icons.json').read_text(encoding='utf-8'))
+        self.assertEqual(meta['source_sha256'], hashlib.sha256(self.source.read_bytes()).hexdigest())
+        self.assertEqual(meta['icon_set'], 'keyboard')
+
+    def test_nothing_changed_reuses_the_file(self):
+        folder, built = self.layer()
+        mtime = (folder / icons.COMMON_TPF).stat().st_mtime_ns
+        again, built_again = self.layer()
+        self.assertTrue(built)
+        self.assertFalse(built_again)
+        self.assertEqual(again, folder)
+        self.assertEqual((again / icons.COMMON_TPF).stat().st_mtime_ns, mtime)
+
+    def test_another_set_binding_or_source_makes_another_file(self):
+        folder, _ = self.layer()
+        self.assertNotEqual(self.layer('xbox')[0], folder)
+        self.assertNotEqual(self.layer('keyboard', {'key.cross': 'X'})[0], folder)
+        # a binding the icons do not show leaves the file as it is
+        self.assertEqual(self.layer('keyboard', {'key.cross': 'E, Return', 'mouse_sensitivity': '2.00'})[0], folder)
+        self.source.write_bytes(icons.dcx_pack(make_tpf(real_layout(), platform=4) + b'\0' * 16))
+        self.assertNotEqual(self.layer()[0], folder)
+
+    def test_a_cache_with_a_missing_file_is_built_again(self):
+        folder, _ = self.layer()
+        (folder / icons.COMMON_TPF).unlink()
+        again, built = self.layer()
+        self.assertTrue(built)
+        self.assertTrue((again / icons.COMMON_TPF).is_file())
+
+    def test_old_files_are_pruned(self):
+        from unittest import mock
+        with mock.patch.object(icons, 'KEEP_CACHED', 2):
+            for index in range(4):
+                self.layer('keyboard', {'key.cross': chr(ord('A') + index)})
+        left = list((self.cache / 'icons').iterdir())
+        self.assertEqual(len(left), 2)
+        self.assertIn(self.layer('keyboard', {'key.cross': 'D'})[0], left)  # the newest stays
+
+    def test_a_game_that_does_not_match_is_refused_with_the_reason(self):
+        self.source.write_bytes(icons.dcx_pack(make_tpf([t for t in real_layout() if t[0] != 'KG_OK'])))
+        with self.assertRaises(icons.IconError) as caught:
+            self.layer()
+        self.assertIn('KG_OK', str(caught.exception))
+        self.assertFalse((self.cache / 'icons').exists() and list((self.cache / 'icons').iterdir()))
+
+    def test_a_game_without_the_file_is_refused(self):
+        self.source.unlink()
+        with self.assertRaises(icons.IconError):
+            self.layer()
+
+
 if __name__ == '__main__':
     unittest.main()

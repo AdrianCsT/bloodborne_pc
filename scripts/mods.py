@@ -250,6 +250,55 @@ def build_overlay(game, out, mods):
         raise
 
 
+# The file the button icons replace (the launcher generates it from the player's own copy).
+ICONS_FILE = 'dvdroot_ps4/menu/common.tpf.dcx'
+ICONS_LAYER = 'button icons'
+
+
+def user_layers(game, mods_dir, config=None, enabled='1'):
+    """[(name, folder)] of the player's mods, lowest priority first (none when mods are switched off)."""
+    layers = []
+    if enabled == '1':
+        # shadPS4's loose overlay convention, beside the original game.
+        legacy = Path(str(Path(game).resolve()) + '-mods')
+        if legacy.is_dir():
+            layers.append((legacy.name, legacy))
+        # A directly selected loose overlay is also accepted.
+        if child(mods_dir, 'dvdroot_ps4').is_dir():
+            layers.append((Path(mods_dir).name, Path(mods_dir)))
+        else:
+            for name in selected(mods_dir, config):
+                layers.append((name, Path(mods_dir) / name))
+    return layers
+
+
+def supplier(layers, relative):
+    """The name of the last layer that has the game file `relative` (any letter case), or None."""
+    found = None
+    for name, root in layers:
+        if any(path.as_posix().casefold() == relative.casefold() for path, _ in mod_files(root)):
+            found = name
+    return found
+
+
+def icons_note(layers):
+    """Why the button icons cannot be used with these mod layers (a mod has its own menu/common.tpf.dcx, and the
+    player's file wins), or None."""
+    owner = supplier(layers, ICONS_FILE)
+    return f'Button icons are off for this run: {owner} has its own menu/common.tpf.dcx' if owner else None
+
+
+def mod_layers(game, mods_dir, config=None, enabled='1', icons=None):
+    """([(name, folder)], note): the layers of an overlay, lowest priority first. The button icons, when given,
+    go first so that any mod replaces them; a mod that has the same file as the icons takes them out, and the
+    note says so (None otherwise)."""
+    layers = user_layers(game, mods_dir, config, enabled)
+    if not icons:
+        return layers, None
+    note = icons_note(layers)
+    return (layers, note) if note else ([(ICONS_LAYER, Path(icons)), *layers], None)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('game', type=Path)
@@ -257,19 +306,11 @@ def main():
     parser.add_argument('--mods-dir', required=True, type=Path)
     parser.add_argument('--config', type=Path)
     parser.add_argument('--enabled', choices=('0', '1'), default='1')
+    parser.add_argument('--icons-layer', type=Path, help='a folder with the generated button icons (a layer under the mods)')
     args = parser.parse_args()
-    layers = []
-    if args.enabled == '1':
-        # shadPS4's loose overlay convention, beside the original game.
-        legacy = Path(str(args.game.resolve()) + '-mods')
-        if legacy.is_dir():
-            layers.append((legacy.name, legacy))
-        # A directly selected loose overlay is also accepted.
-        if child(args.mods_dir, 'dvdroot_ps4').is_dir():
-            layers.append((args.mods_dir.name, args.mods_dir))
-        else:
-            for name in selected(args.mods_dir, args.config):
-                layers.append((name, args.mods_dir / name))
+    layers, note = mod_layers(args.game, args.mods_dir, args.config, args.enabled, args.icons_layer)
+    if note:
+        print(f'Mods: {note}', file=sys.stderr)
     print(build_overlay(args.game, args.out, layers))
 
 

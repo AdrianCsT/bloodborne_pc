@@ -6,6 +6,10 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 
 ## [Unreleased]
 
+### Added
+
+- Button icons that match how you play. The game draws PlayStation buttons; the launcher now redraws them at start as Xbox buttons (A, B, X, Y, LB, RB, LT, RT, LS, RS, Menu, View, d-pad arrows) or as the keys and mouse buttons you bound (keycaps with the first key of each input, WASD for the left stick, a mouse with the bound button lit). Controls > Button icons picks Automatic (from the controller connected at start: Xbox, PlayStation, or keyboard and mouse when none), PlayStation, Xbox or Keyboard and mouse. The icons are made from your own copy of the game, cached in `out\icons` and applied as a mod layer, so the game folder is untouched; a mod with its own `menu/common.tpf.dcx` wins and the log says the icons are off for that run. The set is chosen at start and stays until the next one.
+
 ### Changed
 
 - The default keyboard keys follow Dark Souls III better: Esc opens the menu (equipment, items; it was Tab), Tab and G both open the gestures (Tab is new), and Space alone is Circle (dodge, hold to sprint; Esc is no longer Circle). Saved bindings in `bbport.ini` are not touched.

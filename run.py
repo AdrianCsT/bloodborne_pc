@@ -116,10 +116,15 @@ def main():
     if not (game / 'eboot.bin').is_file():
         fail(f'No eboot.bin in {game} (set BB_GAME_DIR).')
     original_game = game.resolve()
+    # The launcher's button icons (a generated common.tpf.dcx) are a layer under the mods; its note says
+    # why they are off when it cannot make them.
+    icons = ['--icons-layer', env['BB_ICONS_DIR']] if env.get('BB_ICONS_DIR') else []
+    if env.get('BB_ICONS_NOTE'):
+        print(env['BB_ICONS_NOTE'])
     game = Path(run_script('mods.py', game, '--out', out,
                            '--mods-dir', env.get('BB_MODS_DIR', data / 'mods'),
                            '--config', env.get('BB_MODS_CONFIG', data / 'mods.json'),
-                           '--enabled', env.get('BB_MODS_ENABLED', '1'), capture=True).strip())
+                           '--enabled', env.get('BB_MODS_ENABLED', '1'), *icons, capture=True).strip())
     mod_view = game if game.resolve() != original_game else None
     try:
         run_script('prepare.py', game, '--out', out)

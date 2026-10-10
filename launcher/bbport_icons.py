@@ -815,3 +815,89 @@ def render_glyph(icon_set, glyph):
 def build_glyphs(icon_set, ini):
     """{texture name: 32x32 RGBA image} of the 20 glyphs for 'xbox' or 'keyboard' and the bbport.ini values."""
     return {texture: render_glyph(icon_set, glyph) for texture, glyph in plan(icon_set, ini).items()}
+
+
+# --- the file --------------------------------------------------------------------------------------------
+COMMON_TPF = 'dvdroot_ps4/menu/common.tpf.dcx'  # where the game keeps the glyphs, under its folder
+
+
+def patch_glyphs(tpf, glyphs):
+    """tpf with the glyph textures replaced by the images {name: RGBA 32x32}; same size, nothing else touched."""
+    found = check_layout(tpf)
+    out = bytearray(tpf)
+    for name, image in glyphs.items():
+        data = encode_image(image)
+        texture = found[name]
+        if len(data) != texture.size:
+            raise IconError(f'{name}: {len(data)} bytes where the file has {texture.size}')
+        out[texture.offset:texture.offset + texture.size] = data
+    return bytes(out)
+
+
+def source_hash(path):
+    import hashlib
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def generate(source, destination, icon_set, ini):
+    """Writes the game's common.tpf.dcx at `source` to `destination` with its button glyphs redrawn for
+    icon_set ('xbox' or 'keyboard') and the bbport.ini values `ini`. The input is checked first (IconError
+    says what differs); the source file is only read. Returns the SHA-256 of the source."""
+    import os
+    digest = source_hash(source)
+    with open(source, 'rb') as handle:
+        tpf = dcx_unpack(handle.read())
+    check_layout(tpf)
+    patched = patch_glyphs(tpf, build_glyphs(icon_set, ini))
+    destination = os.fspath(destination)
+    os.makedirs(os.path.dirname(destination) or '.', exist_ok=True)
+    temporary = destination + '.tmp'
+    with open(temporary, 'wb') as handle:
+        handle.write(dcx_pack(patched))
+    os.replace(temporary, destination)
+    return digest
+
+
+# --- the cache -------------------------------------------------------------------------------------------
+ICONS_VERSION = 1  # part of every cache key: raise it when the drawings change
+KEEP_CACHED = 4  # generated files kept in out/icons (each is the size of the game's own, about 9 MB)
+
+
+def cache_key(source_sha256, icon_set, ini):
+    """What makes two generated files the same: the source file, the set, the icons' drawings (their version)
+    and what each glyph shows, which is what the bindings amount to."""
+    import hashlib
+    shown = repr([(name, glyph.tokens) for name, glyph in plan(icon_set, ini).items()])
+    return hashlib.sha256(f'{ICONS_VERSION}|{source_sha256}|{icon_set}|{shown}'.encode()).hexdigest()[:16]
+
+
+def ensure_layer(game_dir, out_dir, icon_set, ini):
+    """(folder, built): a folder, under out_dir/icons, that is a mod layer (dvdroot_ps4/menu/common.tpf.dcx) with the
+    icons for icon_set and the bindings in ini. A file made before for the same source, set and bindings is reused
+    (built False). IconError says why the game's file cannot be used."""
+    import json
+    import os
+    import shutil
+    from pathlib import Path
+    source = Path(game_dir) / COMMON_TPF
+    if not source.is_file():
+        raise IconError(f'{COMMON_TPF} is not in the game folder')
+    digest = source_hash(source)
+    root = Path(out_dir) / 'icons'
+    folder = root / f'{icon_set}-{cache_key(digest, icon_set, ini)}'
+    target = folder / COMMON_TPF
+    if target.is_file() and (folder / 'icons.json').is_file():
+        os.utime(folder)  # the newest are kept
+        return folder, False
+    shutil.rmtree(folder, ignore_errors=True)
+    generate(source, target, icon_set, ini)
+    (folder / 'icons.json').write_text(json.dumps({'source_sha256': digest, 'icon_set': icon_set, 'version': ICONS_VERSION},
+                                                  indent=2), encoding='utf-8')
+    others = sorted((p for p in root.iterdir() if p.is_dir() and p != folder), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in others[KEEP_CACHED - 1:]:
+        shutil.rmtree(old, ignore_errors=True)
+    return folder, True

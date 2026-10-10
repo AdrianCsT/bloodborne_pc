@@ -66,6 +66,9 @@ Starting
   mouse or IJKL camera, Space Circle, E/Enter Cross, R Square, F Triangle, left/right button R1/L1,
   Shift + button R2/L2, Left Ctrl L2, C L3, Q R3, arrows or wheel d-pad, Esc Options (menu),
   Tab or G left touchpad (gestures), Backspace right touchpad.
+- The buttons the game shows follow your controller: Xbox icons for an Xbox pad, PlayStation icons for a
+  PlayStation pad, your keys and mouse buttons with none (Controls > Button icons picks one by hand). They
+  are redrawn at start from your own copy of the game and kept in out\icons; nothing in the game folder changes.
 
 Data
 - Saves and shader caches: user\ next to BLauncher.exe (the launcher can pick another folder).

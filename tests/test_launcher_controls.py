@@ -391,6 +391,16 @@ class SettingsFileTests(unittest.TestCase):
         self.assertEqual(sum(line.startswith('pad.') for line in text), 1)
         self.assertFalse([line for line in text if line.startswith('key.')])  # the layout is the default: no lines
 
+    def test_button_icons_default_to_auto_and_are_saved_and_read_back(self):
+        self.assertEqual(launcher.INI_DEFAULTS['button_icons'], 'auto')
+        self.assertEqual(controls.ICON_DEFAULT, 'auto')
+        ini, lines = launcher.load_ini()
+        self.assertEqual(ini['button_icons'], 'auto')
+        ini['button_icons'] = 'xbox'
+        ini, lines = self.save(ini, lines)
+        self.assertIn('button_icons=xbox', self.path.read_text(encoding='utf-8').splitlines())
+        self.assertEqual(launcher.load_ini()[0]['button_icons'], 'xbox')
+
     def test_a_value_with_an_equals_sign_survives(self):
         ini, lines = launcher.load_ini()
         ini['key.cross'] = '='  # the key SDL calls "="
@@ -544,6 +554,118 @@ class TranslationTests(unittest.TestCase):
         self.assertGreater(len(texts), 15)
         for text in texts:
             self.assertIn(text, bbport_lang.KEYS, text)
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'the Windows launcher')
+class ButtonIconLaunchTests(unittest.TestCase):
+    """What Play does about the button icons: pick the set, keep a mod's own icons file, hand the layer to run.py."""
+    XBOX = ('030000005e0400008e02000000007200', 'Xbox 360 Controller')
+    DS4 = ('030000004c050000cc09000000007200', 'PS4 Controller')
+
+    def setUp(self):
+        import bbport_icons
+        self.icons = bbport_icons
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name)
+        self.game = self.root / 'game'
+        (self.game / 'dvdroot_ps4/menu').mkdir(parents=True)
+        (self.game / 'dvdroot_ps4/menu/common.tpf.dcx').write_bytes(b'x')
+        self.layer = self.root / 'out/icons/layer'
+        self.settings = {**launcher.APP_DEFAULTS, 'game_dir': str(self.game), 'mods_dir': str(self.root / 'mods')}
+        self.pads = []
+        self.ensure = mock.Mock(return_value=(self.layer, True))
+        for patch in (mock.patch.object(launcher, 'DATA_DIR', self.root),
+                      mock.patch.object(launcher, 'list_gamepads', lambda: self.pads),
+                      mock.patch.object(self.icons, 'ensure_layer', self.ensure)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def environment(self, choice='auto', **changes):
+        return launcher.icons_environment({**self.settings, **changes}, {'button_icons': choice})
+
+    def user_mod(self, name='Mine'):
+        folder = self.root / 'mods' / name / 'dvdroot_ps4/menu'
+        folder.mkdir(parents=True)
+        (folder / 'common.tpf.dcx').write_bytes(b'mine')
+
+    def test_automatic_with_no_pad_draws_the_keyboard_and_mouse(self):
+        env = self.environment()
+        self.assertEqual(env['BB_ICONS_DIR'], str(self.layer))
+        self.assertEqual(self.ensure.call_args.args[2], 'keyboard')
+        self.assertEqual(self.ensure.call_args.args[0], self.game)
+        self.assertEqual(self.ensure.call_args.args[1], self.root / 'out')
+
+    def test_automatic_follows_the_connected_pad(self):
+        self.pads = [self.XBOX]
+        self.environment()
+        self.assertEqual(self.ensure.call_args.args[2], 'xbox')
+        self.pads = [self.DS4]
+        self.ensure.reset_mock()
+        self.assertNotIn('BB_ICONS_DIR', self.environment())
+        self.ensure.assert_not_called()
+
+    def test_automatic_uses_the_controller_the_player_chose(self):
+        self.pads = [self.DS4, self.XBOX]
+        self.environment(gamepad=self.XBOX[0])
+        self.assertEqual(self.ensure.call_args.args[2], 'xbox')
+
+    def test_playstation_adds_no_layer_and_does_not_ask_the_pads(self):
+        with mock.patch.object(launcher, 'list_gamepads', side_effect=AssertionError('asked')):
+            self.assertEqual(self.environment('playstation'), {})
+        self.ensure.assert_not_called()
+
+    def test_a_forced_set_ignores_the_pads(self):
+        self.pads = [self.DS4]
+        self.environment('keyboard')
+        self.assertEqual(self.ensure.call_args.args[2], 'keyboard')
+
+    def test_a_mod_with_its_own_icons_file_wins_and_the_log_says_icons_are_off(self):
+        self.user_mod()
+        env = self.environment('xbox')
+        self.assertNotIn('BB_ICONS_DIR', env)
+        self.assertIn('off', env['BB_ICONS_NOTE'])
+        self.assertIn('Mine', env['BB_ICONS_NOTE'])
+        self.ensure.assert_not_called()  # nothing is generated for a file nobody will use
+
+    def test_mods_switched_off_or_disabled_do_not_take_the_icons_away(self):
+        self.user_mod()
+        self.assertIn('BB_ICONS_DIR', self.environment('xbox', mods_enabled=False))
+        (self.root / 'mods.json').write_text('{"disabled": ["Mine"]}', encoding='utf-8')
+        self.assertIn('BB_ICONS_DIR', self.environment('xbox'))
+
+    def test_a_game_the_icons_do_not_fit_plays_on_with_the_reason_in_the_log(self):
+        self.ensure.side_effect = self.icons.IconError('KG_OK is missing')
+        env = self.environment('xbox')
+        self.assertNotIn('BB_ICONS_DIR', env)
+        self.assertIn('KG_OK is missing', env['BB_ICONS_NOTE'])
+
+    def test_a_game_folder_without_the_file_adds_nothing(self):
+        (self.game / 'dvdroot_ps4/menu/common.tpf.dcx').unlink()
+        self.assertEqual(self.environment('xbox'), {})
+
+    def test_the_game_environment_carries_the_layer_to_run_py(self):
+        self.pads = [self.XBOX]
+        with mock.patch.dict(launcher.os.environ):
+            env = launcher.game_environment(self.settings)
+        self.assertEqual(env['BB_ICONS_DIR'], str(self.layer))
+
+    def test_run_py_passes_the_layer_to_the_mods_script(self):
+        source = (ROOT / 'run.py').read_text(encoding='utf-8')
+        self.assertIn("'--icons-layer', env['BB_ICONS_DIR']", source)
+
+    def test_the_dropdown_texts_are_translated_everywhere(self):
+        texts = ['Button icons', 'Keyboard and mouse', 'Xbox', 'Automatic (from the controller)',
+                 'PlayStation (as in the game)']
+        for _value, (english, *_russian) in controls.ICON_CHOICES:
+            self.assertIn(english, bbport_lang.KEYS)
+        for text in texts:
+            self.assertIn(text, bbport_lang.KEYS, text)
+            for language in TranslationTests.LANGUAGES:
+                self.assertTrue(bbport_lang.table(language).get(text), f'{language}: {text}')
+        note = next(key for key in bbport_lang.KEYS if key.startswith('The buttons the game shows on screen'))
+        for language in TranslationTests.LANGUAGES:
+            self.assertIn('menu/common.tpf.dcx', bbport_lang.table(language)[note], language)
 
 
 if __name__ == '__main__':
