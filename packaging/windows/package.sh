@@ -167,8 +167,8 @@ if [[ -n $(find "$dest" \( -type d -iname fsr4vk -o -iname 'amd_fidelityfx_upsca
 fi
 mkdir -p dist
 rm -f dist/bbport-windows.zip
-(cd out/stage && powershell -NoProfile -Command \
-    "Compress-Archive -Path bbport-windows -DestinationPath ../../dist/bbport-windows.zip")
+# Forward slashes in every entry name (Compress-Archive of Windows PowerShell stored backslashes).
+out/pyenv/Scripts/python.exe -I packaging/windows/make_zip.py out/stage bbport-windows dist/bbport-windows.zip
 
 # Refresh dist/bbport-windows, keeping what players create there (saves, settings, mods), and
 # only while nothing runs from it: deleting a running launcher's files breaks it.
