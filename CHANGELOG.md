@@ -6,6 +6,10 @@ The release pages for 1.6 to 1.6.15 were deleted on 2026-10-09. The git tags rem
 
 ## [Unreleased]
 
+### Changed
+
+- The default keyboard keys follow Dark Souls III better: Esc opens the menu (equipment, items; it was Tab), Tab and G both open the gestures (Tab is new), and Space alone is Circle (dodge, hold to sprint; Esc is no longer Circle). Saved bindings in `bbport.ini` are not touched.
+
 ### Fixed
 
 - The launcher found its updates through the GitHub account name, which changed from AdrianCsT to 0xCydral. GitHub forwards the old name only until someone else takes it and creates a repository of the same name, and from then on that person's releases would have been offered as updates. The launcher now looks releases up by the repository's id, which no rename changes, and downloads FSR 4.1.1 from the new address.

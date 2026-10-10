@@ -144,7 +144,7 @@ The default keys are the Dark Souls III layout.
 |---|---|
 | W A S D | Move |
 | Mouse, I J K L | Camera |
-| Space / Esc | Circle (dodge, hold to dash, back) |
+| Space | Circle (dodge, hold to dash, back) |
 | E / Enter | Cross (interact, confirm) |
 | Left button / Shift + left button | R1 / R2 |
 | Right button / Shift + right button or Left Ctrl | L1 / L2 |
@@ -152,7 +152,7 @@ The default keys are the Dark Souls III layout.
 | Q or wheel click / C | R3 (lock on) / L3 (jump) |
 | Up, wheel up / Down, wheel down | D-pad up / down |
 | Left, Shift + wheel down / Right, Shift + wheel up | D-pad left / right |
-| Tab / G / Backspace | Options / left touchpad (gestures) / right touchpad |
+| Esc / Tab or G / Backspace | Options (menu: equipment, items) / left touchpad (gestures) / right touchpad |
 
 There is no walk input, so Left Alt (walk in Dark Souls III) is not bound.
 

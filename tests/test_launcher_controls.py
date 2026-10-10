@@ -115,7 +115,7 @@ class BindingTextTests(unittest.TestCase):
         self.assertEqual(controls.join_binding(['Space', 'E']), 'Space, E')
 
     def test_no_line_means_the_default_and_an_empty_line_means_nothing(self):
-        self.assertEqual(controls.current_binding({}, 'key', 'circle'), ['Space', 'Escape'])
+        self.assertEqual(controls.current_binding({}, 'key', 'circle'), ['Space'])
         self.assertEqual(controls.current_binding({}, 'pad', 'touchpad'), ['back', 'touchpad'])
         self.assertEqual(controls.current_binding({}, 'pad', 'touchpad_right'), [])
         self.assertEqual(controls.current_binding({'key.circle': ''}, 'key', 'circle'), [])
@@ -262,13 +262,13 @@ class Ds3LayoutTests(unittest.TestCase):
         layout = controls.DS3_KEYS
         self.assertEqual({k: layout[k] for k in ('r1', 'r2', 'l1', 'l2', 'circle', 'cross', 'square', 'triangle')},
                          {'r1': 'Mouse Left', 'r2': 'Shift+Mouse Left', 'l1': 'Mouse Right',
-                          'l2': 'Shift+Mouse Right, Left Ctrl', 'circle': 'Space, Escape', 'cross': 'E, Return',
+                          'l2': 'Shift+Mouse Right, Left Ctrl', 'circle': 'Space', 'cross': 'E, Return',
                           'square': 'R', 'triangle': 'F'})
         self.assertEqual({k: layout[k] for k in ('r3', 'l3', 'up', 'down', 'left', 'right')},
                          {'r3': 'Q, Mouse Middle', 'l3': 'C', 'up': 'Up, Wheel Up', 'down': 'Down, Wheel Down',
                           'left': 'Left, Shift+Wheel Down', 'right': 'Right, Shift+Wheel Up'})
         self.assertEqual({k: layout[k] for k in ('options', 'touchpad', 'touchpad_right')},
-                         {'options': 'Tab', 'touchpad': 'G', 'touchpad_right': 'Backspace'})
+                         {'options': 'Escape', 'touchpad': 'Tab, G', 'touchpad_right': 'Backspace'})
         self.assertEqual([layout[k] for k in ('move_up', 'move_down', 'move_left', 'move_right')], list('WSAD'))
         self.assertEqual([layout[k] for k in ('look_up', 'look_down', 'look_left', 'look_right')], list('IKJL'))
 
@@ -348,7 +348,7 @@ class SettingsFileTests(unittest.TestCase):
         again, _lines = launcher.load_ini()
         self.assertEqual(controls.current_binding(again, 'key', 'cross'), ['F5'])
         self.assertEqual(controls.current_binding(again, 'pad', 'cross'), ['x'])
-        self.assertEqual(controls.current_binding(again, 'key', 'circle'), ['Space', 'Escape'])  # untouched: default
+        self.assertEqual(controls.current_binding(again, 'key', 'circle'), ['Space'])  # untouched: default
 
     def test_reset_removes_the_line(self):
         self.path.write_text('key.cross=F5\npad.cross=x\nupscaler=dlss\n', encoding='utf-8')

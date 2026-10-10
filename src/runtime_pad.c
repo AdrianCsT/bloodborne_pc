@@ -1,11 +1,9 @@
 /* libScePad on SDL3 gamepads, the keyboard and the mouse. SDL events are pumped by the window
  * thread (gpu/shim/window.cpp); here state is only sampled.
  *
- * Keyboard layout (also with a gamepad connected: both drive the game):
- *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
- *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
- *   Enter Options, Tab left touchpad, Backspace right touchpad,
- *   IJKL d-pad (I up, K down, J left, L right).
+ * Keyboard layout (also with a gamepad connected: both drive the game): the Dark Souls III layout of
+ * bind_defaults, e.g. WASD left stick, IJKL right stick, Space Circle, Esc Options, Tab or G left
+ * touchpad, Backspace right touchpad.
  *
  * Mouse (issue #5; the camera hook and the stick fallback follow Ryansousa10/bloodborne_windows_mouse_and_keyboard,
  * commit c650c2e, GPL-2.0-or-later): while the game window has focus and the settings menu and the text
@@ -353,12 +351,12 @@ static void bind_defaults(void) {
 #define M(input,mods,button) {input,KIND_MOUSE,mods,SDL_BUTTON_##button}
 #define W(input,mods,step) {input,KIND_WHEEL,mods,step}
     static const struct { int input; uint8_t kind, mods; int16_t code; } keys[]={
-        K(IN_CROSS,E), K(IN_CROSS,RETURN), K(IN_CIRCLE,SPACE), K(IN_CIRCLE,ESCAPE),
+        K(IN_CROSS,E), K(IN_CROSS,RETURN), K(IN_CIRCLE,SPACE),
         K(IN_SQUARE,R), K(IN_TRIANGLE,F),
         M(IN_L1,0,RIGHT), M(IN_R1,0,LEFT),
         M(IN_L2,BIND_SHIFT,RIGHT), K(IN_L2,LCTRL), M(IN_R2,BIND_SHIFT,LEFT),
         K(IN_L3,C), K(IN_R3,Q), M(IN_R3,0,MIDDLE),
-        K(IN_OPTIONS,TAB), K(IN_TOUCHPAD,G), K(IN_TOUCHPAD_RIGHT,BACKSPACE),
+        K(IN_OPTIONS,ESCAPE), K(IN_TOUCHPAD,TAB), K(IN_TOUCHPAD,G), K(IN_TOUCHPAD_RIGHT,BACKSPACE),
         K(IN_UP,UP), W(IN_UP,0,1), K(IN_DOWN,DOWN), W(IN_DOWN,0,-1),
         K(IN_LEFT,LEFT), W(IN_LEFT,BIND_SHIFT,-1), K(IN_RIGHT,RIGHT), W(IN_RIGHT,BIND_SHIFT,1),
         K(IN_MOVE_UP,W), K(IN_MOVE_DOWN,S), K(IN_MOVE_LEFT,A), K(IN_MOVE_RIGHT,D),

@@ -204,8 +204,11 @@ static void defaults(void) {
     assert(bindings[IN_L1].key_count==1 && has_default(IN_L1,KIND_MOUSE,0,SDL_BUTTON_RIGHT));
     assert(bindings[IN_CROSS].key_count==2 && has_default(IN_CROSS,KIND_KEY,0,SDL_SCANCODE_E) &&
            has_default(IN_CROSS,KIND_KEY,0,SDL_SCANCODE_RETURN));
-    assert(bindings[IN_CIRCLE].key_count==2 && has_default(IN_CIRCLE,KIND_KEY,0,SDL_SCANCODE_SPACE) &&
-           has_default(IN_CIRCLE,KIND_KEY,0,SDL_SCANCODE_ESCAPE));
+    /* Circle is Space alone: Escape opens the menu (Options), Tab and G are the gestures (left touchpad). */
+    assert(bindings[IN_CIRCLE].key_count==1 && has_default(IN_CIRCLE,KIND_KEY,0,SDL_SCANCODE_SPACE));
+    assert(bindings[IN_OPTIONS].key_count==1 && has_default(IN_OPTIONS,KIND_KEY,0,SDL_SCANCODE_ESCAPE));
+    assert(bindings[IN_TOUCHPAD].key_count==2 && has_default(IN_TOUCHPAD,KIND_KEY,0,SDL_SCANCODE_TAB) &&
+           has_default(IN_TOUCHPAD,KIND_KEY,0,SDL_SCANCODE_G));
     assert(has_default(IN_R3,KIND_KEY,0,SDL_SCANCODE_Q) && has_default(IN_R3,KIND_MOUSE,0,SDL_BUTTON_MIDDLE));
     assert(has_default(IN_UP,KIND_WHEEL,0,1) && has_default(IN_DOWN,KIND_WHEEL,0,-1));
     assert(has_default(IN_LEFT,KIND_WHEEL,BIND_SHIFT,-1) && has_default(IN_RIGHT,KIND_WHEEL,BIND_SHIFT,1));

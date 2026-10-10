@@ -20,7 +20,7 @@ are MOUSE_DEFAULTS."""
 # key.<input>= / pad.<input>= replace a default; no line keeps it.
 CONTROLS = [
     ("cross", "Крест", "E, Return", "a"),
-    ("circle", "Круг", "Space, Escape", "b"),
+    ("circle", "Круг", "Space", "b"),
     ("square", "Квадрат", "R", "x"),
     ("triangle", "Треугольник", "F", "y"),
     ("l1", "L1", "Mouse Right", "leftshoulder"),
@@ -29,8 +29,8 @@ CONTROLS = [
     ("r2", "R2", "Shift+Mouse Left", "righttrigger"),
     ("l3", "L3", "C", "leftstick"),
     ("r3", "R3", "Q, Mouse Middle", "rightstick"),
-    ("options", "Options", "Tab", "start"),
-    ("touchpad", "Тачпад, левая половина (жесты)", "G", "back, touchpad"),
+    ("options", "Options", "Escape", "start"),
+    ("touchpad", "Тачпад, левая половина (жесты)", "Tab, G", "back, touchpad"),
     ("touchpad_right", "Тачпад, правая половина (личные вещи)", "Backspace", ""),
     ("up", "Крестовина вверх", "Up, Wheel Up", "dpup"),
     ("down", "Крестовина вниз", "Down, Wheel Down", "dpdown"),

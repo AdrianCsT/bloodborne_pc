@@ -62,8 +62,10 @@ Starting
   objects wrong with frame generation. With the switch on and "Object motion vectors" on
   (Graphics), the launcher starts the game with BB_OBJECT_MOTION_AMD=1.
 - In the game, Insert (or L3+R3 on a gamepad) opens the port's menu (upscaler, resolution,
-  effects). Keyboard: WASD move, arrows camera, Space Cross, Left Shift Circle, E Square,
-  Q Triangle, 1/3 L1/R1, R/F L2/R2, Z/C L3/R3, I/K/J/L d-pad, Enter Options, Tab touchpad.
+  effects). Keyboard (Dark Souls III layout; the Controls tab of the launcher changes it): WASD move,
+  mouse or IJKL camera, Space Circle, E/Enter Cross, R Square, F Triangle, left/right button R1/L1,
+  Shift + button R2/L2, Left Ctrl L2, C L3, Q R3, arrows or wheel d-pad, Esc Options (menu),
+  Tab or G left touchpad (gestures), Backspace right touchpad.
 
 Data
 - Saves and shader caches: user\ next to BLauncher.exe (the launcher can pick another folder).
