@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <cstddef>
 #include <setjmp.h>
+#ifdef _WIN32
+// No sigjmp_buf on Windows: the renderer uses the loader's buffer type (gpu/shim/bbport_toggles.h).
+typedef unsigned long long sigjmp_buf[32];
+#endif
 // Renderer tests have no guest process. Clock/host-thread services work; guest accesses abort.
 extern "C" {
 thread_local sigjmp_buf* runtime_fault_recover = nullptr;

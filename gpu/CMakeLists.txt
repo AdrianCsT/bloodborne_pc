@@ -302,6 +302,14 @@ target_include_directories(camera-motion-test PRIVATE shim shadps4 ${SHADER_INCL
 target_compile_options(camera-motion-test PRIVATE -UNDEBUG -fPIC)
 target_link_libraries(camera-motion-test PRIVATE bbgpu)
 add_dependencies(camera-motion-test host_shaders)
+# bbport (Windows): bb-probe gives bbgpu the loader's compat layer (bb_setjmp, compat_strcasestr),
+# onecore (CreateFileMapping2) and winpthreads; the renderer tests link them themselves.
+if(WIN32)
+    foreach(test IN ITEMS motion-shader-test scene-resolution-test taa-shader-test camera-motion-test)
+        target_sources(${test} PRIVATE ../src/compat_win.c)
+        target_link_libraries(${test} PRIVATE onecore -pthread)
+    endforeach()
+endif()
 
 # bbport: FSR 4 benchmark outside the game (tools/fsr4_bench.cpp): ninja -C out/gpu fsr4-bench.
 add_executable(upscaler-support-test EXCLUDE_FROM_ALL ../tests/test_upscaler_support.cpp
